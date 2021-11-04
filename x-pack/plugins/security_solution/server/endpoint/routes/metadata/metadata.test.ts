@@ -114,6 +114,7 @@ describe('test endpoint route', () => {
       mockPackageService.getInstallation.mockReturnValue(
         Promise.resolve({
           installed_kibana: [],
+          installed_kibana_space_id: 'default',
           package_assets: [],
           es_index_patterns: {},
           name: '',
@@ -375,6 +376,7 @@ describe('test endpoint route', () => {
       mockPackageService.getInstallation.mockReturnValue(
         Promise.resolve({
           installed_kibana: [],
+          installed_kibana_space_id: 'default',
           package_assets: [],
           es_index_patterns: {},
           name: '',

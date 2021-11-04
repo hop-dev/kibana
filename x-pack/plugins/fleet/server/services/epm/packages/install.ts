@@ -544,6 +544,7 @@ export async function createInstallation(options: {
     PACKAGES_SAVED_OBJECT_TYPE,
     {
       installed_kibana: [],
+      installed_kibana_space_id: 'default', // TODO: add space here
       installed_es: [],
       package_assets: [],
       es_index_patterns: toSaveESIndexPatterns,

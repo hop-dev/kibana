@@ -135,6 +135,7 @@ describe('Host Isolation', () => {
       const mockPackageService = createMockPackageService();
       mockPackageService.getInstallation.mockReturnValue(
         Promise.resolve({
+          installed_kibana_space_id: 'default',
           installed_kibana: [],
           package_assets: [],
           es_index_patterns: {},

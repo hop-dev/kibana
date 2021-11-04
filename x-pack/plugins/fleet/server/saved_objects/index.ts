@@ -238,6 +238,7 @@ const getSavedObjectTypes = (
             type: { type: 'keyword' },
           },
         },
+        installed_kibana_space_id: { type: 'keyword' },
         package_assets: {
           type: 'nested',
           properties: {

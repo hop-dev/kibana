@@ -393,6 +393,7 @@ export type PackageInfo =
 
 export interface Installation extends SavedObjectAttributes {
   installed_kibana: KibanaAssetReference[];
+  installed_kibana_space_id: string;
   installed_es: EsAssetReference[];
   package_assets?: PackageAssetReference[];
   es_index_patterns: Record<string, string>;
