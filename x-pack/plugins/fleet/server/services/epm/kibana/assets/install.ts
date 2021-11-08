@@ -5,11 +5,17 @@
  * 2.0.
  */
 
+// import { SavedObjectsImporter } from 'src/core/server';
 import type {
   SavedObject,
   SavedObjectsBulkCreateObject,
   SavedObjectsClientContract,
 } from 'src/core/server';
+import type { SavedObjectsImportSuccess } from 'src/core/server/types';
+
+import { createListStream } from '@kbn/utils';
+
+import { SavedObjectsUtils } from '../../../../../../../../src/core/server';
 
 import { PACKAGES_SAVED_OBJECT_TYPE } from '../../../../../common';
 import { getAsset, getPathParts } from '../../archive';
@@ -17,6 +23,7 @@ import { KibanaAssetType, KibanaSavedObjectType } from '../../../../types';
 import type { AssetType, AssetReference, AssetParts } from '../../../../types';
 import { savedObjectTypes } from '../../packages';
 import { indexPatternTypes } from '../index_pattern/install';
+import { appContextService } from '../../../../services';
 
 type SavedObjectToBe = Required<Pick<SavedObjectsBulkCreateObject, keyof ArchiveAsset>> & {
   type: KibanaSavedObjectType;
@@ -48,7 +55,8 @@ const AssetInstallers: Record<
   (args: {
     savedObjectsClient: SavedObjectsClientContract;
     kibanaAssets: ArchiveAsset[];
-  }) => Promise<Array<SavedObject<unknown>>>
+    spaceId: string;
+  }) => Promise<SavedObjectsImportSuccess[]>
 > = {
   [KibanaAssetType.dashboard]: installKibanaSavedObjects,
   [KibanaAssetType.indexPattern]: installKibanaIndexPatterns,
@@ -85,8 +93,9 @@ export async function installKibanaAssets(options: {
   savedObjectsClient: SavedObjectsClientContract;
   pkgName: string;
   kibanaAssets: Record<KibanaAssetType, ArchiveAsset[]>;
-}): Promise<SavedObject[]> {
-  const { savedObjectsClient, kibanaAssets } = options;
+  spaceId: string;
+}): Promise<SavedObjectsImportSuccess[]> {
+  const { savedObjectsClient, kibanaAssets, spaceId } = options;
 
   // install the assets
   const kibanaAssetTypes = Object.values(KibanaAssetType);
@@ -96,6 +105,7 @@ export async function installKibanaAssets(options: {
         return AssetInstallers[assetType]({
           savedObjectsClient,
           kibanaAssets: kibanaAssets[assetType],
+          spaceId,
         });
       }
       return [];
@@ -155,9 +165,11 @@ export async function getKibanaAssets(
 async function installKibanaSavedObjects({
   savedObjectsClient,
   kibanaAssets,
+  spaceId,
 }: {
   savedObjectsClient: SavedObjectsClientContract;
   kibanaAssets: ArchiveAsset[];
+  spaceId: string;
 }) {
   const toBeSavedObjects = await Promise.all(
     kibanaAssets.map((asset) => createSavedObjectKibanaAsset(asset))
@@ -166,26 +178,48 @@ async function installKibanaSavedObjects({
   if (toBeSavedObjects.length === 0) {
     return [];
   } else {
-    const createResults = await savedObjectsClient.bulkCreate(toBeSavedObjects, {
+    const savedObjectsImporter = appContextService
+      .getSavedObjects()
+      .createImporter(savedObjectsClient);
+
+    const { successResults, errors } = await savedObjectsImporter.import({
+      namespace: SavedObjectsUtils.namespaceStringToId(spaceId),
       overwrite: true,
+      readStream: createListStream(toBeSavedObjects),
+      createNewCopies: false,
     });
-    return createResults.saved_objects;
+
+    if (errors?.length) {
+      throw new Error(
+        `Encountered ${errors.length} installing saved objects: ${errors
+          .map((e) => JSON.stringify(e)) // TODO: before merge, present errors nicely
+          .join(', ')}`
+      );
+    }
+
+    return successResults || [];
   }
 }
 
 async function installKibanaIndexPatterns({
   savedObjectsClient,
   kibanaAssets,
+  spaceId,
 }: {
   savedObjectsClient: SavedObjectsClientContract;
   kibanaAssets: ArchiveAsset[];
+  spaceId: string;
 }) {
   // Filter out any reserved index patterns
   const reservedPatterns = indexPatternTypes.map((pattern) => `${pattern}-*`);
 
   const nonReservedPatterns = kibanaAssets.filter((asset) => !reservedPatterns.includes(asset.id));
 
-  return installKibanaSavedObjects({ savedObjectsClient, kibanaAssets: nonReservedPatterns });
+  return installKibanaSavedObjects({
+    savedObjectsClient,
+    kibanaAssets: nonReservedPatterns,
+    spaceId,
+  });
 }
 
 export function toAssetReference({ id, type }: SavedObject) {

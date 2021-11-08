@@ -15,8 +15,11 @@ import type {
   RequestHandlerContext,
   SavedObjectsClientContract,
 } from 'src/core/server';
+
 import uuid from 'uuid';
 import { safeLoad } from 'js-yaml';
+
+import { DEFAULT_SPACE_ID } from '../../../spaces/common/constants';
 
 import type { AuthenticatedUser } from '../../../security/server';
 import {
@@ -91,6 +94,7 @@ class PackagePolicyService {
     esClient: ElasticsearchClient,
     packagePolicy: NewPackagePolicy,
     options?: {
+      spaceId?: string;
       id?: string;
       user?: AuthenticatedUser;
       bumpRevision?: boolean;
@@ -128,6 +132,7 @@ class PackagePolicyService {
         const [, packageInfo] = await Promise.all([
           ensureInstalledPackage({
             esClient,
+            spaceId: options?.spaceId || DEFAULT_SPACE_ID,
             savedObjectsClient: soClient,
             pkgName: packagePolicy.package.name,
             pkgVersion: packagePolicy.package.version,

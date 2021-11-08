@@ -17,6 +17,7 @@ import type {
 /** @internal */
 export interface FleetRequestHandlerContext extends RequestHandlerContext {
   fleet: {
+    getSpaceId: () => Promise<string>;
     epm: {
       /**
        * Saved Objects client configured to use kibana_system privileges instead of end-user privileges. Should only be

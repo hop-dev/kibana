@@ -20,6 +20,8 @@ import type { UsageCollectionSetup } from 'src/plugins/usage_collection/server';
 
 import type { TelemetryPluginSetup, TelemetryPluginStart } from 'src/plugins/telemetry/server';
 
+import { DEFAULT_SPACE_ID } from '../../spaces/common/constants';
+
 import { DEFAULT_APP_CATEGORIES } from '../../../../src/core/server';
 import type { PluginStart as DataPluginStart } from '../../../../src/plugins/data/server';
 import type { LicensingPluginSetup, ILicense } from '../../licensing/server';
@@ -32,6 +34,7 @@ import type { PluginSetupContract as FeaturesPluginSetup } from '../../features/
 import type { FleetConfigType } from '../common';
 import { INTEGRATIONS_PLUGIN_ID } from '../common';
 import type { CloudSetup } from '../../cloud/server';
+import type { SpacesPluginStart } from '../../spaces/server';
 
 import {
   PLUGIN_ID,
@@ -91,6 +94,7 @@ export interface FleetSetupDeps {
   encryptedSavedObjects: EncryptedSavedObjectsPluginSetup;
   cloud?: CloudSetup;
   usageCollection?: UsageCollectionSetup;
+  spaces?: SpacesPluginStart;
   telemetry?: TelemetryPluginSetup;
 }
 
@@ -255,6 +259,11 @@ export class FleetPlugin
     core.http.registerRouteHandlerContext<FleetRequestHandlerContext, 'fleet'>(
       'fleet',
       (coreContext, request) => ({
+        async getSpaceId() {
+          const spaceId = await deps.spaces?.spacesService.getSpaceId(request);
+
+          return spaceId || DEFAULT_SPACE_ID;
+        },
         epm: {
           // Use a lazy getter to avoid constructing this client when not used by a request handler
           get internalSoClient() {

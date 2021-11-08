@@ -12,6 +12,7 @@ import type { ElasticsearchClient, SavedObjectsClientContract } from 'src/core/s
 import { AUTO_UPDATE_PACKAGES } from '../../common';
 import type { DefaultPackagesInstallationError, PreconfigurationError } from '../../common';
 import { SO_SEARCH_LIMIT, DEFAULT_PACKAGES } from '../constants';
+import { DEFAULT_SPACE_ID } from '../../../spaces/common/constants';
 
 import { appContextService } from './app_context';
 import { agentPolicyService } from './agent_policy';
@@ -96,7 +97,8 @@ async function createSetupSideEffects(
     esClient,
     policies,
     packages,
-    defaultOutput
+    defaultOutput,
+    DEFAULT_SPACE_ID
   );
 
   await cleanPreconfiguredOutputs(soClient, outputsOrUndefined ?? []);
@@ -141,6 +143,7 @@ export async function ensureFleetGlobalEsAssets(
           savedObjectsClient: soClient,
           pkgkey: pkgToPkgKey({ name: installation.name, version: installation.version }),
           esClient,
+          spaceId: DEFAULT_SPACE_ID,
           // Force install the pacakge will update the index template and the datastream write indices
           force: true,
         }).catch((err) => {
