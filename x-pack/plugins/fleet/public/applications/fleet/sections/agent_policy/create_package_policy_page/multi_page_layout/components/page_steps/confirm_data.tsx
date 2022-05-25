@@ -50,6 +50,7 @@ export const ConfirmDataPageStep: React.FC<MultiPageStepLayoutProps> = (props) =
             pkgkey={`${packageInfo.name}-${packageInfo.version}`}
             seenDataTypes={seenDataTypes}
             packageInfo={packageInfo}
+            agentIds={enrolledAgentIds}
           />
         </>
       )}

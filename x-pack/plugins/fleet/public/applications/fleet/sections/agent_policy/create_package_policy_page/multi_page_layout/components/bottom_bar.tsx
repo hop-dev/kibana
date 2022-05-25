@@ -4,19 +4,15 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 
 import { FormattedMessage } from '@kbn/i18n-react';
 import { EuiBottomBar, EuiFlexGroup, EuiFlexItem, EuiButton, EuiButtonEmpty } from '@elastic/eui';
 
-import type { ResolvedSimpleSavedObject } from '@kbn/core/public';
-
-import type { AssetSavedObject } from '../../../../../../integrations/sections/epm/screens/detail/assets/types';
-
-import { KibanaAssetType } from '../../../../../../../../common/types';
 import type { PackageInfo } from '../../../../../../../../common/types';
-import { useLink, getHrefToObjectInKibanaApp, useStartServices } from '../../../../../../../hooks';
+import { useLink } from '../../../../../../../hooks';
+import { useGetDiscoverLogsLinkForAgents, useGetFirstMetricsDashboardLink } from '../hooks';
 
 const CenteredRoundedBottomBar = styled(EuiBottomBar)`
   max-width: 820px;
@@ -89,90 +85,14 @@ export const CreatePackagePolicyBottomBar: React.FC<{
   );
 };
 
-// TODO: move this to its own file
-const useGetFirstMetricsDashboardLink = (packageInfo: PackageInfo) => {
-  const {
-    savedObjects: { client: savedObjectsClient },
-    http,
-  } = useStartServices();
-
-  const [result, setResult] = useState<{ isLoading: boolean; link?: string }>({ isLoading: true });
-  useEffect(() => {
-    const getFirstDashboard = async () => {
-      setResult({ isLoading: true });
-      if (!('savedObject' in packageInfo)) return;
-
-      const dashboards = packageInfo.savedObject?.attributes?.installed_kibana.filter(
-        (asset) => asset.type === 'dashboard'
-      );
-
-      const dashboardSavedObjects = await savedObjectsClient
-        .bulkResolve(dashboards)
-        // Ignore privilege errors
-        .catch((e: any) => {
-          if (e?.body?.statusCode === 403) {
-            return { resolved_objects: [] };
-          } else {
-            throw e;
-          }
-        })
-        .then((res: { resolved_objects: ResolvedSimpleSavedObject[] }) => {
-          const { resolved_objects: resolvedObjects } = res;
-          return resolvedObjects
-            .map(({ saved_object: savedObject }) => savedObject)
-            .filter((savedObject) => savedObject?.error?.statusCode !== 404) as AssetSavedObject[];
-        });
-      const metricsDashboards = dashboardSavedObjects.filter((so) =>
-        so.attributes.title.toLowerCase().includes('metrics')
-      );
-
-      const firstMetricsDashboard = metricsDashboards?.[0];
-
-      if (firstMetricsDashboard) {
-        const link = getHrefToObjectInKibanaApp({
-          http,
-          id: firstMetricsDashboard.id,
-          type: KibanaAssetType.dashboard,
-        });
-
-        setResult({ isLoading: false, link });
-      } else {
-        setResult({ isLoading: false });
-      }
-    };
-
-    getFirstDashboard();
-  }, [http, packageInfo, savedObjectsClient]);
-
-  return result;
-};
-
-const useGetDiscoverLogsLink = () => {
-  const { discover } = useStartServices();
-  const [link, setLink] = useState<string | null>(null);
-
-  useEffect(() => {
-    const getLink = async () => {
-      if (discover && discover.locator) {
-        const newLink = await discover.locator.getUrl({
-          // TODO: add data views and filters
-        });
-        setLink(newLink);
-      }
-    };
-    getLink();
-  }, [discover]);
-
-  return link;
-};
-
 export const CreatePackagePolicyFinalBottomBar: React.FC<{
   pkgkey: string;
   seenDataTypes: Array<string | undefined>;
   packageInfo: PackageInfo;
-}> = ({ pkgkey, seenDataTypes, packageInfo }) => {
+  agentIds: string[];
+}> = ({ pkgkey, seenDataTypes, packageInfo, agentIds }) => {
   const { getHref } = useLink();
-  const logsLink = useGetDiscoverLogsLink();
+  const logsLink = useGetDiscoverLogsLinkForAgents(agentIds);
   const { link: metricsDashboardLink } = useGetFirstMetricsDashboardLink(packageInfo);
   const ViewAssetsButton = () => (
     <EuiButton
@@ -192,7 +112,7 @@ export const CreatePackagePolicyFinalBottomBar: React.FC<{
 
   const buttons: JSX.Element[] = [];
 
-  if (true && logsLink) {
+  if (seenDataTypes.includes('metrics') && logsLink) {
     buttons.push(
       <EuiButton color="success" fill size="m" href={logsLink}>
         <FormattedMessage
