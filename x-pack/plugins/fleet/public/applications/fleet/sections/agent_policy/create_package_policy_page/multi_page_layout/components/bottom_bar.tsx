@@ -10,7 +10,9 @@ import styled from 'styled-components';
 import { FormattedMessage } from '@kbn/i18n-react';
 import { EuiBottomBar, EuiFlexGroup, EuiFlexItem, EuiButton, EuiButtonEmpty } from '@elastic/eui';
 
-import { useLink } from '../../../../../../../hooks';
+import { KibanaAssetType } from '../../../../../../../../common/types';
+import type { PackageInfo } from '../../../../../../../../common/types';
+import { useLink, getHrefToObjectInKibanaApp, useStartServices } from '../../../../../../../hooks';
 
 const CenteredRoundedBottomBar = styled(EuiBottomBar)`
   max-width: 820px;
@@ -85,8 +87,69 @@ export const CreatePackagePolicyBottomBar: React.FC<{
 
 export const CreatePackagePolicyFinalBottomBar: React.FC<{
   pkgkey: string;
-}> = ({ pkgkey }) => {
+  seenDataTypes: Array<string | undefined>;
+  packageInfo: PackageInfo;
+}> = ({ pkgkey, seenDataTypes, packageInfo }) => {
   const { getHref } = useLink();
+  const { http } = useStartServices();
+
+  const ViewAssetsButton = () => (
+    <EuiButton
+      color="success"
+      fill
+      size="m"
+      href={getHref('integration_details_assets', {
+        pkgkey,
+      })}
+    >
+      <FormattedMessage
+        id="xpack.fleet.confirmIncomingData.viewDataAssetsButtonText'"
+        defaultMessage="View assets"
+      />
+    </EuiButton>
+  );
+
+  const buttons: JSX.Element[] = [];
+
+  // do clever stuff
+
+  if (seenDataTypes.includes('logs')) {
+    buttons.push(<>Logs</>);
+  }
+
+  if (seenDataTypes.includes('metrics')) {
+    if ('savedObject' in packageInfo) {
+      const dashboards = packageInfo.savedObject?.attributes?.installed_kibana.filter(
+        (asset) => asset.type === 'dashboard'
+      );
+      const firstDashboard = dashboards[0];
+
+      if (firstDashboard) {
+        buttons.push(
+          <EuiButton
+            color="success"
+            fill
+            size="m"
+            href={getHrefToObjectInKibanaApp({
+              http,
+              id: firstDashboard.id,
+              type: KibanaAssetType.dashboard,
+            })}
+          >
+            <FormattedMessage
+              id="xpack.fleet.confirmIncomingData.viewDashboardButtonText'"
+              defaultMessage="View dashboard"
+            />
+          </EuiButton>
+        );
+      }
+    }
+  }
+
+  if (!buttons.length) {
+    buttons.push(<ViewAssetsButton />);
+  }
+
   return (
     <CenteredRoundedBottomBar>
       <EuiFlexGroup justifyContent="spaceBetween" alignItems="center">
@@ -100,21 +163,7 @@ export const CreatePackagePolicyFinalBottomBar: React.FC<{
             </EuiButtonEmpty>
           </EuiFlexItem>
         </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiButton
-            color="success"
-            fill
-            size="m"
-            href={getHref('integration_details_assets', {
-              pkgkey,
-            })}
-          >
-            <FormattedMessage
-              id="xpack.fleet.confirmIncomingData.viewDataAssetsButtonText'"
-              defaultMessage="View assets"
-            />
-          </EuiButton>
-        </EuiFlexItem>
+        <EuiFlexItem grow={false}>{buttons}</EuiFlexItem>
       </EuiFlexGroup>
     </CenteredRoundedBottomBar>
   );

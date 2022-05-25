@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   EuiCallOut,
   EuiText,
@@ -28,16 +28,13 @@ import type { SearchHit } from '@kbn/core/types/elasticsearch';
 import styled from 'styled-components';
 
 import type { InstalledIntegrationPolicy } from '../../../../../../../components/agent_enrollment_flyout/use_get_agent_incoming_data';
-import {
-  useGetAgentIncomingData,
-  usePollingIncomingData,
-} from '../../../../../../../components/agent_enrollment_flyout/use_get_agent_incoming_data';
+import { usePollingIncomingData } from '../../../../../../../components/agent_enrollment_flyout/use_get_agent_incoming_data';
 
 interface Props {
   agentIds: string[];
   installedPolicy?: InstalledIntegrationPolicy;
   agentDataConfirmed: boolean;
-  setAgentDataConfirmed: (v: boolean) => void;
+  setPreviewData: (v: SearchHit[]) => void;
   troubleshootLink: string;
 }
 const MAX_AGENT_DATA_PREVIEW_COUNT = 5;
@@ -122,7 +119,7 @@ export const ConfirmIncomingDataWithPreview: React.FunctionComponent<Props> = ({
   agentIds,
   installedPolicy,
   agentDataConfirmed,
-  setAgentDataConfirmed,
+  setPreviewData,
   troubleshootLink,
 }) => {
   const { incomingData, dataPreview, isLoading } = usePollingIncomingData(
@@ -130,14 +127,14 @@ export const ConfirmIncomingDataWithPreview: React.FunctionComponent<Props> = ({
     true,
     MAX_AGENT_DATA_PREVIEW_COUNT
   );
-  const { enrolledAgents, numAgentsWithData } = useGetAgentIncomingData(
-    incomingData,
-    installedPolicy
-  );
+  const numAgentsWithData = Object.values(incomingData).filter((v) => v).length;
 
-  if (!isLoading && enrolledAgents > 0 && numAgentsWithData > 0) {
-    setAgentDataConfirmed(true);
-  }
+  useEffect(() => {
+    if (!isLoading && dataPreview.length) {
+      setPreviewData(dataPreview);
+    }
+  }, [isLoading, dataPreview, setPreviewData]);
+
   if (!agentDataConfirmed) {
     return (
       <>

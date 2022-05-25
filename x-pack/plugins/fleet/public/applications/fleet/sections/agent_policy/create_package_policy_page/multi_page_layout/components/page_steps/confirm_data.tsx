@@ -5,7 +5,9 @@
  * 2.0.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+
+import type { SearchHit } from '@kbn/core/types/elasticsearch';
 
 import type { MultiPageStepLayoutProps } from '../../types';
 import { useStartServices } from '../../../../../../hooks';
@@ -20,24 +22,34 @@ export const ConfirmDataPageStep: React.FC<MultiPageStepLayoutProps> = (props) =
   const { enrolledAgentIds, packageInfo } = props;
   const core = useStartServices();
 
-  const [agentDataConfirmed, setAgentDataConfirmed] = useState(false);
+  const [seenDataTypes, setSeenDataTypes] = useState<Array<string | undefined>>([]);
   const { docLinks } = core;
   const troubleshootLink = docLinks.links.fleet.troubleshooting;
+  const setPreviewData = useCallback((previewData: SearchHit[]) => {
+    const newSeenDataTypes = previewData.map((hit) => {
+      const source = hit?._source as any;
+      return source?.data_stream?.type || undefined;
+    });
+
+    setSeenDataTypes(newSeenDataTypes);
+  }, []);
   return (
     <>
       <ConfirmIncomingDataWithPreview
         agentIds={enrolledAgentIds}
         installedPolicy={packageInfo}
-        agentDataConfirmed={agentDataConfirmed}
-        setAgentDataConfirmed={setAgentDataConfirmed}
+        agentDataConfirmed={!!seenDataTypes.length}
+        setPreviewData={setPreviewData}
         troubleshootLink={troubleshootLink}
       />
 
-      {!!agentDataConfirmed && (
+      {!!seenDataTypes.length && (
         <>
           <NotObscuredByBottomBar />
           <CreatePackagePolicyFinalBottomBar
             pkgkey={`${packageInfo.name}-${packageInfo.version}`}
+            seenDataTypes={seenDataTypes}
+            packageInfo={packageInfo}
           />
         </>
       )}
