@@ -4,11 +4,15 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 
 import { FormattedMessage } from '@kbn/i18n-react';
 import { EuiBottomBar, EuiFlexGroup, EuiFlexItem, EuiButton, EuiButtonEmpty } from '@elastic/eui';
+
+import type { ResolvedSimpleSavedObject } from '@kbn/core/public';
+
+import type { AssetSavedObject } from '../../../../../../integrations/sections/epm/screens/detail/assets/types';
 
 import { KibanaAssetType } from '../../../../../../../../common/types';
 import type { PackageInfo } from '../../../../../../../../common/types';
@@ -85,14 +89,71 @@ export const CreatePackagePolicyBottomBar: React.FC<{
   );
 };
 
+const useGetFirstMetricsDashboardLink = (packageInfo: PackageInfo) => {
+  const {
+    savedObjects: { client: savedObjectsClient },
+    http,
+  } = useStartServices();
+
+  const [result, setResult] = useState<{ isLoading: boolean; link?: string }>({ isLoading: true });
+  useEffect(() => {
+    const getFirstDashboard = async () => {
+      setResult({ isLoading: true });
+      if (!('savedObject' in packageInfo)) return;
+
+      const dashboards = packageInfo.savedObject?.attributes?.installed_kibana.filter(
+        (asset) => asset.type === 'dashboard'
+      );
+
+      const dashboardSavedObjects = await savedObjectsClient
+        .bulkResolve(dashboards)
+        // Ignore privilege errors
+        .catch((e: any) => {
+          if (e?.body?.statusCode === 403) {
+            return { resolved_objects: [] };
+          } else {
+            throw e;
+          }
+        })
+        .then((res: { resolved_objects: ResolvedSimpleSavedObject[] }) => {
+          const { resolved_objects: resolvedObjects } = res;
+          return resolvedObjects
+            .map(({ saved_object: savedObject }) => savedObject)
+            .filter((savedObject) => savedObject?.error?.statusCode !== 404) as AssetSavedObject[];
+        });
+      const metricsDashboards = dashboardSavedObjects.filter((so) =>
+        so.attributes.title.toLowerCase().includes('metrics')
+      );
+
+      const firstMetricsDashboard = metricsDashboards?.[0];
+
+      if (firstMetricsDashboard) {
+        const link = getHrefToObjectInKibanaApp({
+          http,
+          id: firstMetricsDashboard.id,
+          type: KibanaAssetType.dashboard,
+        });
+
+        setResult({ isLoading: false, link });
+      } else {
+        setResult({ isLoading: false });
+      }
+    };
+
+    getFirstDashboard();
+  }, [http, packageInfo, savedObjectsClient]);
+
+  return result;
+};
+
 export const CreatePackagePolicyFinalBottomBar: React.FC<{
   pkgkey: string;
   seenDataTypes: Array<string | undefined>;
   packageInfo: PackageInfo;
 }> = ({ pkgkey, seenDataTypes, packageInfo }) => {
   const { getHref } = useLink();
-  const { http } = useStartServices();
-
+  const { link: metricsDashboardLink } = useGetFirstMetricsDashboardLink(packageInfo);
+  const logsLink = '/';
   const ViewAssetsButton = () => (
     <EuiButton
       color="success"
@@ -111,39 +172,32 @@ export const CreatePackagePolicyFinalBottomBar: React.FC<{
 
   const buttons: JSX.Element[] = [];
 
-  // do clever stuff
-
   if (seenDataTypes.includes('logs')) {
-    buttons.push(<>Logs</>);
+    buttons.push(
+      <EuiButton color="success" fill size="m" href={logsLink}>
+        <FormattedMessage
+          id="xpack.fleet.confirmIncomingData.viewLogsButtonText'"
+          defaultMessage="View incoming {integrationName} logs"
+          values={{
+            integrationName: packageInfo.title,
+          }}
+        />
+      </EuiButton>
+    );
   }
 
-  if (seenDataTypes.includes('metrics')) {
-    if ('savedObject' in packageInfo) {
-      const dashboards = packageInfo.savedObject?.attributes?.installed_kibana.filter(
-        (asset) => asset.type === 'dashboard'
-      );
-      const firstDashboard = dashboards[0];
-
-      if (firstDashboard) {
-        buttons.push(
-          <EuiButton
-            color="success"
-            fill
-            size="m"
-            href={getHrefToObjectInKibanaApp({
-              http,
-              id: firstDashboard.id,
-              type: KibanaAssetType.dashboard,
-            })}
-          >
-            <FormattedMessage
-              id="xpack.fleet.confirmIncomingData.viewDashboardButtonText'"
-              defaultMessage="View dashboard"
-            />
-          </EuiButton>
-        );
-      }
-    }
+  if (seenDataTypes.includes('metrics') && metricsDashboardLink) {
+    buttons.push(
+      <EuiButton color="success" fill size="m" href={metricsDashboardLink}>
+        <FormattedMessage
+          id="xpack.fleet.confirmIncomingData.viewDashboardButtonText'"
+          defaultMessage="View {integrationName} metrics dashboard"
+          values={{
+            integrationName: packageInfo.title,
+          }}
+        />
+      </EuiButton>
+    );
   }
 
   if (!buttons.length) {
@@ -163,7 +217,13 @@ export const CreatePackagePolicyFinalBottomBar: React.FC<{
             </EuiButtonEmpty>
           </EuiFlexItem>
         </EuiFlexItem>
-        <EuiFlexItem grow={false}>{buttons}</EuiFlexItem>
+        <EuiFlexItem grow={false}>
+          <EuiFlexGroup gutterSize="xs">
+            {buttons.map((button) => {
+              return <EuiFlexItem grow={false}>{button}</EuiFlexItem>;
+            })}
+          </EuiFlexGroup>
+        </EuiFlexItem>
       </EuiFlexGroup>
     </CenteredRoundedBottomBar>
   );
