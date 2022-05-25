@@ -89,6 +89,7 @@ export const CreatePackagePolicyBottomBar: React.FC<{
   );
 };
 
+// TODO: move this to its own file
 const useGetFirstMetricsDashboardLink = (packageInfo: PackageInfo) => {
   const {
     savedObjects: { client: savedObjectsClient },
@@ -146,14 +147,33 @@ const useGetFirstMetricsDashboardLink = (packageInfo: PackageInfo) => {
   return result;
 };
 
+const useGetDiscoverLogsLink = () => {
+  const { discover } = useStartServices();
+  const [link, setLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getLink = async () => {
+      if (discover && discover.locator) {
+        const newLink = await discover.locator.getUrl({
+          // TODO: add data views and filters
+        });
+        setLink(newLink);
+      }
+    };
+    getLink();
+  }, [discover]);
+
+  return link;
+};
+
 export const CreatePackagePolicyFinalBottomBar: React.FC<{
   pkgkey: string;
   seenDataTypes: Array<string | undefined>;
   packageInfo: PackageInfo;
 }> = ({ pkgkey, seenDataTypes, packageInfo }) => {
   const { getHref } = useLink();
+  const logsLink = useGetDiscoverLogsLink();
   const { link: metricsDashboardLink } = useGetFirstMetricsDashboardLink(packageInfo);
-  const logsLink = '/';
   const ViewAssetsButton = () => (
     <EuiButton
       color="success"
@@ -172,7 +192,7 @@ export const CreatePackagePolicyFinalBottomBar: React.FC<{
 
   const buttons: JSX.Element[] = [];
 
-  if (seenDataTypes.includes('logs')) {
+  if (true && logsLink) {
     buttons.push(
       <EuiButton color="success" fill size="m" href={logsLink}>
         <FormattedMessage

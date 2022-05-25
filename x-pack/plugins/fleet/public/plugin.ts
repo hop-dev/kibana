@@ -27,6 +27,7 @@ import type { SharePluginStart } from '@kbn/share-plugin/public';
 import { once } from 'lodash';
 
 import type { SpacesPluginStart } from '@kbn/spaces-plugin/public';
+import type { DiscoverStart } from '@kbn/discover-plugin/public';
 
 import type { CloudStart } from '@kbn/cloud-plugin/public';
 
@@ -112,6 +113,7 @@ export interface FleetStartServices extends CoreStart, Exclude<FleetStartDeps, '
   storage: Storage;
   share: SharePluginStart;
   cloud?: CloudSetup & CloudStart;
+  discover?: DiscoverStart;
   spaces?: SpacesPluginStart;
   authz: FleetAuthz;
 }
