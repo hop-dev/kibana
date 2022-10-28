@@ -1,9 +1,9 @@
 title: Test Dataset
 
-type: logs
+type: metrics
 
 streams:
-  - input: test_input1
+  - input: test_input3
     vars:
     - name: test_var_required
       type: string
@@ -12,7 +12,4 @@ streams:
       show_user: true
 
 elasticsearch:
-  index_template.mappings:
-    dynamic: true
-  index_template.settings:
-    index.lifecycle.name: reference2
+  source_mode: "default"

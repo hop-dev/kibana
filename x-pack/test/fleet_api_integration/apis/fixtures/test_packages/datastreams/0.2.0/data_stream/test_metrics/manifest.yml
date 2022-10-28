@@ -1,3 +1,15 @@
 title: Test Dataset
 
 type: metrics
+
+streams:
+  - input: test_input2
+    vars:
+    - name: test_var_required
+      type: string
+      title: Test Var
+      required: false
+      show_user: true
+
+elasticsearch:
+  source_mode: "synthetic"

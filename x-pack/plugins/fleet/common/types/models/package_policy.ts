@@ -33,6 +33,7 @@ export interface NewPackagePolicyInputStream {
       privileges?: {
         indices?: string[];
       };
+      source_mode: 'default' | 'synthetic';
     };
   };
   release?: RegistryRelease;

@@ -118,9 +118,15 @@ export const PackagePolicyInputStreamConfig = memo<Props>(
       [advancedVars, inputStreamValidationResults?.vars]
     );
 
+    console.log('--------packagePolicyInputStream');
+    console.log(JSON.stringify(packagePolicyInputStream));
+    console.log('--------packagePolicy');
+    console.log(JSON.stringify(packagePolicy));
+    console.log('--------packageInfo');
+    console.log(JSON.stringify(packageInfo));
     return (
       <>
-        <EuiFlexGrid columns={2} id={isDefaultDatstream ? 'test123' : 'asas'}>
+        <EuiFlexGrid columns={2}>
           <ScrollAnchor ref={containerRef} />
           <EuiFlexItem>
             <EuiFlexGroup gutterSize="none" alignItems="flexStart">
@@ -313,6 +319,10 @@ export const PackagePolicyInputStreamConfig = memo<Props>(
                                       packagePolicyInputStream.data_stream
                                     ) && features.synthetic_source
                               ) ?? false
+                            }
+                            disabled={
+                              packagePolicyInputStream?.data_stream?.elasticsearch?.source_mode ===
+                              'default'
                             }
                             label={
                               <FormattedMessage
