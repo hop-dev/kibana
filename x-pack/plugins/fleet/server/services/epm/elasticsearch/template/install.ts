@@ -10,7 +10,10 @@ import Boom from '@hapi/boom';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 
 import { ElasticsearchAssetType } from '../../../../types';
-import { getPipelineNameForDatastream } from '../../../../../common/services';
+import {
+  getPipelineNameForDatastream,
+  getNormalizedDataStreams,
+} from '../../../../../common/services';
 import type {
   RegistryDataStream,
   IndexTemplateEntry,
@@ -62,7 +65,7 @@ export const prepareToInstallTemplates = (
   );
 
   // build templates per data stream from yml files
-  const dataStreams = installablePackage.data_streams;
+  const dataStreams = getNormalizedDataStreams(installablePackage);
   if (!dataStreams) return { assetsToAdd: [], assetsToRemove, install: () => Promise.resolve([]) };
 
   const templates = dataStreams.map((dataStream) =>
