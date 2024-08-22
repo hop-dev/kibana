@@ -46,6 +46,7 @@ import {
   LENS_VISUALIZATION_MIN_WIDTH,
   SUMMARY_TABLE_MIN_WIDTH,
 } from './common';
+import { RiskScoreDiscussButton } from '../risk_score_discuss_button';
 
 export interface RiskSummaryProps<T extends RiskScoreEntity> {
   riskScoreData: RiskScoreState<T>;
@@ -202,6 +203,7 @@ const FlyoutRiskSummaryComponent = <T extends RiskScoreEntity>({
                 ),
               },
           iconType: !isPreviewMode ? 'arrowStart' : undefined,
+          headerContent: <RiskScoreDiscussButton riskScore={riskData} />,
         }}
         expand={{
           expandable: false,
