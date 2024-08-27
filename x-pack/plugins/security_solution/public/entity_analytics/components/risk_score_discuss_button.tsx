@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { i18n } from '@kbn/i18n';
 import { EuiToolTip, EuiButtonIcon } from '@elastic/eui';
 import { useAssistantOverlay } from '@kbn/elastic-assistant';
@@ -24,6 +24,16 @@ import type { AlertSearchResponse } from '../../detections/containers/detection_
 interface RiskScoreDiscussButtonComponentProps {
   riskScore?: UserRiskScore | HostRiskScore;
 }
+
+interface ScoreParts {
+  score: number;
+  entityType: string;
+  entityName: string;
+  level: string;
+  inputIds: string[];
+}
+
+type AlertSearchResult = AlertSearchResponse<SearchHit<Alert>, unknown>;
 
 // TODO: move this to a shared location with better ID
 const NEW_CHAT = i18n.translate(
@@ -114,17 +124,13 @@ const formatPromptContext = ({
   alerts,
   score,
   level,
-}: {
-  entityName: string;
-  entityType: string;
-  level: string;
-  alerts: AlertSearchResponse<SearchHit<Alert>, unknown>;
-  score: number;
-}): string => {
+}: ScoreParts & { alerts: AlertSearchResult }): string => {
   return `
     A risk score of ${score} of a possible 100 has been assigned to ${entityType} ${entityName} making them ${level} risk. The score was calclculated using a reimann zeta function where the input is the sum of the risk scores of the following alerts:
 
+    """
     ${alerts.hits.hits.map(formatAlertForPrompt).join('\n')}
+    """
 
     Do not mention riemann zeta, but provide a high level overview of the process.
     `;
@@ -133,10 +139,8 @@ const formatPromptContext = ({
 const getPromptDetails = ({
   entityType,
   entityName,
-}: {
-  entityType: string;
-  entityName: string;
-}) => {
+  level,
+}: Pick<ScoreParts, 'entityType' | 'entityName' | 'level'>) => {
   return {
     title: i18n.translate('xpack.securitySolution.riskScoreDiscussButton.title', {
       defaultMessage: 'Risk score for {entityType} {entityName}',
@@ -147,10 +151,11 @@ const getPromptDetails = ({
     }),
     prompt: i18n.translate('xpack.securitySolution.riskScoreDiscussButton.prompt', {
       defaultMessage:
-        'Why does the {entityType} {entityName} have this risk score? What are the primary concerns?',
+        'Why does the {entityType} {entityName} have {level} risk level? What are the primary concerns?',
       values: {
         entityType,
         entityName,
+        level,
       },
     }),
   };
@@ -168,15 +173,7 @@ const getInputIds = (riskScore?: UserRiskScore | HostRiskScore) => {
   return riskScore.host.risk.inputs.map((input) => input.id);
 };
 
-const getScoreParts = (
-  riskScore?: UserRiskScore | HostRiskScore
-): {
-  score: number;
-  entityType: string;
-  entityName: string;
-  level: string;
-  inputIds: string[];
-} => {
+const getScoreParts = (riskScore?: UserRiskScore | HostRiskScore): ScoreParts => {
   if (!riskScore) {
     return { score: 0, entityType: '', entityName: '', level: '', inputIds: [] };
   }
@@ -194,6 +191,7 @@ const getScoreParts = (
 };
 
 const RiskScoreDiscussButtonComponent = ({ riskScore }: RiskScoreDiscussButtonComponentProps) => {
+  const [loading, setLoading] = useState(false);
   const { hasAssistantPrivilege, isAssistantEnabled } = useAssistantAvailability();
 
   const { score, entityType, entityName, level, inputIds } = useMemo(
@@ -201,11 +199,12 @@ const RiskScoreDiscussButtonComponent = ({ riskScore }: RiskScoreDiscussButtonCo
     [riskScore]
   );
   const { title, prompt } = useMemo(
-    () => getPromptDetails({ entityName, entityType }),
-    [entityName, entityType]
+    () => getPromptDetails({ entityName, entityType, level }),
+    [entityName, entityType, level]
   );
 
   const getPromptContext = useCallback(async () => {
+    setLoading(true);
     const abortCtrl = new AbortController();
     const alerts = await fetchQueryAlerts<SearchHit<Alert>, unknown>({
       query: {
@@ -229,10 +228,11 @@ const RiskScoreDiscussButtonComponent = ({ riskScore }: RiskScoreDiscussButtonCo
       },
       signal: abortCtrl.signal,
     });
-
+    setLoading(false);
     return formatPromptContext({
       entityName,
       entityType,
+      inputIds,
       alerts,
       score,
       level,
@@ -258,6 +258,7 @@ const RiskScoreDiscussButtonComponent = ({ riskScore }: RiskScoreDiscussButtonCo
   return (
     <EuiToolTip content={NEW_CHAT}>
       <EuiButtonIcon
+        isLoading={loading}
         disabled={isDisabled}
         data-test-subj="risk-score-discuss-button"
         iconType={'discuss'}
