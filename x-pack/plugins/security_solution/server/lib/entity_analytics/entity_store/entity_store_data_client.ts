@@ -20,6 +20,11 @@ import { entityEngineDescriptorTypeName } from './saved_object';
 import { EngineDescriptorClient } from './saved_object/engine_descriptor';
 import { getEntityDefinition } from './utils/utils';
 import { ENGINE_STATUS } from './constants';
+import {
+  ensureAssetCriticalityEnrichPolicies,
+  executeAssetCriticalityEnrichPolicies,
+  getAssetCriticalityPipelineSteps,
+} from '../asset_criticality/asset_criticality_enrich_policy';
 
 interface EntityStoreClientOpts {
   logger: Logger;

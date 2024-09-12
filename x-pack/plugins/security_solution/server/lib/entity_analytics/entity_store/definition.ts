@@ -24,6 +24,7 @@ export const HOST_ENTITY_DEFINITION: EntityDefinition = entityDefinitionSchema.p
     'host.name',
     'host.type',
     'host.architecture',
+    'asset.criticality',
   ],
   history: {
     timestampField: '@timestamp',
@@ -47,6 +48,7 @@ export const USER_ENTITY_DEFINITION: EntityDefinition = entityDefinitionSchema.p
     'user.id',
     'user.name',
     'user.roles',
+    'asset.criticality',
   ],
   history: {
     timestampField: '@timestamp',
