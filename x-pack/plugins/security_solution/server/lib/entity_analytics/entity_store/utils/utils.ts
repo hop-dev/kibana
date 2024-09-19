@@ -6,16 +6,20 @@
  */
 
 import type { SavedObjectsFindResponse } from '@kbn/core-saved-objects-api-server';
-import { getAssetCriticalityIndex } from '../../../../../common/entity_analytics/asset_criticality';
+
+import {
+  ENTITY_LATEST,
+  ENTITY_SCHEMA_VERSION_V1,
+  entitiesIndexPattern,
+} from '@kbn/entities-schema';
 import type {
   EngineDescriptor,
   EntityType,
 } from '../../../../../common/api/entity_analytics/entity_store/common.gen';
-import { HOST_ENTITY_DEFINITION, USER_ENTITY_DEFINITION } from '../definition';
+import { buildHostEntityDefinition, buildUserEntityDefinition } from '../definition';
 import { entityEngineDescriptorTypeName } from '../saved_object';
 
 export const getEntityDefinition = (entityType: EntityType, spaceId: string = 'default') => {
-  // throw if invalid entity type
   const entityDefinition = entityType === 'host' ? HOST_ENTITY_DEFINITION : USER_ENTITY_DEFINITION;
 
   const assetCriticalityIndex = getAssetCriticalityIndex(spaceId);
@@ -42,3 +46,12 @@ export const ensureEngineExists =
 export const getByEntityTypeQuery = (entityType: EntityType) => {
   return `${entityEngineDescriptorTypeName}.attributes.type: ${entityType}`;
 };
+
+export const getEntitiesIndexName = (entityType: EntityType) =>
+  entitiesIndexPattern({
+    schemaVersion: ENTITY_SCHEMA_VERSION_V1,
+    dataset: ENTITY_LATEST,
+    definitionId: getEntityDefinitionId(entityType),
+  });
+
+export const getEntityDefinitionId = (entityType: EntityType) => `ea_${entityType}_entity_store`;
