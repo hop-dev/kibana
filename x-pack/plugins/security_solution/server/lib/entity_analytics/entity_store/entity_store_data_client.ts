@@ -22,14 +22,13 @@ import type {
 } from '../../../../common/api/entity_analytics/entity_store/common.gen';
 import { entityEngineDescriptorTypeName } from './saved_object';
 import { EngineDescriptorClient } from './saved_object/engine_descriptor';
-import { getEntityDefinition } from './utils/utils';
-import { ENGINE_STATUS } from './constants';
+import { getDefinitionForEntityType } from './definition';
 import {
-  ensureAssetCriticalityEnrichPolicies,
-  executeAssetCriticalityEnrichPolicies,
-  getAssetCriticalityPipelineSteps,
-} from '../asset_criticality/asset_criticality_enrich_policy';
-import { getEntitiesIndexName, getEntityDefinition } from './utils/utils';
+  ensureFieldRetentionEnrichPolicy,
+  executeFieldRetentionEnrichPolicy,
+  getFieldRetentionPipelineSteps,
+} from './field_retention';
+import { getEntitiesIndexName } from './utils/utils';
 import { ENGINE_STATUS, MAX_SEARCH_RESPONSE_SIZE } from './constants';
 
 interface EntityStoreClientOpts {
@@ -59,11 +58,17 @@ export class EntityStoreDataClient {
     entityType: EntityType,
     { indexPattern = '', filter = '' }: InitEntityStoreRequestBody
   ): Promise<InitEntityStoreResponse> {
-    const definition = getEntityDefinition(entityType);
+    const definition = getDefinitionForEntityType(entityType);
 
     this.options.logger.info(`Initializing entity store for ${entityType}`);
 
     const descriptor = await this.engineClient.init(entityType, definition, filter);
+
+    // TODO: spaces
+    const spaceId = 'default';
+    await this.ensureFieldRetentionEnrichPolicy({ spaceId, entityType });
+    await this.executeFieldRetentionEnrichPolicy({ spaceId, entityType });
+    await this.createPlatformPipeline({ spaceId, entityType });
     await this.options.entityClient.createEntityDefinition({
       definition: {
         ...definition,
@@ -78,8 +83,58 @@ export class EntityStoreDataClient {
     return { ...descriptor, ...updated };
   }
 
+  public executeFieldRetentionEnrichPolicy({
+    spaceId,
+    entityType,
+  }: {
+    spaceId: string;
+    entityType: EntityType;
+  }) {
+    return executeFieldRetentionEnrichPolicy({
+      spaceId,
+      esClient: this.options.esClient,
+      entityType,
+    });
+  }
+
+  public async ensureFieldRetentionEnrichPolicy({
+    spaceId,
+    entityType,
+  }: {
+    spaceId: string;
+    entityType: EntityType;
+  }) {
+    return ensureFieldRetentionEnrichPolicy({
+      spaceId,
+      esClient: this.options.esClient,
+      entityType,
+    });
+  }
+
+  private async createPlatformPipeline({
+    spaceId,
+    entityType,
+  }: {
+    entityType: EntityType;
+    spaceId: string;
+  }) {
+    const definition = getDefinitionForEntityType(entityType);
+
+    await this.options.esClient.ingest.putPipeline({
+      id: `${definition.id}@platform`,
+      body: {
+        _meta: {
+          managed_by: 'entity_store',
+          managed: true,
+        },
+        description: `Ingest pipeline for entity defiinition ${definition.id}`,
+        processors: getFieldRetentionPipelineSteps({ spaceId, entityType }),
+      },
+    });
+  }
+
   public async start(entityType: EntityType) {
-    const definition = getEntityDefinition(entityType);
+    const definition = getDefinitionForEntityType(entityType);
 
     const descriptor = await this.engineClient.get(entityType);
 
@@ -96,7 +151,7 @@ export class EntityStoreDataClient {
   }
 
   public async stop(entityType: EntityType) {
-    const definition = getEntityDefinition(entityType);
+    const definition = getDefinitionForEntityType(entityType);
 
     const descriptor = await this.engineClient.get(entityType);
 
@@ -128,7 +183,7 @@ export class EntityStoreDataClient {
   }
 
   public async delete(entityType: EntityType, deleteData: boolean) {
-    const { id } = getEntityDefinition(entityType);
+    const { id } = getDefinitionForEntityType(entityType);
 
     this.options.logger.info(`Deleting entity store for ${entityType}`);
 

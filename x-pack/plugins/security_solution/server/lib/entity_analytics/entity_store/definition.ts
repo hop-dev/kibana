@@ -6,10 +6,13 @@
  */
 
 import { entityDefinitionSchema, type EntityDefinition } from '@kbn/entities-schema';
+import { getRiskScoreLatestIndex } from '../../../../common/entity_analytics/risk_engine';
+import { getAssetCriticalityIndex } from '../../../../common/entity_analytics/asset_criticality';
 import { ENTITY_STORE_DEFAULT_SOURCE_INDICES } from './constants';
 import { getEntityDefinitionId } from './utils/utils';
+import type { EntityType } from '../../../../common/api/entity_analytics/entity_store/common.gen';
 
-export const buildHostEntityDefinition = (): EntityDefinition =>
+const buildHostEntityDefinition = (): EntityDefinition =>
   entityDefinitionSchema.parse({
     id: getEntityDefinitionId('host'),
     name: 'EA Host Store',
@@ -18,6 +21,7 @@ export const buildHostEntityDefinition = (): EntityDefinition =>
     identityFields: ['host.name'],
     displayNameTemplate: '{{host.name}}',
     metadata: [
+      'asset.criticality',
       'host.domain',
       'host.hostname',
       'host.id',
@@ -26,6 +30,7 @@ export const buildHostEntityDefinition = (): EntityDefinition =>
       'host.name',
       'host.type',
       'host.architecture',
+      'host.risk.calculated_level',
     ],
     history: {
       timestampField: '@timestamp',
@@ -34,7 +39,7 @@ export const buildHostEntityDefinition = (): EntityDefinition =>
     version: '1.0.0',
   });
 
-export const buildUserEntityDefinition = (): EntityDefinition =>
+const buildUserEntityDefinition = (): EntityDefinition =>
   entityDefinitionSchema.parse({
     id: getEntityDefinitionId('user'),
     name: 'EA User Store',
@@ -42,6 +47,7 @@ export const buildUserEntityDefinition = (): EntityDefinition =>
     identityFields: ['user.name'],
     displayNameTemplate: '{{user.name}}',
     metadata: [
+      'asset.criticality',
       'user.domain',
       'user.email',
       'user.full_name',
@@ -49,6 +55,7 @@ export const buildUserEntityDefinition = (): EntityDefinition =>
       'user.id',
       'user.name',
       'user.roles',
+      'user.risk.calculated_level',
     ],
     history: {
       timestampField: '@timestamp',
@@ -56,3 +63,20 @@ export const buildUserEntityDefinition = (): EntityDefinition =>
     },
     version: '1.0.0',
   });
+
+const ENTITY_TYPE_TO_ENTITY_DEFINITION: Record<EntityType, EntityDefinition> = {
+  host: buildHostEntityDefinition(),
+  user: buildUserEntityDefinition(),
+};
+
+// TODO: space support
+export const getDefinitionForEntityType = (entityType: EntityType, spaceId: string = 'default') => {
+  const entityDefinition = { ...ENTITY_TYPE_TO_ENTITY_DEFINITION[entityType] };
+
+  entityDefinition.indexPatterns.push(
+    getAssetCriticalityIndex(spaceId),
+    getRiskScoreLatestIndex(spaceId)
+  );
+
+  return entityDefinition;
+};

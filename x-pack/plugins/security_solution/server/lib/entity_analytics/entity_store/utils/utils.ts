@@ -16,18 +16,7 @@ import type {
   EngineDescriptor,
   EntityType,
 } from '../../../../../common/api/entity_analytics/entity_store/common.gen';
-import { buildHostEntityDefinition, buildUserEntityDefinition } from '../definition';
 import { entityEngineDescriptorTypeName } from '../saved_object';
-
-export const getEntityDefinition = (entityType: EntityType, spaceId: string = 'default') => {
-  const entityDefinition = entityType === 'host' ? HOST_ENTITY_DEFINITION : USER_ENTITY_DEFINITION;
-
-  const assetCriticalityIndex = getAssetCriticalityIndex(spaceId);
-
-  entityDefinition.indexPatterns.push(assetCriticalityIndex);
-
-  return entityDefinition;
-};
 
 export const getIdentityFieldForEntityType = (entityType: EntityType) => {
   if (entityType === 'host') return 'host.name';
