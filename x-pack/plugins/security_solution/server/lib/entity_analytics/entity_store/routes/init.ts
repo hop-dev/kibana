@@ -17,6 +17,7 @@ import {
 } from '../../../../../common/api/entity_analytics/entity_store/engine/init.gen';
 import { API_VERSIONS, APP_ID } from '../../../../../common/constants';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
+import { checkAndInitAssetCriticalityResources } from '../../asset_criticality/check_and_init_asset_criticality_resources';
 
 export const initEntityEngineRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
@@ -42,6 +43,11 @@ export const initEntityEngineRoute = (
       },
 
       async (context, request, response): Promise<IKibanaResponse<InitEntityStoreResponse>> => {
+        // TODO: discuss this with the team
+        await checkAndInitAssetCriticalityResources(context, logger);
+        const securtyContext = await context.securitySolution;
+        const riskScoreDataClient = securtyContext.getRiskScoreDataClient();
+        await riskScoreDataClient.createRiskScoreLatestIndex();
         const siemResponse = buildSiemResponse(response);
 
         try {
@@ -53,7 +59,7 @@ export const initEntityEngineRoute = (
 
           return response.ok({ body });
         } catch (e) {
-          logger.error('Error in InitEntityStore:', e);
+          logger.error('Error in InitEntityStore:', JSON.stringify(e.stack));
           const error = transformError(e);
           return siemResponse.error({
             statusCode: error.statusCode,

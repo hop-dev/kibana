@@ -43,6 +43,7 @@ const buildUserEntityDefinition = (): EntityDefinition =>
   entityDefinitionSchema.parse({
     id: getEntityDefinitionId('user'),
     name: 'EA User Store',
+    type: 'user',
     indexPatterns: ENTITY_STORE_DEFAULT_SOURCE_INDICES,
     identityFields: ['user.name'],
     displayNameTemplate: '{{user.name}}',

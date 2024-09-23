@@ -24,12 +24,13 @@ import { entityEngineDescriptorTypeName } from './saved_object';
 import { EngineDescriptorClient } from './saved_object/engine_descriptor';
 import { getDefinitionForEntityType } from './definition';
 import {
-  ensureFieldRetentionEnrichPolicy,
+  createFieldRetentionEnrichPolicy,
   executeFieldRetentionEnrichPolicy,
   getFieldRetentionPipelineSteps,
 } from './field_retention';
 import { getEntitiesIndexName } from './utils/utils';
 import { ENGINE_STATUS, MAX_SEARCH_RESPONSE_SIZE } from './constants';
+import { getEntityIndexMapping } from './index_mappings';
 
 interface EntityStoreClientOpts {
   logger: Logger;
@@ -59,17 +60,15 @@ export class EntityStoreDataClient {
     { indexPattern = '', filter = '' }: InitEntityStoreRequestBody
   ): Promise<InitEntityStoreResponse> {
     const definition = getDefinitionForEntityType(entityType);
+    const { logger, entityClient } = this.options;
 
-    this.options.logger.info(`Initializing entity store for ${entityType}`);
+    logger.info(`Initializing entity store for ${entityType}`);
 
     const descriptor = await this.engineClient.init(entityType, definition, filter);
-
+    logger.debug(`Initialized engine for ${entityType}`);
     // TODO: spaces
     const spaceId = 'default';
-    await this.ensureFieldRetentionEnrichPolicy({ spaceId, entityType });
-    await this.executeFieldRetentionEnrichPolicy({ spaceId, entityType });
-    await this.createPlatformPipeline({ spaceId, entityType });
-    await this.options.entityClient.createEntityDefinition({
+    await entityClient.createEntityDefinition({
       definition: {
         ...definition,
         filter,
@@ -77,9 +76,24 @@ export class EntityStoreDataClient {
           ? [...definition.indexPatterns, ...indexPattern.split(',')]
           : definition.indexPatterns,
       },
+      installOnly: true,
     });
-    const updated = await this.engineClient.update(definition.id, ENGINE_STATUS.STARTED);
+    logger.debug(`Created entity definition for ${entityType}`);
+    await this.createEntityIndexComponentTemplate({ entityType, spaceId });
+    logger.debug(`Created entity index component template for ${entityType}`);
+    await this.createEntityIndex({ spaceId, entityType });
+    logger.debug(`Created entity index for ${entityType}`);
+    await this.createFieldRetentionEnrichPolicy({ spaceId, entityType });
+    logger.debug(`Created field retention enrich policy for ${entityType}`);
+    await this.executeFieldRetentionEnrichPolicy({ spaceId, entityType });
+    logger.debug(`Executed field retention enrich policy for ${entityType}`);
+    await this.createPlatformPipeline({ spaceId, entityType });
+    logger.debug(`Created @platform pipeline for ${entityType}`);
 
+    await this.start(entityType, { force: true });
+    logger.debug(`Started entity definition for ${entityType}`);
+    const updated = await this.engineClient.update(definition.id, ENGINE_STATUS.STARTED);
+    logger.debug(`Updated engine status to 'started' for ${entityType}, initialisation complete`);
     return { ...descriptor, ...updated };
   }
 
@@ -97,14 +111,14 @@ export class EntityStoreDataClient {
     });
   }
 
-  public async ensureFieldRetentionEnrichPolicy({
+  public async createFieldRetentionEnrichPolicy({
     spaceId,
     entityType,
   }: {
     spaceId: string;
     entityType: EntityType;
   }) {
-    return ensureFieldRetentionEnrichPolicy({
+    return createFieldRetentionEnrichPolicy({
       spaceId,
       esClient: this.options.esClient,
       entityType,
@@ -133,12 +147,46 @@ export class EntityStoreDataClient {
     });
   }
 
-  public async start(entityType: EntityType) {
+  private async createEntityIndex({
+    spaceId,
+    entityType,
+  }: {
+    entityType: EntityType;
+    spaceId: string;
+  }) {
+    // TODO: spaces
+    await this.options.esClient.indices.create({
+      index: getEntitiesIndexName(entityType),
+      body: {},
+    });
+  }
+
+  private async createEntityIndexComponentTemplate({
+    entityType,
+    spaceId,
+  }: {
+    entityType: EntityType;
+    spaceId: string;
+  }) {
+    // TODO: spaces
+    const definition = getDefinitionForEntityType(entityType);
+
+    await this.options.esClient.cluster.putComponentTemplate({
+      name: `${definition.id}-latest@platform`,
+      body: {
+        template: {
+          mappings: getEntityIndexMapping(entityType),
+        },
+      },
+    });
+  }
+
+  public async start(entityType: EntityType, options?: { force: boolean }) {
     const definition = getDefinitionForEntityType(entityType);
 
     const descriptor = await this.engineClient.get(entityType);
 
-    if (descriptor.status !== ENGINE_STATUS.STOPPED) {
+    if (!options?.force && descriptor.status !== ENGINE_STATUS.STOPPED) {
       throw new Error(
         `Cannot start Entity engine for ${entityType} when current status is: ${descriptor.status}`
       );
