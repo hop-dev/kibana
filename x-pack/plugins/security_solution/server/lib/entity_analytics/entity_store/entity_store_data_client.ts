@@ -9,6 +9,7 @@ import type { Logger, ElasticsearchClient, SavedObjectsClientContract } from '@k
 import type { EntityClient } from '@kbn/entityManager-plugin/server/lib/entity_client';
 
 import type { SortOrder } from '@elastic/elasticsearch/lib/api/types';
+import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { Entity } from '../../../../common/api/entity_analytics/entity_store/entities/common.gen';
 import { createQueryFilterClauses } from '../../../utils/build_query';
 import type {
@@ -31,6 +32,7 @@ import {
 import { getEntitiesIndexName } from './utils/utils';
 import { ENGINE_STATUS, MAX_SEARCH_RESPONSE_SIZE } from './constants';
 import { getEntityIndexMapping } from './index_mappings';
+import { startEntityStoreFieldRetentionEnrichTask } from './field_retention/task/field_retention_enrichment_task';
 
 interface EntityStoreClientOpts {
   logger: Logger;
@@ -57,6 +59,7 @@ export class EntityStoreDataClient {
 
   public async init(
     entityType: EntityType,
+    taskManager: TaskManagerStartContract, // TODO: @tiansivive I have put this as ana argument because it seems a shame to require it in the constructor
     { indexPattern = '', filter = '' }: InitEntityStoreRequestBody
   ): Promise<InitEntityStoreResponse> {
     const definition = getDefinitionForEntityType(entityType);
@@ -68,6 +71,9 @@ export class EntityStoreDataClient {
     logger.debug(`Initialized engine for ${entityType}`);
     // TODO: spaces
     const spaceId = 'default';
+
+    // first create the entity definition without starting it
+    // so that the index template is created which we can add a component template to
     await entityClient.createEntityDefinition({
       definition: {
         ...definition,
@@ -79,10 +85,16 @@ export class EntityStoreDataClient {
       installOnly: true,
     });
     logger.debug(`Created entity definition for ${entityType}`);
+
+    // the index must be in place with the correct mapping before the enrich policy is created
+    // this is because the enrich policy will fail if the index does not exist with the correct fields
     await this.createEntityIndexComponentTemplate({ entityType, spaceId });
     logger.debug(`Created entity index component template for ${entityType}`);
     await this.createEntityIndex({ spaceId, entityType });
     logger.debug(`Created entity index for ${entityType}`);
+
+    // we must create and execute the enrich policy before the pipeline is created
+    // this is because the pipeline will fail if the enrich index does not exist
     await this.createFieldRetentionEnrichPolicy({ spaceId, entityType });
     logger.debug(`Created field retention enrich policy for ${entityType}`);
     await this.executeFieldRetentionEnrichPolicy({ spaceId, entityType });
@@ -90,10 +102,18 @@ export class EntityStoreDataClient {
     await this.createPlatformPipeline({ spaceId, entityType });
     logger.debug(`Created @platform pipeline for ${entityType}`);
 
+    // finally start the entity definition now that everything is in place
     await this.start(entityType, { force: true });
     logger.debug(`Started entity definition for ${entityType}`);
+
+    // the task will execute the enrich policy on a schedule
+    await startEntityStoreFieldRetentionEnrichTask({ namespace: spaceId, logger, taskManager });
+    logger.debug(`Started entity store field retention enrich task for ${entityType}`);
+
+    // and finally update the engine status to started once everything is in place
     const updated = await this.engineClient.update(definition.id, ENGINE_STATUS.STARTED);
     logger.debug(`Updated engine status to 'started' for ${entityType}, initialisation complete`);
+    logger.info(`Entity store for ${entityType} initialized`);
     return { ...descriptor, ...updated };
   }
 
