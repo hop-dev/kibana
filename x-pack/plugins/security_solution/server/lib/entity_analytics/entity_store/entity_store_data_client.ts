@@ -155,7 +155,7 @@ export class EntityStoreDataClient {
     const definition = getDefinitionForEntityType(entityType);
 
     await this.options.esClient.ingest.putPipeline({
-      id: `${definition.id}@platform`,
+      id: `${definition.id}-latest@platform`,
       body: {
         _meta: {
           managed_by: 'entity_store',
