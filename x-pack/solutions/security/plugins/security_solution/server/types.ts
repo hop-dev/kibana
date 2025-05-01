@@ -42,6 +42,8 @@ import type { AssetInventoryDataClient } from './lib/asset_inventory/asset_inven
 import type { PrivilegeMonitoringDataClient } from './lib/entity_analytics/privilege_monitoring/privilege_monitoring_data_client';
 import type { ApiKeyManager } from './lib/entity_analytics/entity_store/auth/api_key';
 import type { ProductFeaturesService } from './lib/product_features_service';
+import type { EntityRelationsDataClient } from './lib/entity_analytics/entity_store/entity_relations/entity_relations_data_client';
+import type { EntityStoreDataClient as EREntityStoreDataClient } from './lib/entity_analytics/entity_store/entities/entities_data_client';
 export { AppClient };
 
 export interface SecuritySolutionApiRequestHandlerContext {
@@ -71,6 +73,8 @@ export interface SecuritySolutionApiRequestHandlerContext {
   getInferenceClient: () => InferenceClient;
   getAssetInventoryClient: () => AssetInventoryDataClient;
   getProductFeatureService: () => ProductFeaturesService;
+  getEntityRelationsDataClient: () => EntityRelationsDataClient;
+  getEREntityStoreDataClient: () => EREntityStoreDataClient;
 }
 
 export type SecuritySolutionRequestHandlerContext = CustomRequestHandlerContext<{

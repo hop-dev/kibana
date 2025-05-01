@@ -19,6 +19,7 @@ import { retryUntil } from './create_resource_installation_helper.test';
 import { mlPluginMock } from '@kbn/ml-plugin/public/mocks';
 import type { MlPluginSetup } from '@kbn/ml-plugin/server';
 import { licensingMock } from '@kbn/licensing-plugin/server/mocks';
+import { ScopeableRequest } from '@kbn/core-elasticsearch-server';
 
 jest.mock('../ai_assistant_data_clients/conversations', () => ({
   AIAssistantConversationsDataClient: jest.fn(),
@@ -120,6 +121,7 @@ describe('AI Assistant Service', () => {
     assistantServiceOpts = {
       logger,
       elasticsearchClientPromise: Promise.resolve(clusterClient),
+      getScopedElasticSearchClient: (r: ScopeableRequest) => Promise.resolve(clusterClient),
       pluginStop$,
       kibanaVersion: '8.8.0',
       ml,

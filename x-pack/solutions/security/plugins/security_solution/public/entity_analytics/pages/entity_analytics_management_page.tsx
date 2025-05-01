@@ -5,13 +5,14 @@
  * 2.0.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  EuiButton,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiLoadingSpinner,
   EuiPageHeader,
   EuiHorizontalRule,
-  EuiButton,
   EuiText,
   useEuiTheme,
 } from '@elastic/eui';
@@ -29,6 +30,8 @@ import { useAppToasts } from '../../common/hooks/use_app_toasts';
 import * as i18n from '../translations';
 import { getEntityAnalyticsRiskScorePageStyles } from '../components/risk_score_page_styles';
 import { useRiskEngineSettings } from '../api/hooks/use_risk_engine_settings';
+import { useEntityModel } from '../common/entity_model';
+import { useVectorSearch } from '../common/vector_search';
 
 const TEN_SECONDS = 10000;
 
@@ -36,6 +39,37 @@ export const EntityAnalyticsManagementPage = () => {
   const { euiTheme } = useEuiTheme();
   const styles = getEntityAnalyticsRiskScorePageStyles(euiTheme);
   const privileges = useMissingRiskEnginePrivileges();
+  const { initialize, get, deleteAPI } = useEntityModel();
+  const { installVectorSearch } = useVectorSearch();
+  const [state, setState] = useState('loading');
+
+  useEffect(() => {
+    get()
+      ?.then((models) => {
+        setState('installed');
+      })
+      .catch((error) => {
+        // 404 means the model is not installed
+        setState('uninstalled');
+      });
+  }, [get]);
+
+  const handleInitialize = () => {
+    setState('loading');
+
+    installVectorSearch()
+      .then(initialize)
+      .then((_) => {
+        setState('installed');
+      });
+  };
+
+  const handleDelete = () => {
+    setState('loading');
+    deleteAPI().then((response) => {
+      setState('uninstalled');
+    });
+  };
   const { data: riskEngineSettings } = useRiskEngineSettings();
   const includeClosedAlerts = riskEngineSettings?.includeClosedAlerts ?? false;
   const from = riskEngineSettings?.range?.start ?? 'now-30d';
@@ -139,7 +173,17 @@ export const EntityAnalyticsManagementPage = () => {
           </EuiFlexGroup>
         }
       />
-
+      {state === 'loading' && <EuiLoadingSpinner size="m" css={{ marginLeft: 'auto' }} />}
+      {state === 'uninstalled' && (
+        <EuiButton onClick={handleInitialize} css={{ marginLeft: 'auto' }}>
+          {'Initialize Entity Model'}
+        </EuiButton>
+      )}
+      {state === 'installed' && (
+        <EuiButton onClick={handleDelete} css={{ marginLeft: 'auto' }}>
+          {'Delete Entity Model'}
+        </EuiButton>
+      )}
       <EuiHorizontalRule />
       <EuiFlexGroup gutterSize="xl" alignItems="flexStart">
         <EuiFlexItem grow={2}>

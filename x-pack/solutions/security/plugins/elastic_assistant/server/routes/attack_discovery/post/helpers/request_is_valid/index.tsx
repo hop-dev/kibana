@@ -26,8 +26,16 @@ export const requestIsValid = ({
     ExecuteConnectorRequestBody | AttackDiscoveryPostRequestBody
   >;
   size: number | undefined;
-}): boolean =>
-  requestHasRequiredAnonymizationParams(request) &&
-  alertsIndexPattern != null &&
-  size != null &&
-  !sizeIsOutOfRange(size);
+}): boolean => {
+  const castedRequest = request as unknown as KibanaRequest<
+    unknown,
+    unknown,
+    AttackDiscoveryPostRequestBody
+  >;
+  return (
+    requestHasRequiredAnonymizationParams(castedRequest) &&
+    alertsIndexPattern != null &&
+    size != null &&
+    !sizeIsOutOfRange(size)
+  );
+};

@@ -14,6 +14,11 @@ export const ENTITY_STORE_INTERNAL_PRIVILEGES_URL = `${ENTITY_STORE_URL}/privile
 export const ENTITIES_URL = `${ENTITY_STORE_URL}/entities` as const;
 export const LIST_ENTITIES_URL = `${ENTITIES_URL}/list` as const;
 
+export const ENTITY_STORE_INTERNAL_URL = `/internal/entity_store` as const;
+export const ENTITY_STORE_GET_RELATIONS_URL = `${ENTITY_STORE_INTERNAL_URL}/relations` as const;
+export const ENTITY_STORE_CREATE_RELATION_URL = `${ENTITY_STORE_INTERNAL_URL}/relations` as const;
+export const ENTITY_STORE_GET_ENTITIES_URL = `${ENTITY_STORE_INTERNAL_URL}/entities` as const;
+
 export const ENTITY_STORE_REQUIRED_ES_CLUSTER_PRIVILEGES = [
   'manage_index_templates',
   'manage_transform',

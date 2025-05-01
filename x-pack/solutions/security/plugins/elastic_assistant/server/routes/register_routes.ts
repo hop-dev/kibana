@@ -54,6 +54,8 @@ import { deleteAttackDiscoverySchedulesRoute } from './attack_discovery/schedule
 import { findAttackDiscoverySchedulesRoute } from './attack_discovery/schedules/find';
 import { disableAttackDiscoverySchedulesRoute } from './attack_discovery/schedules/disable';
 import { enableAttackDiscoverySchedulesRoute } from './attack_discovery/schedules/enable';
+import { postEntityResolutionRoute } from './entity_resolution/post_entity_resolution';
+import { postEntityResolutionCandidatesRoute } from './entity_resolution/post_entity_resolution_candidates';
 import type { ConfigSchema } from '../config_schema';
 
 export const registerRoutes = (
@@ -136,4 +138,8 @@ export const registerRoutes = (
   getDefendInsightRoute(router);
   getDefendInsightsRoute(router);
   postDefendInsightsRoute(router);
+
+  // Entity Resolution
+  postEntityResolutionRoute(router);
+  postEntityResolutionCandidatesRoute(router);
 };

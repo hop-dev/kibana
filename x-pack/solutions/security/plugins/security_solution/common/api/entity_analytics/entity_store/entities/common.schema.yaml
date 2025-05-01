@@ -250,3 +250,21 @@ components:
         - $ref: '#/components/schemas/HostEntity'
         - $ref: '#/components/schemas/ServiceEntity'
         - $ref: '#/components/schemas/GenericEntity'
+
+    EntityRecord:
+      type: object
+      properties:
+        entity_type:
+          $ref: '../common.schema.yaml#/components/schemas/EntityType'
+
+        entity:
+          type: object
+          description: The entity
+          properties:
+            name:
+              type: string
+          required:
+            - name
+      required:
+        - entity_type
+        - entity

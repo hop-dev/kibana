@@ -14,6 +14,7 @@ import { PREFIX } from '../../../flyout/shared/test_ids';
 import type { RiskInputsTabProps } from './tabs/risk_inputs/risk_inputs_tab';
 import { RiskInputsTab } from './tabs/risk_inputs/risk_inputs_tab';
 import { InsightsTabCsp } from '../../../cloud_security_posture/components/csp_details/insights_tab_csp';
+import { EntityResolutionTab } from './tabs/entity_resolution/entity_resolution_tab';
 
 export const RISK_INPUTS_TAB_TEST_ID = `${PREFIX}RiskInputsTab` as const;
 export const INSIGHTS_TAB_TEST_ID = `${PREFIX}InsightInputsTab` as const;
@@ -53,3 +54,15 @@ export const getInsightsInputTab = ({
     content: <InsightsTabCsp value={name} field={fieldName} />,
   };
 };
+
+export const getEntityResolutionTab = (username: string, scopeId: string) => ({
+  id: EntityDetailsLeftPanelTab.OBSERVED_DATA,
+  'data-test-subj': 'observed_data_tab',
+  name: (
+    <FormattedMessage
+      id="xpack.securitySolution.flyout.entityDetails.userDetails.observedData.tabLabel"
+      defaultMessage="Observed Data"
+    />
+  ),
+  content: <EntityResolutionTab username={username} scopeId={scopeId} />,
+});

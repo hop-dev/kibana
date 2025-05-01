@@ -45,3 +45,7 @@ export const CAPABILITIES = `${BASE_PATH}/capabilities`;
 export const MINIMUM_AI_ASSISTANT_LICENSE = 'enterprise' as const;
 
 export const DEFAULT_DATE_FORMAT_TZ = 'dateFormat:tz' as const;
+
+// Entity Resolution
+export const ENTITY_RESOLUTION = `${BASE_PATH}/entity_resolution`;
+export const ENTITY_RESOLUTION_CANDIDATES = `${BASE_PATH}/entity_resolution/candidates`;

@@ -7,7 +7,12 @@
 
 import { DataStreamSpacesAdapter, FieldMap } from '@kbn/data-stream-adapter';
 import { DEFAULT_NAMESPACE_STRING } from '@kbn/core-saved-objects-utils-server';
-import type { AuthenticatedUser, Logger, ElasticsearchClient } from '@kbn/core/server';
+import type {
+  AuthenticatedUser,
+  Logger,
+  ElasticsearchClient,
+  ScopeableRequest,
+} from '@kbn/core/server';
 import { ATTACK_DISCOVERY_ALERTS_AD_HOC_INDEX_RESOURCE_PREFIX } from '@kbn/elastic-assistant-common';
 import type { TaskManagerSetupContract } from '@kbn/task-manager-plugin/server';
 import type { MlPluginSetup } from '@kbn/ml-plugin/server';
@@ -65,6 +70,7 @@ import {
   ANONYMIZATION_FIELDS_INDEX_TEMPLATE,
   ANONYMIZATION_FIELDS_RESOURCE,
 } from './constants';
+import { EntityResolutionDataClient } from '../ai_assistant_data_clients/entity_resolution';
 
 const TOTAL_FIELDS_LIMIT = 2500;
 
@@ -77,6 +83,7 @@ export interface AIAssistantServiceOpts {
   kibanaVersion: string;
   elserInferenceId?: string;
   elasticsearchClientPromise: Promise<ElasticsearchClient>;
+  getScopedElasticSearchClient: (r: ScopeableRequest) => Promise<ElasticsearchClient>;
   ml: MlPluginSetup;
   taskManager: TaskManagerSetupContract;
   pluginStop$: Subject<void>;
@@ -473,6 +480,22 @@ export class AIAssistantService {
     this.initialized = true;
     this.isInitializing = false;
     return successResult();
+  }
+
+  public async createEntityResolutionDataClient({
+    spaceId,
+    request,
+  }: {
+    spaceId?: string;
+    request: ScopeableRequest;
+  }): Promise<EntityResolutionDataClient | null> {
+    const esClient = await this.options.getScopedElasticSearchClient(request);
+
+    return new EntityResolutionDataClient({
+      logger: this.options.logger.get('entityResolution'),
+      esClient,
+      namespace: spaceId ?? DEFAULT_NAMESPACE_STRING,
+    });
   }
 
   private readonly resourceNames: AssistantResourceNames = {

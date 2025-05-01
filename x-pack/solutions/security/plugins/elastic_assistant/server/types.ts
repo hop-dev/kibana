@@ -34,6 +34,8 @@ import {
   ExecuteConnectorRequestBody,
   Replacements,
   ContentReferencesStore,
+  EntityResolutionPostRequestBody,
+  SearchEntity,
 } from '@kbn/elastic-assistant-common';
 import { AnonymizationFieldResponse } from '@kbn/elastic-assistant-common/impl/schemas/anonymization_fields/bulk_crud_anonymization_fields_route.gen';
 import {
@@ -64,6 +66,7 @@ import { AIAssistantDataClient } from './ai_assistant_data_clients';
 import { AIAssistantKnowledgeBaseDataClient } from './ai_assistant_data_clients/knowledge_base';
 import type { DefendInsightsDataClient } from './lib/defend_insights/persistence';
 import { AttackDiscoveryScheduleDataClient } from './lib/attack_discovery/schedules/data_client';
+import { EntityResolutionDataClient } from './ai_assistant_data_clients/entity_resolution';
 
 export const PLUGIN_ID = 'elasticAssistant' as const;
 export { CallbackIds };
@@ -154,6 +157,7 @@ export interface ElasticAssistantApiRequestHandlerContext {
   getAIAssistantConversationsDataClient: (
     params?: GetAIAssistantConversationsDataClientParams
   ) => Promise<AIAssistantConversationsDataClient | null>;
+  getEntityResolutionDataClient: () => Promise<EntityResolutionDataClient | null>;
   getAIAssistantKnowledgeBaseDataClient: (
     params?: GetAIAssistantKnowledgeBaseDataClientParams
   ) => Promise<AIAssistantKnowledgeBaseDataClient | null>;
@@ -260,6 +264,10 @@ export type AssistantToolLlm =
   | ActionsClientChatVertexAI;
 
 export interface AssistantToolParams {
+  promptTemplate?: string;
+  entityResolutionClient?: EntityResolutionDataClient;
+  entitiesIndexPattern?: string;
+  searchEntity?: SearchEntity;
   alertsIndexPattern?: string;
   assistantContext?: ElasticAssistantApiRequestHandlerContext;
   anonymizationFields?: AnonymizationFieldResponse[];
@@ -280,7 +288,10 @@ export interface AssistantToolParams {
   request: KibanaRequest<
     unknown,
     unknown,
-    ExecuteConnectorRequestBody | AttackDiscoveryPostRequestBody | DefendInsightsPostRequestBody
+    | ExecuteConnectorRequestBody
+    | AttackDiscoveryPostRequestBody
+    | DefendInsightsPostRequestBody
+    | EntityResolutionPostRequestBody
   >;
   size?: number;
   telemetry?: AnalyticsServiceSetup;

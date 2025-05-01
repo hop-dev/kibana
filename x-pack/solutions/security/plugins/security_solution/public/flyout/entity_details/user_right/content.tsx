@@ -5,9 +5,18 @@
  * 2.0.
  */
 
-import { EuiHorizontalRule } from '@elastic/eui';
+import {
+  EuiAccordion,
+  EuiHorizontalRule,
+  EuiSpacer,
+  EuiText,
+  EuiTitle,
+  useEuiTheme,
+} from '@elastic/eui';
 
 import React from 'react';
+import { noop } from 'lodash';
+import { css } from '@emotion/css';
 import type { UserItem } from '../../../../common/search_strategy';
 import { useIsExperimentalFeatureEnabled } from '../../../common/hooks/use_experimental_features';
 import { AssetCriticalityAccordion } from '../../../entity_analytics/components/asset_criticality/asset_criticality_selector';
@@ -25,6 +34,8 @@ import type { ObservedEntityData } from '../shared/components/observed_entity/ty
 import { useObservedUserItems } from './hooks/use_observed_user_items';
 import type { EntityDetailsPath } from '../shared/components/left_panel/left_panel_header';
 import { EntityInsight } from '../../../cloud_security_posture/components/entity_insight';
+import { RelatedEntitiesSummary } from '../../../entity_analytics/components/related_entities/related_entities_summary';
+import { useEntityResolutions } from '../../../entity_analytics/api/hooks/use_entity_resolutions';
 
 interface UserPanelContentProps {
   userName: string;
@@ -53,7 +64,6 @@ export const UserPanelContent = ({
   isPreviewMode,
   isLinkEnabled,
 }: UserPanelContentProps) => {
-  const observedFields = useObservedUserItems(observedUser);
   const isManagedUserEnable = useIsExperimentalFeatureEnabled('newUserDetailsFlyoutManagedUser');
 
   return (
@@ -83,12 +93,13 @@ export const UserPanelContent = ({
         isLinkEnabled={isLinkEnabled}
         openDetailsPanel={openDetailsPanel}
       />
-      <ObservedEntity
-        observedData={observedUser}
+      <EntityDetailsSection
+        observedUser={observedUser}
+        userName={userName}
         contextID={contextID}
         scopeId={scopeId}
-        observedFields={observedFields}
-        queryId={OBSERVED_USER_QUERY_ID}
+        isDraggable={isDraggable}
+        openDetailsPanel={openDetailsPanel}
       />
       <EuiHorizontalRule margin="m" />
       {isManagedUserEnable && (
@@ -101,5 +112,61 @@ export const UserPanelContent = ({
         />
       )}
     </FlyoutBody>
+  );
+};
+
+type Props = Pick<
+  UserPanelContentProps,
+  'userName' | 'observedUser' | 'contextID' | 'scopeId' | 'isDraggable' | 'openDetailsPanel'
+>;
+
+const EntityDetailsSection: React.FC<Props> = ({
+  observedUser,
+  userName,
+  contextID,
+  scopeId,
+  isDraggable,
+  openDetailsPanel,
+}) => {
+  const { euiTheme } = useEuiTheme();
+  const observedFields = useObservedUserItems(observedUser);
+  const resolution = useEntityResolutions({
+    name: userName,
+    type: 'user',
+  });
+
+  return (
+    <>
+      <EuiAccordion
+        initialIsOpen
+        id="entity-details-accordion"
+        buttonContent={
+          <EuiTitle size="m">
+            <h3>
+              <EuiText>{'Entity details'}</EuiText>
+            </h3>
+          </EuiTitle>
+        }
+        buttonProps={{
+          css: css`
+            color: ${euiTheme.colors.primary};
+          `,
+        }}
+        data-test-subj="entity-details-accordion"
+      >
+        <EuiSpacer size="m" />
+        <RelatedEntitiesSummary resolution={resolution} onOpen={openDetailsPanel || noop} />
+        <EuiSpacer size="m" />
+        <ObservedEntity
+          observedData={observedUser}
+          contextID={contextID}
+          scopeId={scopeId}
+          isDraggable={isDraggable}
+          observedFields={observedFields}
+          queryId={OBSERVED_USER_QUERY_ID}
+        />
+      </EuiAccordion>
+      <EuiSpacer size="m" />
+    </>
   );
 };

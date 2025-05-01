@@ -46,6 +46,8 @@ import { siemMigrationsServiceMock } from '../../../siem_migrations/__mocks__/mo
 import { AssetInventoryDataClientMock } from '../../../asset_inventory/asset_inventory_data_client.mock';
 import { privilegeMonitorDataClientMock } from '../../../entity_analytics/privilege_monitoring/privilege_monitoring_data_client.mock';
 import { createProductFeaturesServiceMock } from '../../../product_features_service/mocks';
+import type { EntityStoreDataClient } from '../../../entity_analytics/entity_store/entities/entities_data_client';
+import type { EntityRelationsDataClient } from '../../../entity_analytics/entity_store/entity_relations/entity_relations_data_client';
 
 export const createMockClients = () => {
   const core = coreMock.createRequestHandlerContext();
@@ -174,6 +176,12 @@ const createSecuritySolutionRequestContextMock = (
     getDataViewsService: jest.fn(),
     getEntityStoreApiKeyManager: jest.fn(),
     getEntityStoreDataClient: jest.fn(() => clients.entityStoreDataClient),
+    getEREntityStoreDataClient: jest.fn(
+      () => clients.entityStoreDataClient as unknown as EntityStoreDataClient
+    ),
+    getEntityRelationsDataClient: jest.fn(
+      () => clients.entityStoreDataClient as unknown as EntityRelationsDataClient
+    ),
     getPrivilegeMonitoringDataClient: jest.fn(() => clients.privilegeMonitorDataClient),
     getSiemRuleMigrationsClient: jest.fn(() => clients.siemRuleMigrationsClient),
     getInferenceClient: jest.fn(() => clients.getInferenceClient()),

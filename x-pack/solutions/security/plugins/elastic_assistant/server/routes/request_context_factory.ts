@@ -165,6 +165,13 @@ export class RequestContextFactory implements IRequestContextFactory {
         });
       }),
 
+      getEntityResolutionDataClient: memoize(() => {
+        return this.assistantService.createEntityResolutionDataClient({
+          spaceId: getSpaceId(),
+          request,
+        });
+      }),
+
       getAIAssistantPromptsDataClient: memoize(async () => {
         const currentUser = await getCurrentUser();
         return this.assistantService.createAIAssistantPromptsDataClient({

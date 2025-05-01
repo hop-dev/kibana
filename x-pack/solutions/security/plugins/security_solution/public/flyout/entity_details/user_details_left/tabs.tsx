@@ -11,6 +11,7 @@ import { FormattedMessage } from '@kbn/i18n-react';
 import {
   getInsightsInputTab,
   getRiskInputTab,
+  getEntityResolutionTab,
 } from '../../../entity_analytics/components/entity_details_flyout';
 import { UserAssetTableType } from '../../../explore/users/store/model';
 import { ManagedUserDatasetKey } from '../../../../common/search_strategy/security_solution/users/managed_details';
@@ -55,6 +56,8 @@ export const useTabs = (
     if (entraManagedUser) {
       tabs.push(getEntraTab(entraManagedUser));
     }
+
+    tabs.push(getEntityResolutionTab(name, scopeId));
 
     if (hasMisconfigurationFindings || hasNonClosedAlerts) {
       tabs.push(getInsightsInputTab({ name, fieldName: EntityIdentifierFields.userName }));

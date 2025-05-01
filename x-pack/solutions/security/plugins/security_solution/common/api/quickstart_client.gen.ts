@@ -251,9 +251,21 @@ import type {
   StopEntityEngineResponse,
 } from './entity_analytics/entity_store/engine/stop.gen';
 import type {
+  GetEntitiesRequestQueryInput,
+  GetEntitiesResponse,
+} from './entity_analytics/entity_store/entities/get_entities.gen';
+import type {
   ListEntitiesRequestQueryInput,
   ListEntitiesResponse,
 } from './entity_analytics/entity_store/entities/list_entities.gen';
+import type {
+  CreateEntityRelationRequestBodyInput,
+  CreateEntityRelationResponse,
+} from './entity_analytics/entity_store/relations/create_entity_relation.gen';
+import type {
+  GetEntityRelationsRequestQueryInput,
+  GetEntityRelationsResponse,
+} from './entity_analytics/entity_store/relations/get_entity_relations.gen';
 import type {
   GetEntityStoreStatusRequestQueryInput,
   GetEntityStoreStatusResponse,
@@ -589,6 +601,19 @@ If a record already exists for the specified entity, that record is overwritten 
         path: '/api/asset_criticality',
         headers: {
           [ELASTIC_HTTP_VERSION_HEADER]: '2023-10-31',
+        },
+        method: 'POST',
+        body: props.body,
+      })
+      .catch(catchAxiosErrorFormatAndThrow);
+  }
+  async createEntityRelation(props: CreateEntityRelationProps) {
+    this.log.info(`${new Date().toISOString()} Calling API CreateEntityRelation`);
+    return this.kbnClient
+      .request<CreateEntityRelationResponse>({
+        path: '/internal/entity_store/relations',
+        headers: {
+          [ELASTIC_HTTP_VERSION_HEADER]: '1',
         },
         method: 'POST',
         body: props.body,
@@ -1290,6 +1315,20 @@ finalize it.
       })
       .catch(catchAxiosErrorFormatAndThrow);
   }
+  async getEntities(props: GetEntitiesProps) {
+    this.log.info(`${new Date().toISOString()} Calling API GetEntities`);
+    return this.kbnClient
+      .request<GetEntitiesResponse>({
+        path: '/entity_store/entities',
+        headers: {
+          [ELASTIC_HTTP_VERSION_HEADER]: '1',
+        },
+        method: 'GET',
+
+        query: props.query,
+      })
+      .catch(catchAxiosErrorFormatAndThrow);
+  }
   async getEntityEngine(props: GetEntityEngineProps) {
     this.log.info(`${new Date().toISOString()} Calling API GetEntityEngine`);
     return this.kbnClient
@@ -1299,6 +1338,20 @@ finalize it.
           [ELASTIC_HTTP_VERSION_HEADER]: '2023-10-31',
         },
         method: 'GET',
+      })
+      .catch(catchAxiosErrorFormatAndThrow);
+  }
+  async getEntityRelations(props: GetEntityRelationsProps) {
+    this.log.info(`${new Date().toISOString()} Calling API GetEntityRelations`);
+    return this.kbnClient
+      .request<GetEntityRelationsResponse>({
+        path: '/entity_store/relations',
+        headers: {
+          [ELASTIC_HTTP_VERSION_HEADER]: '1',
+        },
+        method: 'GET',
+
+        query: props.query,
       })
       .catch(catchAxiosErrorFormatAndThrow);
   }
@@ -2405,6 +2458,9 @@ export interface CreateAlertsMigrationProps {
 export interface CreateAssetCriticalityRecordProps {
   body: CreateAssetCriticalityRecordRequestBodyInput;
 }
+export interface CreateEntityRelationProps {
+  body: CreateEntityRelationRequestBodyInput;
+}
 export interface CreateRuleProps {
   body: CreateRuleRequestBodyInput;
 }
@@ -2510,8 +2566,14 @@ export interface GetEndpointSuggestionsProps {
   params: GetEndpointSuggestionsRequestParamsInput;
   body: GetEndpointSuggestionsRequestBodyInput;
 }
+export interface GetEntitiesProps {
+  query: GetEntitiesRequestQueryInput;
+}
 export interface GetEntityEngineProps {
   params: GetEntityEngineRequestParamsInput;
+}
+export interface GetEntityRelationsProps {
+  query: GetEntityRelationsRequestQueryInput;
 }
 export interface GetEntityStoreStatusProps {
   query: GetEntityStoreStatusRequestQueryInput;

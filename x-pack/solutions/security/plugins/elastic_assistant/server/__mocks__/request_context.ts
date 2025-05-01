@@ -34,6 +34,7 @@ import { AttackDiscoveryDataClient } from '../lib/attack_discovery/persistence';
 import { DefendInsightsDataClient } from '../lib/defend_insights/persistence';
 import { authenticatedUser } from './user';
 import { AttackDiscoveryScheduleDataClient } from '../lib/attack_discovery/schedules/data_client';
+import { EntityResolutionDataClient } from '../ai_assistant_data_clients/entity_resolution';
 
 export const createMockClients = () => {
   const core = coreMock.createRequestHandlerContext();
@@ -57,6 +58,7 @@ export const createMockClients = () => {
       getDefendInsightsDataClient: dataClientMock.create(),
       getAIAssistantAnonymizationFieldsDataClient: dataClientMock.create(),
       getAlertSummaryDataClient: dataClientMock.create(),
+      getEntityResolutionDataClient: dataClientMock.create(),
       getSpaceId: jest.fn(),
       getCurrentUser: jest.fn(),
       inference: jest.fn(),
@@ -115,7 +117,10 @@ const createElasticAssistantRequestContextMock = (
     getRegisteredFeatures: jest.fn((pluginName: string) => defaultAssistantFeatures),
     getRegisteredTools: jest.fn(),
     logger: clients.elasticAssistant.logger,
-
+    getEntityResolutionDataClient: jest.fn(
+      () => clients.elasticAssistant.getEntityResolutionDataClient
+    ) as unknown as jest.MockInstance<Promise<EntityResolutionDataClient | null>, [], unknown> &
+      (() => Promise<EntityResolutionDataClient | null>),
     getAIAssistantConversationsDataClient: jest.fn(
       () => clients.elasticAssistant.getAIAssistantConversationsDataClient
     ) as unknown as jest.MockInstance<

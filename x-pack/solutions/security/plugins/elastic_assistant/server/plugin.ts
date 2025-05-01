@@ -5,7 +5,13 @@
  * 2.0.
  */
 
-import { PluginInitializerContext, CoreStart, Plugin, Logger } from '@kbn/core/server';
+import {
+  PluginInitializerContext,
+  CoreStart,
+  Plugin,
+  Logger,
+  ScopeableRequest,
+} from '@kbn/core/server';
 
 import {
   ATTACK_DISCOVERY_SCHEDULES_ENABLED_FEATURE_FLAG,
@@ -73,6 +79,10 @@ export class ElasticAssistantPlugin
       elasticsearchClientPromise: core
         .getStartServices()
         .then(([{ elasticsearch }]) => elasticsearch.client.asInternalUser),
+      getScopedElasticSearchClient: (r: ScopeableRequest) =>
+        core
+          .getStartServices()
+          .then(([{ elasticsearch }]) => elasticsearch.client.asScoped(r).asCurrentUser),
       productDocManager: core
         .getStartServices()
         .then(([_, { productDocBase }]) => productDocBase.management),

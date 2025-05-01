@@ -12,6 +12,7 @@ export const getEntityDefinitionQuerySchema = z.object({
   page: z.optional(z.coerce.number()),
   perPage: z.optional(z.coerce.number()),
   includeState: z.optional(BooleanFromString).default(false),
+  id: z.optional(z.string()),
 });
 
 export type GetEntityDefinitionQuerySchema = z.infer<typeof getEntityDefinitionQuerySchema>;

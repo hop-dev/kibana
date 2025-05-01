@@ -79,7 +79,7 @@ export async function findEntityDefinitionById({
   return definition;
 }
 
-async function getEntityDefinitionState(
+export async function getEntityDefinitionState(
   esClient: ElasticsearchClient,
   definition: EntityDefinition
 ): Promise<EntityDefinitionState> {

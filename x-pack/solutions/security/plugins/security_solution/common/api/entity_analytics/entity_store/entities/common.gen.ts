@@ -18,6 +18,7 @@ import { z } from '@kbn/zod';
 
 import { EntityRiskScoreRecord } from '../../common/common.gen';
 import { AssetCriticalityLevel } from '../../asset_criticality/common.gen';
+import { EntityType } from '../common.gen';
 
 export type EngineMetadata = z.infer<typeof EngineMetadata>;
 export const EngineMetadata = z.object({
@@ -134,3 +135,14 @@ export const EntityInternal = z.union([UserEntity, HostEntity, ServiceEntity, Ge
 
 export type Entity = z.infer<typeof EntityInternal>;
 export const Entity = EntityInternal as z.ZodType<Entity>;
+
+export type EntityRecord = z.infer<typeof EntityRecord>;
+export const EntityRecord = z.object({
+  entity_type: EntityType,
+  /**
+   * The entity
+   */
+  entity: z.object({
+    name: z.string(),
+  }),
+});
