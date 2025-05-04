@@ -34,23 +34,32 @@ const install = async (http: HttpSetup) => {
 };
 
 const createComponentTemplateAPI = async (http: HttpSetup) =>
-  http.fetch(`/api/index_management/component_templates`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: INDEX_COMPONENT_NAME,
-      template: {
-        mappings: {
-          properties: {
-            [TARGET_INDEX_EMBEDDINGS_FIELD]: {
-              type: 'semantic_text',
-              inference_id: INFERENCE_ID,
+  http
+    .fetch(`/api/index_management/component_templates`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: INDEX_COMPONENT_NAME,
+        template: {
+          mappings: {
+            properties: {
+              [TARGET_INDEX_EMBEDDINGS_FIELD]: {
+                type: 'semantic_text',
+                inference_id: INFERENCE_ID,
+              },
             },
           },
         },
-      },
-      _kbnMeta: { usedBy: [ENTITY_DEFINITION_ID], isManaged: true },
-    }),
-  });
+        _kbnMeta: { usedBy: [ENTITY_DEFINITION_ID], isManaged: true },
+      }),
+    })
+    .catch((error) => {
+      if (error.response?.status === 409) {
+        // eslint-disable-next-line no-console
+        console.log('Component template already exists:', INDEX_COMPONENT_NAME);
+        return;
+      }
+      throw error;
+    });
 
 const installModelAPI = async (http: HttpSetup) => {
   return http.fetch(`/internal/ml/_inference/text_embedding/${INFERENCE_ID}`, {
@@ -68,50 +77,59 @@ const installModelAPI = async (http: HttpSetup) => {
 };
 
 const createIngestPipelineAPI = async (http: HttpSetup) =>
-  http.fetch(`/api/ingest_pipelines`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: PIPELINE_ID,
-      processors: [
-        {
-          set: {
-            field: TARGET_INDEX_EMBEDDINGS_FIELD,
-            value: '{{{user.name}}}{{#user.email}} {{.}}{{/user.email}}',
+  http
+    .fetch(`/api/ingest_pipelines`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: PIPELINE_ID,
+        processors: [
+          {
+            set: {
+              field: TARGET_INDEX_EMBEDDINGS_FIELD,
+              value: '{{{user.name}}}{{#user.email}} {{.}}{{/user.email}}',
+            },
           },
-        },
-        {
-          set: {
-            if: 'ctx?.asset.type == "okta_user"',
-            field: 'data_source',
-            value: 'entity_analytics_okta',
+          {
+            set: {
+              if: 'ctx?.asset.type == "okta_user"',
+              field: 'data_source',
+              value: 'entity_analytics_okta',
+            },
           },
-        },
-        {
-          set: {
-            if: 'ctx?.labels?.identity_source == "azure-1"',
-            field: 'data_source',
-            value: 'entity_analytics_entra_id',
+          {
+            set: {
+              if: 'ctx?.labels?.identity_source == "azure-1"',
+              field: 'data_source',
+              value: 'entity_analytics_entra_id',
+            },
           },
-        },
-        {
-          set: {
-            if: 'ctx?.data_source === null',
-            field: 'data_source',
-            value: 'observed_data',
+          {
+            set: {
+              if: 'ctx?.data_source === null',
+              field: 'data_source',
+              value: 'observed_data',
+            },
           },
-        },
-        {
-          remove: {
-            field: 'labels.identity_source',
-            ignore_missing: true,
+          {
+            remove: {
+              field: 'labels.identity_source',
+              ignore_missing: true,
+            },
           },
-        },
-        {
-          remove: {
-            field: 'asset.type',
-            ignore_missing: true,
+          {
+            remove: {
+              field: 'asset.type',
+              ignore_missing: true,
+            },
           },
-        },
-      ],
-    }),
-  });
+        ],
+      }),
+    })
+    .catch((error) => {
+      if (error.response?.status === 409) {
+        // eslint-disable-next-line no-console
+        console.log('Ingest pipeline already exists:', PIPELINE_ID);
+        return;
+      }
+      throw error;
+    });
