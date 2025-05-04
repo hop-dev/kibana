@@ -45,7 +45,11 @@ export const EntityAnalyticsManagementPage = () => {
 
   useEffect(() => {
     get()
-      ?.then((models) => {
+      ?.then(({ definitions }) => {
+        if (definitions.length === 0) {
+          setState('uninstalled');
+          return;
+        }
         setState('installed');
       })
       .catch((error) => {
