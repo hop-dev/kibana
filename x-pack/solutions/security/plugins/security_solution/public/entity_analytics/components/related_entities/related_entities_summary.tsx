@@ -35,7 +35,7 @@ import {
 
 import { noop } from 'lodash/fp';
 
-import { useLocalStorage } from 'react-use';
+import useLocalStorage from 'react-use/lib/useLocalStorage';
 
 import { useSpaceId } from '../../../common/hooks/use_space_id';
 
