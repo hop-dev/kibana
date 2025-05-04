@@ -98,7 +98,6 @@ export const UserPanelContent = ({
         userName={userName}
         contextID={contextID}
         scopeId={scopeId}
-        isDraggable={isDraggable}
         openDetailsPanel={openDetailsPanel}
       />
       <EuiHorizontalRule margin="m" />
@@ -117,7 +116,7 @@ export const UserPanelContent = ({
 
 type Props = Pick<
   UserPanelContentProps,
-  'userName' | 'observedUser' | 'contextID' | 'scopeId' | 'isDraggable' | 'openDetailsPanel'
+  'userName' | 'observedUser' | 'contextID' | 'scopeId' | 'openDetailsPanel'
 >;
 
 const EntityDetailsSection: React.FC<Props> = ({
@@ -125,7 +124,6 @@ const EntityDetailsSection: React.FC<Props> = ({
   userName,
   contextID,
   scopeId,
-  isDraggable,
   openDetailsPanel,
 }) => {
   const { euiTheme } = useEuiTheme();
@@ -161,7 +159,6 @@ const EntityDetailsSection: React.FC<Props> = ({
           observedData={observedUser}
           contextID={contextID}
           scopeId={scopeId}
-          isDraggable={isDraggable}
           observedFields={observedFields}
           queryId={OBSERVED_USER_QUERY_ID}
         />
