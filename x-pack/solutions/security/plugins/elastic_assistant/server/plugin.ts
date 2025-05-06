@@ -83,6 +83,9 @@ export class ElasticAssistantPlugin
         core
           .getStartServices()
           .then(([{ elasticsearch }]) => elasticsearch.client.asScoped(r).asCurrentUser),
+      soClientPromise: core
+        .getStartServices()
+        .then(([{ savedObjects }]) => savedObjects.createInternalRepository()),
       productDocManager: core
         .getStartServices()
         .then(([_, { productDocBase }]) => productDocBase.management),

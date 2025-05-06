@@ -60,7 +60,7 @@ export const useTabs = (
     tabs.push(getEntityResolutionTab(name, scopeId));
 
     if (hasMisconfigurationFindings || hasNonClosedAlerts) {
-      tabs.push(getInsightsInputTab({ name, fieldName: EntityIdentifierFields.userName }));
+      tabs.push(getInsightsInputTab({ name, fieldName: EntityIdentifierFields.userName, scopeId }));
     }
 
     return tabs;

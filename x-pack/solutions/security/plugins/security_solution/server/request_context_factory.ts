@@ -142,6 +142,8 @@ export class RequestContextFactory implements IRequestContextFactory {
         return endpointAuthz;
       },
 
+      getEndpointService: () => endpointAppContextService,
+
       getConfig: () => config,
 
       getFrameworkRequest: () => frameworkRequest,

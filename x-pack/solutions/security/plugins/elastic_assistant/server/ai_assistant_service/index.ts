@@ -12,6 +12,8 @@ import type {
   Logger,
   ElasticsearchClient,
   ScopeableRequest,
+  KibanaRequest,
+  SavedObjectsClientContract,
 } from '@kbn/core/server';
 import { ATTACK_DISCOVERY_ALERTS_AD_HOC_INDEX_RESOURCE_PREFIX } from '@kbn/elastic-assistant-common';
 import type { TaskManagerSetupContract } from '@kbn/task-manager-plugin/server';
@@ -53,6 +55,7 @@ import {
 } from '../ai_assistant_data_clients/knowledge_base/field_maps_configuration';
 import {
   AIAssistantKnowledgeBaseDataClient,
+  ensureDedicatedInferenceEndpoint,
   GetAIAssistantKnowledgeBaseDataClientParams,
 } from '../ai_assistant_data_clients/knowledge_base';
 import { AttackDiscoveryDataClient } from '../lib/attack_discovery/persistence';
@@ -84,6 +87,7 @@ export interface AIAssistantServiceOpts {
   elserInferenceId?: string;
   elasticsearchClientPromise: Promise<ElasticsearchClient>;
   getScopedElasticSearchClient: (r: ScopeableRequest) => Promise<ElasticsearchClient>;
+  soClientPromise: Promise<SavedObjectsClientContract>;
   ml: MlPluginSetup;
   taskManager: TaskManagerSetupContract;
   pluginStop$: Subject<void>;
@@ -392,23 +396,6 @@ export class AIAssistantService {
           ASSISTANT_ELSER_INFERENCE_ID,
           ELASTICSEARCH_ELSER_INFERENCE_ID
         );
-
-        // Delete the old inference endpoint
-        const elserId = await this.getElserId();
-        try {
-          await esClient.inference.delete({
-            inference_id: ASSISTANT_ELSER_INFERENCE_ID,
-            // it's being used in the mapping so we need to force delete
-            force: true,
-          });
-          this.options.logger.debug(
-            `Deleted existing inference endpoint ${ASSISTANT_ELSER_INFERENCE_ID} for ELSER model '${elserId}'`
-          );
-        } catch (error) {
-          this.options.logger.debug(
-            `Error deleting inference endpoint ${ASSISTANT_ELSER_INFERENCE_ID} for ELSER model '${elserId}':\n${error}`
-          );
-        }
       } else {
         // We need to make sure that the data stream is created with the correct mappings
         this.knowledgeBaseDataStream = this.createDataStream({
@@ -426,6 +413,17 @@ export class AIAssistantService {
           writeIndexOnly: true,
         });
       }
+
+      const soClient = await this.options.soClientPromise;
+
+      await ensureDedicatedInferenceEndpoint({
+        elserId: await this.getElserId(),
+        esClient,
+        getTrainedModelsProvider: () =>
+          this.options.ml.trainedModelsProvider({} as KibanaRequest, soClient),
+        logger: this.options.logger,
+        index: this.knowledgeBaseDataStream.name,
+      });
 
       await this.knowledgeBaseDataStream.install({
         esClient,
