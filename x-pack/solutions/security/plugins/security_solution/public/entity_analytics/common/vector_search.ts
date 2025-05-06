@@ -62,18 +62,30 @@ const createComponentTemplateAPI = async (http: HttpSetup) =>
     });
 
 const installModelAPI = async (http: HttpSetup) => {
-  return http.fetch(`/internal/ml/_inference/text_embedding/${INFERENCE_ID}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      service: 'elasticsearch',
-      service_settings: {
-        num_allocations: 1,
-        num_threads: 1,
-        model_id: MODEL_ID,
-      },
-    }),
-    version: '1',
-  });
+  return http
+    .fetch(`/internal/ml/_inference/text_embedding/${INFERENCE_ID}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        service: 'elasticsearch',
+        service_settings: {
+          num_allocations: 1,
+          num_threads: 1,
+          model_id: MODEL_ID,
+        },
+      }),
+      version: '1',
+    })
+    .catch((error) => {
+      if (
+        error.response?.status === 400 &&
+        error.body?.message?.includes('Inference endpoint IDs must be unique')
+      ) {
+        // eslint-disable-next-line no-console
+        console.log('Model already exists:', INFERENCE_ID);
+        return;
+      }
+      throw error;
+    });
 };
 
 const createIngestPipelineAPI = async (http: HttpSetup) =>
