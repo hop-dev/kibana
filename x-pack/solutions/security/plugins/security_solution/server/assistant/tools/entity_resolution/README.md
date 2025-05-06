@@ -32,7 +32,7 @@ This will guide you to get the entity resolution PoC running with our demo data 
     - In dev tools run: 
 
 ```
-GET .entities.v1.latest.secsol-ea-entity-store/_search?size=100
+GET .entities.v1.latest.security_user_default/_search?size=100
 {
   "_source": {
     "excludes": ["test_user_name_embeddings"],
@@ -52,7 +52,7 @@ curl 'http://elastic:changeme@localhost:5601/mark/internal/elastic_assistant/ent
     -H 'kbn-xsrf: true' \
     -H 'Content-Type: application/json;charset=UTF-8' \
     -H 'elastic-api-version: 1' \
-    --data-binary $'{ "entitiesIndexPattern": ".entities.v1.latest.secsol-ea-entity-store", "entity" : { "type" : "user", "name": "Mark Hopkin" }, "size": 20, "replacements": {}, "subAction": "invokeAI", "apiConfig": { "connectorId": "9f991efc-e1b8-47be-b2e0-efb1d3eb4272", "actionTypeId": ".bedrock", "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"}, "promptTemplate": "Does $$ENTITY mactch one of $$CANDIDATES" }
+    --data-binary $'{ "entitiesIndexPattern": ".entities.v1.latest.security_user_default", "entity" : { "type" : "user", "name": "Mark Hopkin" }, "size": 20, "replacements": {}, "subAction": "invokeAI", "apiConfig": { "connectorId": "9f991efc-e1b8-47be-b2e0-efb1d3eb4272", "actionTypeId": ".bedrock", "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"}, "promptTemplate": "Does $$ENTITY mactch one of $$CANDIDATES" }
 ' 
 ```
 

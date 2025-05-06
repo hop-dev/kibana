@@ -13,7 +13,7 @@ import {
   RISK_SCORE_INDEX_PATTERN,
 } from '../../../common/constants';
 
-export const ENTITY_DEFINITION_ID = 'secsol-ea-entity-store';
+export const ENTITY_DEFINITION_ID = 'security_user_default';
 
 export const useEntityModel = () => {
   const http = useKibana().services.http;

@@ -14,7 +14,8 @@ import type { SearchHit } from '@elastic/elasticsearch/lib/api/types';
 const MODEL = '.multilingual-e5-small';
 
 const searchEntityToModelText = (searchEntity: SearchEntity): string => {
-  return `${searchEntity.name}${searchEntity.email ? ` ${searchEntity.email}` : ''}`;
+  return searchEntity.name;
+  // return `${searchEntity.name}${searchEntity.email ? ` ${searchEntity.email}` : ''}`;
 };
 
 const searchHitsToMatches = (hits: Array<SearchHit<EntityLatestDocument>>): MatchEntity[] => {
@@ -143,6 +144,17 @@ export class EntityResolutionDataClient {
           num_candidates: size,
         },
       ],
+      post_filter: {
+        bool: {
+          must_not: [
+            {
+              term: {
+                'entity.name': searchEntity.name,
+              },
+            },
+          ],
+        },
+      },
     };
 
     logger.info(`Searching for entity with query: ${JSON.stringify(searchQuery)}`);

@@ -8,5 +8,5 @@
 const indexBase = '.entity-store.relations';
 export const getEntityRelationsIndex = (namespace: string) => `${indexBase}-${namespace}`;
 
-const storeIndex = '.entities.v1.latest.secsol-ea-entity-store';
+const storeIndex = '.entities.v1.latest.security_user_default';
 export const getEntityStoreIndex = (namespace: string) => `${storeIndex}`;

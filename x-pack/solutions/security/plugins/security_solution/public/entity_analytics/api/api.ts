@@ -264,7 +264,7 @@ export const useEntityAnalyticsRoutes = () => {
         version: '1',
         method: 'POST',
         body: JSON.stringify({
-          entitiesIndexPattern: '.entities.v1.latest.secsol-ea-entity-store',
+          entitiesIndexPattern: '.entities.v1.latest.security_user_default',
           entity,
           size: 10,
           replacements: {},

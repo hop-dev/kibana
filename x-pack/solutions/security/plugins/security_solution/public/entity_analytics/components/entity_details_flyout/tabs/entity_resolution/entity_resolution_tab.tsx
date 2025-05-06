@@ -163,19 +163,16 @@ const EntityLogo: React.FC<{
     data_source: string;
   };
 }> = ({ document }) => {
-  if (document?.data_source === 'observed_data') {
-    return <EuiIcon type="logoSecurity" size="l" />;
-  }
-
-  if (document?.data_source === 'entity_analytics_okta') {
+  console.log('document', document);
+  if (document?.entity.source.includes('okta')) {
     return <EuiIcon size="l" type={OktaLogo} />;
   }
 
-  if (document?.data_source === 'entity_analytics_entra_id') {
+  if (document?.entity.source.includes('entra')) {
     return <EuiIcon type={EntraIdLogo} size="l" />;
   }
 
-  return <EuiIcon type="questionInCircle" size="l" />;
+  return <EuiIcon type="logoSecurity" size="l" />;
 };
 
 const Candidate: React.FC<CandidateProps> = ({
@@ -255,6 +252,7 @@ const RelatedEntity: React.FC<RelatedEntityProps> = ({
   openPreviewPanel = noop,
   doc,
 }) => {
+  console.log('doc', doc);
   const entityDataContent = (
     <EuiFlexGroup justifyContent="flexStart" alignItems="center">
       <EntityLogo document={doc} />

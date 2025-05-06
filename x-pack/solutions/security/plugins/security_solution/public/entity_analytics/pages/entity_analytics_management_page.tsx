@@ -30,7 +30,7 @@ import { useAppToasts } from '../../common/hooks/use_app_toasts';
 import * as i18n from '../translations';
 import { getEntityAnalyticsRiskScorePageStyles } from '../components/risk_score_page_styles';
 import { useRiskEngineSettings } from '../api/hooks/use_risk_engine_settings';
-import { useEntityModel } from '../common/entity_model';
+import { useEntityModel, ENTITY_DEFINITION_ID } from '../common/entity_model';
 import { useVectorSearch } from '../common/vector_search';
 
 const TEN_SECONDS = 10000;
@@ -39,14 +39,14 @@ export const EntityAnalyticsManagementPage = () => {
   const { euiTheme } = useEuiTheme();
   const styles = getEntityAnalyticsRiskScorePageStyles(euiTheme);
   const privileges = useMissingRiskEnginePrivileges();
-  const { initialize, get, deleteAPI } = useEntityModel();
+  const { get, deleteAPI } = useEntityModel();
   const { installVectorSearch } = useVectorSearch();
   const [state, setState] = useState('loading');
 
   useEffect(() => {
     get()
       ?.then(({ definitions }) =>
-        definitions.includes(ENTITY_DEFINITION_ID) ? 'installed' : 'uninstalled'
+        definitions.includes(ENTITY_DEFINITION_ID) ? setSate('installed') : setState('uninstalled')
       )
       .catch((error) => {
         // 404 means the model is not installed
@@ -57,11 +57,9 @@ export const EntityAnalyticsManagementPage = () => {
   const handleInitialize = () => {
     setState('loading');
 
-    installVectorSearch()
-      .then(initialize)
-      .then((_) => {
-        setState('installed');
-      });
+    installVectorSearch().then((_) => {
+      setState('installed');
+    });
   };
 
   const handleDelete = () => {

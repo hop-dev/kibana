@@ -10,8 +10,8 @@ import { useKibana } from '@kbn/kibana-react-plugin/public';
 import { useCallback } from 'react';
 import { ENTITY_DEFINITION_ID } from './entity_model';
 
-const INDEX_COMPONENT_NAME = `${ENTITY_DEFINITION_ID}-latest@platform`;
-const PIPELINE_ID = `${ENTITY_DEFINITION_ID}-latest@platform`;
+const INDEX_COMPONENT_NAME = `${ENTITY_DEFINITION_ID}-latest@custom`;
+const PIPELINE_ID = `${ENTITY_DEFINITION_ID}-latest@custom`;
 const TARGET_INDEX_EMBEDDINGS_FIELD = `test_user_name_embeddings`;
 const MODEL_ID = '.multilingual-e5-small';
 const INFERENCE_ID = 'entity_store_e5_small';
@@ -98,42 +98,42 @@ const createIngestPipelineAPI = async (http: HttpSetup) =>
           {
             set: {
               field: TARGET_INDEX_EMBEDDINGS_FIELD,
-              value: '{{{user.name}}}{{#user.email}} {{.}}{{/user.email}}',
+              value: '{{user.name}}',
             },
           },
-          {
-            set: {
-              if: 'ctx?.asset.type == "okta_user"',
-              field: 'data_source',
-              value: 'entity_analytics_okta',
-            },
-          },
-          {
-            set: {
-              if: 'ctx?.labels?.identity_source == "azure-1"',
-              field: 'data_source',
-              value: 'entity_analytics_entra_id',
-            },
-          },
-          {
-            set: {
-              if: 'ctx?.data_source === null',
-              field: 'data_source',
-              value: 'observed_data',
-            },
-          },
-          {
-            remove: {
-              field: 'labels.identity_source',
-              ignore_missing: true,
-            },
-          },
-          {
-            remove: {
-              field: 'asset.type',
-              ignore_missing: true,
-            },
-          },
+          // {
+          //   set: {
+          //     if: 'ctx?.asset.type == "okta_user"',
+          //     field: 'data_source',
+          //     value: 'entity_analytics_okta',
+          //   },
+          // },
+          // {
+          //   set: {
+          //     if: 'ctx?.labels?.identity_source == "azure-1"',
+          //     field: 'data_source',
+          //     value: 'entity_analytics_entra_id',
+          //   },
+          // },
+          // {
+          //   set: {
+          //     if: 'ctx?.data_source === null',
+          //     field: 'data_source',
+          //     value: 'observed_data',
+          //   },
+          // },
+          // {
+          //   remove: {
+          //     field: 'labels.identity_source',
+          //     ignore_missing: true,
+          //   },
+          // },
+          // {
+          //   remove: {
+          //     field: 'asset.type',
+          //     ignore_missing: true,
+          //   },
+          // },
         ],
       }),
     })
