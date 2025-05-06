@@ -66,12 +66,7 @@ const entityDefinition = {
   ],
   filter: '@timestamp >= now-5m',
   lookback: '5m',
-  identityFields: [
-    { field: 'user.name', optional: true },
-    { field: 'id_value', optional: true },
-    { field: 'asset.type', optional: true },
-    { field: 'labels.identity_source', optional: true },
-  ],
+  identityFields: ['user.name', 'id_value', 'asset.type', 'labels.identity_source'],
   displayNameTemplate: '{{user.name}}{{id_value}}',
   metadata: [
     'user.risk.calculated_level',
@@ -82,9 +77,8 @@ const entityDefinition = {
     'labels.identity_source',
     { source: '_index', destination: 'sourceIndex' },
   ],
-  history: {
+  latest: {
     timestampField: '@timestamp',
-    interval: '1m',
   },
   version: '1.0.0',
 };
