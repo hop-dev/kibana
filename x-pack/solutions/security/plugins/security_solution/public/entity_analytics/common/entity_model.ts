@@ -66,8 +66,8 @@ const entityDefinition = {
   ],
   filter: '@timestamp >= now-5m',
   lookback: '5m',
-  identityFields: ['user.name', 'id_value', 'asset.type', 'labels.identity_source'],
-  displayNameTemplate: '{{user.name}}{{id_value}}',
+  identityFields: ['user.name'],
+  displayNameTemplate: '{{user.name}}',
   metadata: [
     'user.risk.calculated_level',
     'user.risk.calculated_score_norm',
