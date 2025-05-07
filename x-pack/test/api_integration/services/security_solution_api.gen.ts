@@ -28,6 +28,7 @@ import { CopyTimelineRequestBodyInput } from '@kbn/security-solution-plugin/comm
 import { CreateAlertsMigrationRequestBodyInput } from '@kbn/security-solution-plugin/common/api/detection_engine/signals_migration/create_signals_migration/create_signals_migration.gen';
 import { CreateAssetCriticalityRecordRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/asset_criticality/create_asset_criticality.gen';
 import { CreateEntityRelationRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/relations/create_entity_relation.gen';
+import { CreatePrivMonUserRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/create.gen';
 import { CreateRuleRequestBodyInput } from '@kbn/security-solution-plugin/common/api/detection_engine/rule_management/crud/create_rule/create_rule_route.gen';
 import {
   CreateRuleMigrationRequestParamsInput,
@@ -44,6 +45,7 @@ import {
   DeleteEntityEngineRequestParamsInput,
 } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/engine/delete.gen';
 import { DeleteNoteRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/delete_note/delete_note_route.gen';
+import { DeletePrivMonUserRequestParamsInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/delete.gen';
 import { DeleteRuleRequestQueryInput } from '@kbn/security-solution-plugin/common/api/detection_engine/rule_management/crud/delete_rule/delete_rule_route.gen';
 import { DeleteTimelinesRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/delete_timelines/delete_timelines_route.gen';
 import { DeprecatedTriggerRiskScoreCalculationRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/risk_engine/entity_calculation_route.gen';
@@ -84,6 +86,7 @@ import { GetEntityRelationsRequestQueryInput } from '@kbn/security-solution-plug
 import { GetEntityStoreStatusRequestQueryInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/status.gen';
 import { GetNotesRequestQueryInput } from '@kbn/security-solution-plugin/common/api/timeline/get_notes/get_notes_route.gen';
 import { GetPolicyResponseRequestQueryInput } from '@kbn/security-solution-plugin/common/api/endpoint/policy/policy_response.gen';
+import { GetPrivMonUserRequestParamsInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/get.gen';
 import { GetProtectionUpdatesNoteRequestParamsInput } from '@kbn/security-solution-plugin/common/api/endpoint/protection_updates_note/protection_updates_note.gen';
 import {
   GetRuleExecutionEventsRequestQueryInput,
@@ -121,6 +124,7 @@ import {
 } from '@kbn/security-solution-plugin/common/siem_migrations/model/api/rules/rule_migration.gen';
 import { InstallPrepackedTimelinesRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/install_prepackaged_timelines/install_prepackaged_timelines_route.gen';
 import { ListEntitiesRequestQueryInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/entities/list_entities.gen';
+import { ListPrivMonUsersRequestQueryInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/list.gen';
 import { PatchRuleRequestBodyInput } from '@kbn/security-solution-plugin/common/api/detection_engine/rule_management/crud/patch_rule/patch_rule_route.gen';
 import { PatchTimelineRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/patch_timelines/patch_timeline_route.gen';
 import {
@@ -153,6 +157,10 @@ import { StopEntityEngineRequestParamsInput } from '@kbn/security-solution-plugi
 import { StopRuleMigrationRequestParamsInput } from '@kbn/security-solution-plugin/common/siem_migrations/model/api/rules/rule_migration.gen';
 import { SuggestUserProfilesRequestQueryInput } from '@kbn/security-solution-plugin/common/api/detection_engine/users/suggest_user_profiles_route.gen';
 import { TriggerRiskScoreCalculationRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/risk_engine/entity_calculation_route.gen';
+import {
+  UpdatePrivMonUserRequestParamsInput,
+  UpdatePrivMonUserRequestBodyInput,
+} from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/update.gen';
 import { UpdateRuleRequestBodyInput } from '@kbn/security-solution-plugin/common/api/detection_engine/rule_management/crud/update_rule/update_rule_route.gen';
 import {
   UpdateRuleMigrationRequestParamsInput,
@@ -215,6 +223,20 @@ after 30 days. It also deletes other artifacts specific to the migration impleme
         )
         .set('kbn-xsrf', 'true')
         .set(ELASTIC_HTTP_VERSION_HEADER, '1')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
+    },
+    bulkUploadUsersCsv(kibanaSpace: string = 'default') {
+      return supertest
+        .post(routeWithNamespace('/api/entity_analytics/monitoring/users/_csv', kibanaSpace))
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
+    },
+    bulkUploadUsersJson(kibanaSpace: string = 'default') {
+      return supertest
+        .post(routeWithNamespace('/api/entity_analytics/monitoring/users/_json', kibanaSpace))
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
     },
     /**
@@ -326,6 +348,14 @@ If a record already exists for the specified entity, that record is overwritten 
         .post(routeWithNamespace('/internal/entity_store/relations', kibanaSpace))
         .set('kbn-xsrf', 'true')
         .set(ELASTIC_HTTP_VERSION_HEADER, '1')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .send(props.body as object);
+    },
+    createPrivMonUser(props: CreatePrivMonUserProps, kibanaSpace: string = 'default') {
+      return supertest
+        .post(routeWithNamespace('/api/entity_analytics/monitoring/users', kibanaSpace))
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
         .send(props.body as object);
     },
@@ -484,6 +514,18 @@ For detailed information on Kibana actions and alerting, and additional API call
         .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
         .send(props.body as object);
+    },
+    deletePrivMonUser(props: DeletePrivMonUserProps, kibanaSpace: string = 'default') {
+      return supertest
+        .delete(
+          routeWithNamespace(
+            replaceParams('/api/entity_analytics/monitoring/users/{id}', props.params),
+            kibanaSpace
+          )
+        )
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
     },
     /**
       * Delete a detection rule using the `rule_id` or `id` field.
@@ -930,6 +972,18 @@ finalize it.
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
         .query(props.query);
     },
+    getPrivMonUser(props: GetPrivMonUserProps, kibanaSpace: string = 'default') {
+      return supertest
+        .get(
+          routeWithNamespace(
+            replaceParams('/api/entity_analytics/monitoring/users/{id}', props.params),
+            kibanaSpace
+          )
+        )
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
+    },
     getProtectionUpdatesNote(
       props: GetProtectionUpdatesNoteProps,
       kibanaSpace: string = 'default'
@@ -1305,6 +1359,14 @@ providing you with the most current and effective threat detection capabilities.
         .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
     },
+    listPrivMonUsers(props: ListPrivMonUsersProps, kibanaSpace: string = 'default') {
+      return supertest
+        .get(routeWithNamespace('/api/entity_analytics/monitoring/users/list', kibanaSpace))
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .query(props.query);
+    },
     /**
       * Update specific fields of an existing detection rule using the `rule_id` or `id` field.
 
@@ -1672,6 +1734,19 @@ The difference between the `id` and `rule_id` is that the `id` is a unique rule 
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
         .send(props.body as object);
     },
+    updatePrivMonUser(props: UpdatePrivMonUserProps, kibanaSpace: string = 'default') {
+      return supertest
+        .put(
+          routeWithNamespace(
+            replaceParams('/api/entity_analytics/monitoring/users/{id}', props.params),
+            kibanaSpace
+          )
+        )
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '2023-10-31')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .send(props.body as object);
+    },
     /**
       * Update a detection rule using the `rule_id` or `id` field. The original rule is replaced, and all unspecified fields are deleted.
 
@@ -1772,6 +1847,9 @@ export interface CreateAssetCriticalityRecordProps {
 export interface CreateEntityRelationProps {
   body: CreateEntityRelationRequestBodyInput;
 }
+export interface CreatePrivMonUserProps {
+  body: CreatePrivMonUserRequestBodyInput;
+}
 export interface CreateRuleProps {
   body: CreateRuleRequestBodyInput;
 }
@@ -1795,6 +1873,9 @@ export interface DeleteEntityEngineProps {
 }
 export interface DeleteNoteProps {
   body: DeleteNoteRequestBodyInput;
+}
+export interface DeletePrivMonUserProps {
+  params: DeletePrivMonUserRequestParamsInput;
 }
 export interface DeleteRuleProps {
   query: DeleteRuleRequestQueryInput;
@@ -1892,6 +1973,9 @@ export interface GetNotesProps {
 export interface GetPolicyResponseProps {
   query: GetPolicyResponseRequestQueryInput;
 }
+export interface GetPrivMonUserProps {
+  params: GetPrivMonUserRequestParamsInput;
+}
 export interface GetProtectionUpdatesNoteProps {
   params: GetProtectionUpdatesNoteRequestParamsInput;
 }
@@ -1954,6 +2038,9 @@ export interface InstallPrepackedTimelinesProps {
 }
 export interface ListEntitiesProps {
   query: ListEntitiesRequestQueryInput;
+}
+export interface ListPrivMonUsersProps {
+  query: ListPrivMonUsersRequestQueryInput;
 }
 export interface PatchRuleProps {
   body: PatchRuleRequestBodyInput;
@@ -2026,6 +2113,10 @@ export interface SuggestUserProfilesProps {
 }
 export interface TriggerRiskScoreCalculationProps {
   body: TriggerRiskScoreCalculationRequestBodyInput;
+}
+export interface UpdatePrivMonUserProps {
+  params: UpdatePrivMonUserRequestParamsInput;
+  body: UpdatePrivMonUserRequestBodyInput;
 }
 export interface UpdateRuleProps {
   body: UpdateRuleRequestBodyInput;
