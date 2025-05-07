@@ -8,7 +8,11 @@
 import type { SearchEntity } from '@kbn/elastic-assistant-common';
 import type { CandidateEntity } from './get_candidate_entities';
 
-const DEFAULT_TEMPLATE = `Your role is to facilitate entity resolution	by providing the best matches for the given record.		 
+const DEFAULT_TEMPLATE = `Your role is to facilitate entity resolution by providing the best matches for the given record.	
+Pay attentiion to clues like surname, two entities with very different surnames are unlikely to be the same person unless the surnames are very similar, do not account for people changing their names only use the information given.
+Abbrevations and nicknames are also important clues.
+Ignore case, capitalisation, punctuation, and whitespace.
+Only return a match if you think it is a match, do not return a match if you are not sure.
 Given the following entity from elasticsearch:
 $$ENTITY
 Do any of the following candidates match the entity? :

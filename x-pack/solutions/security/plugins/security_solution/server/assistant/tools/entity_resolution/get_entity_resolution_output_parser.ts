@@ -16,8 +16,12 @@ const schema = z.object({
         id: z.string().describe('The id of the entity'),
         confidence: z
           .enum(['high', 'medium', 'low'])
-          .describe('The confidence level of the match, where high is a strong match'),
-        reason: z.string().describe('The reason for the match'),
+          .describe(
+            'The confidence level of the match, where high is an almost certain match, medium is a strong match, and low is a weak match'
+          ),
+        reason: z
+          .string()
+          .describe('The reason for the match and the reason for the confidence level'),
       })
     )
     .describe(
