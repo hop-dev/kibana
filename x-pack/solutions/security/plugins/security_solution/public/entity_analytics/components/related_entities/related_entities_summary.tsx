@@ -19,8 +19,8 @@ import {
   EuiFlexGroup,
   EuiBasicTable,
   EuiButton,
-  EuiLoadingSpinner,
   EuiText,
+  EuiSpacer,
 } from '@elastic/eui';
 
 import type { EntityResolutionSuggestion } from '@kbn/elastic-assistant-common';
@@ -55,7 +55,7 @@ interface Props {
 
 export const RelatedEntitiesSummary: React.FC<Props> = ({ resolution, onOpen }) => {
   const header = {
-    title: <EuiText>{'Related Entities'}</EuiText>,
+    title: <EuiText>{'Entity Resolution'}</EuiText>,
 
     link: {
       callback: () => onOpen(EntityDetailsLeftPanelTab.OBSERVED_DATA),
@@ -115,9 +115,7 @@ export const RelatedEntitiesSummaryContent: React.FC<Props> = ({ resolution, onO
     }
   }, [aiConnectors, resolution]);
 
-  if (resolution.verifications.isLoading) {
-    return <EuiLoadingSpinner size="xl" />;
-  }
+  const isLoadingOrScanning = resolution.verifications.isLoading || resolution.scanning;
 
   if (
     resolution.verifications.data &&
@@ -133,26 +131,12 @@ export const RelatedEntitiesSummaryContent: React.FC<Props> = ({ resolution, onO
     );
   }
 
-  if (resolution.scanning) {
-    return <EuiLoadingSpinner size="xl" />;
-  }
+  const buttonText = isLoadingOrScanning ? 'Finding matching entities' : 'Find matching entities';
 
   if (!resolution.candidateData) {
     return (
       <>
-        <EuiButton
-          onClick={() => {
-            resolution.setScanning(true);
-
-            onOpen(EntityDetailsLeftPanelTab.OBSERVED_DATA);
-          }}
-        >
-          {'Scan related entities'}
-        </EuiButton>
-
-        <EuiFlexGroup alignItems="center" gutterSize="s">
-          <EuiFlexItem grow={false}>{'LLM model'}</EuiFlexItem>
-
+        <EuiFlexGroup justifyContent="flexEnd" alignItems="center" gutterSize="s">
           <EuiFlexItem grow={false}>
             <ConnectorSelectorInline
               onConnectorSelected={noop}
@@ -161,12 +145,28 @@ export const RelatedEntitiesSummaryContent: React.FC<Props> = ({ resolution, onO
             />
           </EuiFlexItem>
         </EuiFlexGroup>
+        <EuiSpacer size="s" />
+        <EuiFlexGroup justifyContent="spaceAround" gutterSize="s">
+          <EuiFlexItem grow={false}>
+            <EuiButton
+              iconType="indexMapping"
+              isLoading={isLoadingOrScanning}
+              css={{ minWidth: 220 }}
+              onClick={() => {
+                resolution.setScanning(true);
+                onOpen(EntityDetailsLeftPanelTab.OBSERVED_DATA);
+              }}
+            >
+              {buttonText}
+            </EuiButton>
+          </EuiFlexItem>
+        </EuiFlexGroup>
       </>
     );
   }
 
   return (
-    <EuiText>{`Found ${resolution.resolutions.candidates.length} potential related entities`}</EuiText>
+    <EuiText>{`Found ${resolution.resolutions.candidates.length} potential entity matches`}</EuiText>
   );
 };
 
@@ -174,7 +174,7 @@ const entityColumns: Array<EuiBasicTableColumn<EntityResolutionSuggestion>> = [
   {
     field: 'user.name',
 
-    name: 'Entity',
+    name: 'Matched entity',
 
     render: (name: string) => <EuiText>{name}</EuiText>,
   },

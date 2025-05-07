@@ -63,7 +63,7 @@ export const getEntityResolutionTab = (username: string, scopeId: string) => ({
   name: (
     <FormattedMessage
       id="xpack.securitySolution.flyout.entityDetails.userDetails.observedData.tabLabel"
-      defaultMessage="Observed Data"
+      defaultMessage="Entity resolution"
     />
   ),
   content: <EntityResolutionTab username={username} scopeId={scopeId} />,

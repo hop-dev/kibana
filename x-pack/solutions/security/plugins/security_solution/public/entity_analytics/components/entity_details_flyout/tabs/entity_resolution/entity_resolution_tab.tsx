@@ -68,7 +68,7 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
 
   const related = ER.verifications.data && ER.verifications.data.relatedEntitiesDocs.length > 0 && (
     <>
-      <EuiText>{'Related Entities'}</EuiText>
+      <EuiText>{'Confirmed Matches'}</EuiText>
       <EuiSpacer size="s" />
 
       {(ER.verifications.data?.relatedEntitiesDocs).map((doc) => (
@@ -85,7 +85,7 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
   return (
     <EuiPanel color="transparent" hasBorder={false}>
       <EuiTitle>
-        <h2>{'Observed Data'}</h2>
+        <h2>{'Entity Resolution'}</h2>
       </EuiTitle>
       <EuiSpacer size="l" />
 
@@ -125,12 +125,21 @@ interface CandidatesSectionProps {
 const CandidatesSection: React.FC<CandidatesSectionProps> = ({ state, children, setScanning }) => {
   return (
     <>
-      <EuiText>{'Candidate Entities'}</EuiText>
-      <EuiSpacer size="s" />
-      {state === 'scanning' ? (
-        <EuiLoadingSpinner size="xl" />
-      ) : state === 'init' ? (
-        <EuiButton onClick={() => setScanning(true)}>{'Scan related entities'}</EuiButton>
+      <EuiText>{'Potential matches'}</EuiText>
+      <EuiSpacer size="l" />
+      {state === 'init' || state === 'scanning' ? (
+        <EuiFlexGroup justifyContent="spaceAround" alignItems="center">
+          <EuiFlexItem grow={false}>
+            <EuiButton
+              iconType="indexMapping"
+              css={{ minWidth: 220 }}
+              isLoading={state === 'scanning'}
+              onClick={() => setScanning(true)}
+            >
+              {'Find matching entities'}
+            </EuiButton>
+          </EuiFlexItem>
+        </EuiFlexGroup>
       ) : state === 'no_candidates' ? (
         <EuiText>{'No candidates found'}</EuiText>
       ) : (
@@ -163,7 +172,6 @@ const EntityLogo: React.FC<{
     data_source: string;
   };
 }> = ({ document }) => {
-  console.log('document', document);
   if (document?.entity.source.includes('okta')) {
     return <EuiIcon size="l" type={OktaLogo} />;
   }
@@ -173,6 +181,11 @@ const EntityLogo: React.FC<{
   }
 
   return <EuiIcon type="logoSecurity" size="l" />;
+};
+
+const ConfidenceBadge: React.FC<{ confidence: string }> = ({ confidence }) => {
+  const color = confidence === 'high' ? 'success' : confidence === 'medium' ? 'warning' : 'danger';
+  return <EuiBadge color={color}>{`${confidence} confidence`}</EuiBadge>;
 };
 
 const Candidate: React.FC<CandidateProps> = ({
@@ -200,9 +213,8 @@ const Candidate: React.FC<CandidateProps> = ({
 
       <EuiFlexItem>
         <EuiFlexGroup justifyContent="flexStart" alignItems="center">
-          <EuiText>{'Confidence:'}</EuiText>
           <EuiToolTip position="bottom" title="Reason" content={reason}>
-            <EuiBadge color="default">{confidence}</EuiBadge>
+            <ConfidenceBadge confidence={confidence} />
           </EuiToolTip>
         </EuiFlexGroup>
       </EuiFlexItem>
@@ -215,11 +227,11 @@ const Candidate: React.FC<CandidateProps> = ({
         <EuiLoadingSpinner size="m" />
       ) : (
         <>
-          <EuiButtonEmpty size="m" onClick={() => resolve(id, entity.name, 'is_different')}>
-            {'Mark as different'}
+          <EuiButtonEmpty size="s" onClick={() => resolve(id, entity.name, 'is_different')}>
+            {'Not a match'}
           </EuiButtonEmpty>
-          <EuiButton size="m" iconType="check" onClick={() => resolve(id, entity.name, 'is_same')}>
-            {'Confirm as Same'}
+          <EuiButton size="s" iconType="check" onClick={() => resolve(id, entity.name, 'is_same')}>
+            {'Confirm match'}
           </EuiButton>
         </>
       )}
