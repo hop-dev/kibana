@@ -21,6 +21,8 @@ import {
   EuiText,
   EuiTitle,
   EuiToolTip,
+  EuiCodeBlock,
+  EuiCallOut,
 } from '@elastic/eui';
 import React from 'react';
 import type { EntityResolutionSuggestion } from '@kbn/elastic-assistant-common';
@@ -28,6 +30,11 @@ import { css } from '@emotion/css';
 import { useExpandableFlyoutApi } from '@kbn/expandable-flyout';
 import { noop } from 'lodash/fp';
 import { JsonCodeEditor } from '@kbn/unified-doc-viewer-plugin/public';
+import { useRiskScorePreviewMatchedUsers } from '../../../../api/hooks/use_preview_risk_scores_matched_users';
+import { SourcererScopeName } from '../../../../../sourcerer/store/model';
+import { useDataViewSpec } from '../../../../../data_view_manager/hooks/use_data_view_spec';
+import { useIsExperimentalFeatureEnabled } from '../../../../../common/hooks/use_experimental_features';
+import { useSourcererDataView } from '../../../../../sourcerer/containers';
 import { USER_PREVIEW_BANNER } from '../../../../../flyout/document_details/right/components/user_entity_overview';
 import { UserPreviewPanelKey } from '../../../../../flyout/entity_details/user_right';
 import { useEntityResolutions } from '../../../../api/hooks/use_entity_resolutions';
@@ -38,6 +45,104 @@ interface Props {
   username: string;
   scopeId: string;
 }
+
+const RiskScorePreviewSection: React.FC<{
+  relatedEntitiesDocs: EntityResolutionSuggestion[];
+  username: string;
+}> = ({ relatedEntitiesDocs, username }) => {
+  const { sourcererDataView: oldSourcererDataView } = useSourcererDataView(
+    SourcererScopeName.detections
+  );
+
+  const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
+  const { dataViewSpec } = useDataViewSpec(SourcererScopeName.detections);
+
+  const sourcererDataView = newDataViewPickerEnabled ? dataViewSpec : oldSourcererDataView;
+
+  const { data, isLoading, refetch, isError, error } = useRiskScorePreviewMatchedUsers({
+    data_view_id: sourcererDataView.title,
+    matched_entities: [...relatedEntitiesDocs.map((doc) => doc.user.name), username],
+    range: {
+      start: 'now-30d',
+      end: 'now',
+    },
+    exclude_alert_statuses: ['closed'],
+    skip: relatedEntitiesDocs.length === 0,
+  });
+
+  if (isError) {
+    return (
+      <EuiCallOut
+        data-test-subj="risk-preview-error"
+        title={'Error'}
+        color="danger"
+        iconType="error"
+      >
+        <p>{'An error occurred while fetching the risk score preview.'}</p>
+        <p>{JSON.stringify(error)}</p>
+        <EuiButton
+          data-test-subj="risk-preview-error-button"
+          color="danger"
+          onClick={() => refetch()}
+        >
+          {'Retry'}
+        </EuiButton>
+      </EuiCallOut>
+    );
+  }
+
+  if (isLoading) {
+    return <EuiLoadingElastic size="xl" />;
+  }
+
+  const normalisedRiskScore = data?.scores?.user?.[0].calculated_score_norm as number;
+
+  return (
+    <>
+      <EuiTitle size="s">
+        <h3>{'Summary'}</h3>
+      </EuiTitle>
+      <EuiSpacer size="m" />
+      <EuiPanel hasBorder paddingSize="m">
+        <EuiFlexGroup direction="column" gutterSize="s">
+          <EuiFlexItem>
+            <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
+              <EuiFlexItem grow={false}>
+                <EuiText size="s">
+                  <strong>{'Combined Risk Score:'}</strong>
+                </EuiText>
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <EuiBadge
+                  color={
+                    normalisedRiskScore > 75
+                      ? 'danger'
+                      : normalisedRiskScore > 50
+                      ? 'warning'
+                      : 'success'
+                  }
+                >
+                  {normalisedRiskScore ? normalisedRiskScore.toFixed(2) : 'N/A'}
+                </EuiBadge>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+            <EuiSpacer size="s" />
+            <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
+              <EuiFlexItem grow={false}>
+                <EuiText size="s">
+                  <strong>{'Number of confirmed matches:'}</strong>
+                </EuiText>
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <EuiBadge color="primary">{relatedEntitiesDocs.length}</EuiBadge>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+      </EuiPanel>
+    </>
+  );
+};
 
 export const EntityResolutionTab = ({ username, scopeId }: Props) => {
   const ER = useEntityResolutions({ name: username, type: 'user' });
@@ -66,12 +171,16 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
     return <EuiLoadingElastic size="xl" />;
   }
 
-  const related = ER.verifications.data && ER.verifications.data.relatedEntitiesDocs.length > 0 && (
-    <>
-      <EuiText>{'Confirmed Matches'}</EuiText>
-      <EuiSpacer size="s" />
+  const relatedEntitiesDocs = ER.verifications.data?.relatedEntitiesDocs || [];
 
-      {(ER.verifications.data?.relatedEntitiesDocs).map((doc) => (
+  const related = ER.verifications.data && relatedEntitiesDocs.length > 0 && (
+    <>
+      <EuiTitle size="s">
+        <h3>{'Confirmed Matches'}</h3>
+      </EuiTitle>
+      <EuiSpacer size="m" />
+
+      {relatedEntitiesDocs.map((doc) => (
         <RelatedEntity
           doc={doc}
           id={doc.entity.id}
@@ -84,10 +193,16 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
   );
   return (
     <EuiPanel color="transparent" hasBorder={false}>
-      <EuiTitle>
-        <h2>{'Entity Resolution'}</h2>
-      </EuiTitle>
-      <EuiSpacer size="l" />
+      {relatedEntitiesDocs.length > 0 && (
+        <>
+          <RiskScorePreviewSection relatedEntitiesDocs={relatedEntitiesDocs} username={username} />
+          <EuiSpacer size="m" />
+        </>
+      )}
+      <EuiSpacer size="m" />
+
+      {related}
+      <EuiSpacer size="m" />
 
       <CandidatesSection
         setScanning={ER.setScanning}
@@ -100,6 +215,7 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
             ? 'no_candidates'
             : 'data'
         }
+        relatedEntitiesDocs={relatedEntitiesDocs}
       >
         {ER.resolutions.candidates?.map((candidate) => (
           <Candidate
@@ -111,7 +227,7 @@ export const EntityResolutionTab = ({ username, scopeId }: Props) => {
           />
         ))}
       </CandidatesSection>
-      {related}
+      <EuiSpacer size="m" />
     </EuiPanel>
   );
 };
@@ -120,12 +236,21 @@ interface CandidatesSectionProps {
   state: 'init' | 'scanning' | 'no_candidates' | 'data';
   setScanning: (value: boolean) => void;
   children: React.ReactNode;
+  relatedEntitiesDocs: EntityResolutionSuggestion[];
 }
 
-const CandidatesSection: React.FC<CandidatesSectionProps> = ({ state, children, setScanning }) => {
+const CandidatesSection: React.FC<CandidatesSectionProps> = ({
+  state,
+  children,
+  setScanning,
+  relatedEntitiesDocs,
+}) => {
+  console.log('relatedEntitiesDocs', relatedEntitiesDocs);
   return (
     <>
-      <EuiText>{'Potential matches'}</EuiText>
+      <EuiTitle size="s">
+        <h3>{'Potential Matches'}</h3>
+      </EuiTitle>
       <EuiSpacer size="l" />
       {state === 'init' || state === 'scanning' ? (
         <EuiFlexGroup justifyContent="spaceAround" alignItems="center">
@@ -136,7 +261,9 @@ const CandidatesSection: React.FC<CandidatesSectionProps> = ({ state, children, 
               isLoading={state === 'scanning'}
               onClick={() => setScanning(true)}
             >
-              {'Find matching entities'}
+              {relatedEntitiesDocs.length > 0
+                ? 'Rescan for matching entities'
+                : 'Find matching entities'}
             </EuiButton>
           </EuiFlexItem>
         </EuiFlexGroup>

@@ -12,9 +12,15 @@ import type {
   SearchEntity,
 } from '@kbn/elastic-assistant-common/impl/schemas/entity_resolution';
 import { ENTITY_RESOLUTION } from '@kbn/elastic-assistant-plugin/common/constants';
+import type {
+  MatchedEntitiesPreviewRiskScoreRequestBody,
+  MatchedEntitiesPreviewRiskScoreResponse,
+} from '../../../common/api/entity_analytics/risk_engine/preview_matched_entities_route.gen';
 import {
   ENTITY_STORE_INTERNAL_PRIVILEGES_URL,
   LIST_ENTITIES_URL,
+  ENTITY_STORE_GET_ENTITIES_URL,
+  ENTITY_STORE_GET_RELATIONS_URL,
 } from '../../../common/entity_analytics/entity_store/constants';
 import type { UploadAssetCriticalityRecordsResponse } from '../../../common/api/entity_analytics/asset_criticality/upload_asset_criticality_csv.gen';
 import type { DisableRiskEngineResponse } from '../../../common/api/entity_analytics/risk_engine/engine_disable_route.gen';
@@ -58,10 +64,6 @@ import type { ReadRiskEngineSettingsResponse } from '../../../common/api/entity_
 import type { ListEntitiesResponse } from '../../../common/api/entity_analytics/entity_store/entities/list_entities.gen';
 import { type ListEntitiesRequestQuery } from '../../../common/api/entity_analytics/entity_store/entities/list_entities.gen';
 import type { EntityRelationRecord } from '../../../common/api/entity_analytics/entity_store/relations/common.gen';
-import {
-  ENTITY_STORE_GET_ENTITIES_URL,
-  ENTITY_STORE_GET_RELATIONS_URL,
-} from '../../../common/entity_analytics/entity_store/constants';
 import type { EntityRecord } from '../../../common/api/entity_analytics/entity_store/entities/common.gen';
 
 export interface DeleteAssetCriticalityResponse {
@@ -87,6 +89,23 @@ export const useEntityAnalyticsRoutes = () => {
         body: JSON.stringify(params),
         signal,
       });
+
+    const fetchRiskScorePreviewMatchedUsers = ({
+      signal,
+      params,
+    }: {
+      signal?: AbortSignal;
+      params: MatchedEntitiesPreviewRiskScoreRequestBody;
+    }) =>
+      http.fetch<MatchedEntitiesPreviewRiskScoreResponse>(
+        `${RISK_SCORE_PREVIEW_URL}/matched_entities`,
+        {
+          version: '1',
+          method: 'POST',
+          body: JSON.stringify(params),
+          signal,
+        }
+      );
 
     /**
      * Fetches entities from the Entity Store
@@ -379,6 +398,7 @@ export const useEntityAnalyticsRoutes = () => {
     };
 
     return {
+      fetchRiskScorePreviewMatchedUsers,
       fetchRiskScorePreview,
       fetchRiskEngineStatus,
       initRiskEngine,

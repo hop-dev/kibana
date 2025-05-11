@@ -153,7 +153,11 @@ const EntityDetailsSection: React.FC<Props> = ({
         data-test-subj="entity-details-accordion"
       >
         <EuiSpacer size="m" />
-        <RelatedEntitiesSummary resolution={resolution} onOpen={openDetailsPanel || noop} />
+        <RelatedEntitiesSummary
+          resolution={resolution}
+          onOpen={openDetailsPanel || noop}
+          userName={userName}
+        />
         <EuiSpacer size="m" />
         <ObservedEntity
           observedData={observedUser}

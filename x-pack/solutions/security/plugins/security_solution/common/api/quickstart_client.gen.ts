@@ -318,6 +318,10 @@ import type {
 } from './entity_analytics/risk_engine/entity_calculation_route.gen';
 import type { RiskEngineGetPrivilegesResponse } from './entity_analytics/risk_engine/get_risk_engine_privileges.gen';
 import type {
+  MatchedEntitiesPreviewRiskScoreRequestBodyInput,
+  MatchedEntitiesPreviewRiskScoreResponse,
+} from './entity_analytics/risk_engine/preview_matched_entities_route.gen';
+import type {
   PreviewRiskScoreRequestBodyInput,
   PreviewRiskScoreResponse,
 } from './entity_analytics/risk_engine/preview_route.gen';
@@ -1949,6 +1953,22 @@ providing you with the most current and effective threat detection capabilities.
       .catch(catchAxiosErrorFormatAndThrow);
   }
   /**
+   * Calculates and returns a list of Risk Scores, sorted by identifier_type and risk score.
+   */
+  async matchedEntitiesPreviewRiskScore(props: MatchedEntitiesPreviewRiskScoreProps) {
+    this.log.info(`${new Date().toISOString()} Calling API MatchedEntitiesPreviewRiskScore`);
+    return this.kbnClient
+      .request<MatchedEntitiesPreviewRiskScoreResponse>({
+        path: '/internal/risk_score/preview',
+        headers: {
+          [ELASTIC_HTTP_VERSION_HEADER]: '1',
+        },
+        method: 'POST',
+        body: props.body,
+      })
+      .catch(catchAxiosErrorFormatAndThrow);
+  }
+  /**
     * Update specific fields of an existing detection rule using the `rule_id` or `id` field.
 
 The difference between the `id` and `rule_id` is that the `id` is a unique rule identifier that is randomly generated when a rule is created and cannot be set, whereas `rule_id` is a stable rule identifier that can be assigned during rule creation.
@@ -2773,6 +2793,9 @@ export interface ListEntitiesProps {
 }
 export interface ListPrivMonUsersProps {
   query: ListPrivMonUsersRequestQueryInput;
+}
+export interface MatchedEntitiesPreviewRiskScoreProps {
+  body: MatchedEntitiesPreviewRiskScoreRequestBodyInput;
 }
 export interface PatchRuleProps {
   body: PatchRuleRequestBodyInput;

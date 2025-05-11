@@ -125,6 +125,7 @@ import {
 import { InstallPrepackedTimelinesRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/install_prepackaged_timelines/install_prepackaged_timelines_route.gen';
 import { ListEntitiesRequestQueryInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/entities/list_entities.gen';
 import { ListPrivMonUsersRequestQueryInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/privilege_monitoring/users/list.gen';
+import { MatchedEntitiesPreviewRiskScoreRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/risk_engine/preview_matched_entities_route.gen';
 import { PatchRuleRequestBodyInput } from '@kbn/security-solution-plugin/common/api/detection_engine/rule_management/crud/patch_rule/patch_rule_route.gen';
 import { PatchTimelineRequestBodyInput } from '@kbn/security-solution-plugin/common/api/timeline/patch_timelines/patch_timeline_route.gen';
 import {
@@ -1368,6 +1369,20 @@ providing you with the most current and effective threat detection capabilities.
         .query(props.query);
     },
     /**
+     * Calculates and returns a list of Risk Scores, sorted by identifier_type and risk score.
+     */
+    matchedEntitiesPreviewRiskScore(
+      props: MatchedEntitiesPreviewRiskScoreProps,
+      kibanaSpace: string = 'default'
+    ) {
+      return supertest
+        .post(routeWithNamespace('/internal/risk_score/preview', kibanaSpace))
+        .set('kbn-xsrf', 'true')
+        .set(ELASTIC_HTTP_VERSION_HEADER, '1')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .send(props.body as object);
+    },
+    /**
       * Update specific fields of an existing detection rule using the `rule_id` or `id` field.
 
 The difference between the `id` and `rule_id` is that the `id` is a unique rule identifier that is randomly generated when a rule is created and cannot be set, whereas `rule_id` is a stable rule identifier that can be assigned during rule creation.
@@ -2041,6 +2056,9 @@ export interface ListEntitiesProps {
 }
 export interface ListPrivMonUsersProps {
   query: ListPrivMonUsersRequestQueryInput;
+}
+export interface MatchedEntitiesPreviewRiskScoreProps {
+  body: MatchedEntitiesPreviewRiskScoreRequestBodyInput;
 }
 export interface PatchRuleProps {
   body: PatchRuleRequestBodyInput;

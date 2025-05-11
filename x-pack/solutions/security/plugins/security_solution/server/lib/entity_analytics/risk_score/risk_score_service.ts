@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { MatchedEntitiesPreviewRiskScoreResponse } from '../../../../common/api/entity_analytics/risk_engine/preview_matched_entities_route.gen';
 import type { ExperimentalFeatures } from '../../../../common';
 import type {
   RiskScoresCalculationResponse,
@@ -17,7 +18,7 @@ import type {
   EntityAnalyticsConfig,
   RiskEngineConfiguration,
 } from '../types';
-import { calculateRiskScores } from './calculate_risk_scores';
+import { calculateRiskScores, calculateRiskScoresForMatchedUsers } from './calculate_risk_scores';
 import { calculateAndPersistRiskScores } from './calculate_and_persist_risk_scores';
 import type { RiskEngineDataClient } from '../risk_engine/risk_engine_data_client';
 import type { AssetCriticalityService } from '../asset_criticality/asset_criticality_service';
@@ -30,6 +31,11 @@ export type RiskEngineConfigurationWithDefaults = RiskEngineConfiguration & {
 };
 export interface RiskScoreService {
   calculateScores: (params: CalculateScoresParams) => Promise<RiskScoresPreviewResponse>;
+  calculateScoresForMatchedUsers: (
+    params: CalculateScoresParams & {
+      matchedUsers: string[];
+    }
+  ) => Promise<MatchedEntitiesPreviewRiskScoreResponse>;
   calculateAndPersistScores: (
     params: CalculateAndPersistScoresParams
   ) => Promise<RiskScoresCalculationResponse>;
@@ -68,6 +74,13 @@ export const riskScoreServiceFactory = ({
       esClient,
       logger,
       experimentalFeatures,
+    }),
+  calculateScoresForMatchedUsers: (params) =>
+    calculateRiskScoresForMatchedUsers({
+      ...params,
+      assetCriticalityService,
+      esClient,
+      logger,
     }),
   calculateAndPersistScores: (params) =>
     calculateAndPersistRiskScores({

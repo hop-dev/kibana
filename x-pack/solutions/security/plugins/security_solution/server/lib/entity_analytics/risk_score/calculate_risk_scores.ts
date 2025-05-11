@@ -110,6 +110,7 @@ const buildIdentifierTypeAggregation = ({
   weights,
   alertSampleSizePerShard,
   scriptedMetricPainless,
+  aggregationFieldOverride,
 }: {
   afterKeys: AfterKeys;
   identifierType: EntityType;
@@ -117,9 +118,12 @@ const buildIdentifierTypeAggregation = ({
   weights?: RiskScoreWeights;
   alertSampleSizePerShard: number;
   scriptedMetricPainless: PainlessScripts;
+  aggregationFieldOverride?: string; // Optional field override for aggregation
 }): AggregationsAggregationContainer => {
   const globalIdentifierTypeWeight = getGlobalWeightForIdentifierType(identifierType, weights);
   const identifierField = getFieldForIdentifier(identifierType);
+
+  const aggregationField = aggregationFieldOverride ?? identifierField;
 
   return {
     composite: {
@@ -128,7 +132,7 @@ const buildIdentifierTypeAggregation = ({
         {
           [identifierField]: {
             terms: {
-              field: identifierField,
+              field: aggregationField,
             },
           },
         },
@@ -140,7 +144,6 @@ const buildIdentifierTypeAggregation = ({
         sampler: {
           shard_size: alertSampleSizePerShard,
         },
-
         aggs: {
           risk_details: {
             scripted_metric: {
@@ -206,6 +209,154 @@ export const getGlobalWeightForIdentifierType = (
   weights?: RiskScoreWeights
 ): number | undefined =>
   weights?.find((weight) => weight.type === RiskWeightTypes.global)?.[identifierType];
+
+// given an array of entity names which we know to be the same entity, and an entity type
+// return the risk score for this group of entities
+export const calculateRiskScoresForMatchedUsers = async ({
+  assetCriticalityService,
+  debug,
+  esClient,
+  index,
+  logger,
+  pageSize,
+  range,
+  // runtimeMappings,
+  weights,
+  matchedUsers,
+}: {
+  assetCriticalityService: AssetCriticalityService;
+  esClient: ElasticsearchClient;
+  logger: Logger;
+  matchedUsers: string[]; // Array of names that represent the same entity
+} & Omit<CalculateScoresParams, 'identifierType' | 'afterKeys'>): Promise<
+  Omit<RiskScoresPreviewResponse, 'after_keys'>
+> =>
+  withSecuritySpan('calculateRiskScoresForMatchedUsers', async () => {
+    if (matchedUsers.length === 0) {
+      throw new Error('No equivalent entities provided');
+    }
+
+    const now = new Date().toISOString();
+    const scriptedMetricPainless = await getPainlessScripts();
+    const filter = [filterFromRange(range), { exists: { field: ALERT_RISK_SCORE } }];
+
+    // Add filter to restrict alerts to those where user.name is one of matchedUsers
+    const userFilter = {
+      terms: {
+        'user.name': matchedUsers,
+      },
+    };
+
+    if (!isEmpty(userFilter)) {
+      filter.push(userFilter as QueryDslQueryContainer);
+    }
+
+    // Always use 'user' as the identifier type
+    const identifierType = 'user' as EntityType;
+    const identifierField = getFieldForIdentifier(identifierType);
+    const canonicalName = matchedUsers[0]; // Use the first entity as the canonical name
+
+    const runtimeMappings = {
+      normalized_identifier: {
+        type: 'keyword',
+        script: {
+          source: `
+          String fieldValue = doc['${identifierField}'].value;
+          // If the field value is in our list of equivalent entities, replace with canonical name
+          if (params.matchedUsers.contains(fieldValue)) {
+            emit(params.canonicalName);
+          } else {
+            emit(fieldValue);
+          }
+        `,
+          params: {
+            matchedUsers,
+            canonicalName,
+          },
+        },
+      },
+    } as const;
+
+    const request = {
+      size: 0,
+      _source: false,
+      index,
+      ignore_unavailable: true,
+      runtime_mappings: runtimeMappings,
+      query: {
+        function_score: {
+          query: {
+            bool: {
+              filter,
+              should: [
+                {
+                  match_all: {}, // This forces ES to calculate score
+                },
+              ],
+            },
+          },
+          field_value_factor: {
+            field: ALERT_RISK_SCORE, // sort by risk score
+          },
+        },
+      },
+      aggs: {
+        [identifierType]: buildIdentifierTypeAggregation({
+          identifierType,
+          pageSize,
+          weights,
+          alertSampleSizePerShard: 10_000,
+          scriptedMetricPainless,
+          aggregationFieldOverride: 'normalized_identifier',
+          afterKeys: {},
+        }),
+      },
+    };
+
+    if (debug) {
+      logger.info(`Executing Risk Score query for users:\n${JSON.stringify(request)}`);
+    }
+    try {
+      const response = await esClient.search<never, CalculateRiskScoreAggregations>(request);
+
+      if (debug) {
+        logger.info(`Received Risk Score response:\n${JSON.stringify(response)}`);
+      }
+
+      if (response.aggregations == null) {
+        return {
+          ...(debug ? { request, response } : {}),
+          scores: {
+            host: [],
+            user: [],
+            service: [],
+          },
+        };
+      }
+
+      const userBuckets = response.aggregations.user?.buckets ?? [];
+
+      const userScores = await processScores({
+        assetCriticalityService,
+        buckets: userBuckets,
+        identifierField: 'user.name',
+        logger,
+        now,
+      });
+
+      return {
+        ...(debug ? { request, response } : {}),
+        scores: {
+          host: [],
+          user: userScores,
+          service: [],
+        },
+      };
+    } catch (e) {
+      logger.error(`Error calculating risk scores for matched users: ${e}`);
+      throw e;
+    }
+  });
 
 export const calculateRiskScores = async ({
   afterKeys: userAfterKeys,
