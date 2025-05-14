@@ -30,7 +30,14 @@ export const useRiskScorePreviewMatchedUsers = ({
   const { fetchRiskScorePreviewMatchedUsers } = useEntityAnalyticsRoutes();
 
   return useQuery(
-    ['POST', 'FETCH_PREVIEW_RISK_SCORE_MATCHED_ENTITIES', range, filter, excludeAlertStatuses],
+    [
+      'POST',
+      'FETCH_PREVIEW_RISK_SCORE_MATCHED_ENTITIES',
+      range,
+      filter,
+      excludeAlertStatuses,
+      matchedUsers,
+    ],
     async ({ signal }) => {
       if (!dataViewId) {
         return;
