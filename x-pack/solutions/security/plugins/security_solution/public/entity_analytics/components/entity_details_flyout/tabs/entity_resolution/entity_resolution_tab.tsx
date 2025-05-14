@@ -21,7 +21,6 @@ import {
   EuiText,
   EuiTitle,
   EuiToolTip,
-  EuiCodeBlock,
   EuiCallOut,
 } from '@elastic/eui';
 import React from 'react';
@@ -30,6 +29,8 @@ import { css } from '@emotion/css';
 import { useExpandableFlyoutApi } from '@kbn/expandable-flyout';
 import { noop } from 'lodash/fp';
 import { JsonCodeEditor } from '@kbn/unified-doc-viewer-plugin/public';
+import { RISK_SEVERITY_COLOUR } from '../../../../common';
+import type { RiskSeverity } from '../../../../../../common/search_strategy';
 import { useRiskScorePreviewMatchedUsers } from '../../../../api/hooks/use_preview_risk_scores_matched_users';
 import { SourcererScopeName } from '../../../../../sourcerer/store/model';
 import { useDataViewSpec } from '../../../../../data_view_manager/hooks/use_data_view_spec';
@@ -40,6 +41,7 @@ import { UserPreviewPanelKey } from '../../../../../flyout/entity_details/user_r
 import { useEntityResolutions } from '../../../../api/hooks/use_entity_resolutions';
 import OktaLogo from './icons/okta.svg';
 import EntraIdLogo from './icons/entra_id.svg';
+import { RiskScoreLevel } from '../../../severity/common';
 
 interface Props {
   username: string;
@@ -94,9 +96,9 @@ const RiskScorePreviewSection: React.FC<{
   if (isLoading) {
     return <EuiLoadingElastic size="xl" />;
   }
-
   const normalisedRiskScore = data?.scores?.user?.[0].calculated_score_norm as number;
-
+  const riskLevel = data?.scores?.user?.[0].calculated_level as RiskSeverity;
+  const badgeColor = RISK_SEVERITY_COLOUR[riskLevel];
   return (
     <>
       <EuiTitle size="s">
@@ -109,19 +111,22 @@ const RiskScorePreviewSection: React.FC<{
             <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
               <EuiFlexItem grow={false}>
                 <EuiText size="s">
+                  <strong>{'Combined Risk Level:'}</strong>
+                </EuiText>
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <RiskScoreLevel severity={riskLevel} />
+              </EuiFlexItem>
+            </EuiFlexGroup>
+            <EuiSpacer size="s" />
+            <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
+              <EuiFlexItem grow={false}>
+                <EuiText size="s">
                   <strong>{'Combined Risk Score:'}</strong>
                 </EuiText>
               </EuiFlexItem>
               <EuiFlexItem grow={false}>
-                <EuiBadge
-                  color={
-                    normalisedRiskScore > 75
-                      ? 'danger'
-                      : normalisedRiskScore > 50
-                      ? 'warning'
-                      : 'success'
-                  }
-                >
+                <EuiBadge color={badgeColor}>
                   {normalisedRiskScore ? normalisedRiskScore.toFixed(2) : 'N/A'}
                 </EuiBadge>
               </EuiFlexItem>
@@ -245,7 +250,6 @@ const CandidatesSection: React.FC<CandidatesSectionProps> = ({
   setScanning,
   relatedEntitiesDocs,
 }) => {
-  console.log('relatedEntitiesDocs', relatedEntitiesDocs);
   return (
     <>
       <EuiTitle size="s">
@@ -261,7 +265,9 @@ const CandidatesSection: React.FC<CandidatesSectionProps> = ({
               isLoading={state === 'scanning'}
               onClick={() => setScanning(true)}
             >
-              {relatedEntitiesDocs.length > 0
+              {state === 'scanning'
+                ? 'Finding matching entities'
+                : relatedEntitiesDocs.length > 0
                 ? 'Rescan for matching entities'
                 : 'Find matching entities'}
             </EuiButton>
