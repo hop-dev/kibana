@@ -58,8 +58,7 @@ export const getInsightsInputTab = ({
 };
 
 export const getEntityResolutionTab = (username: string, scopeId: string) => ({
-  id: EntityDetailsLeftPanelTab.OBSERVED_DATA,
-  'data-test-subj': 'observed_data_tab',
+  id: EntityDetailsLeftPanelTab.ENTITY_RESOLUTION,
   name: (
     <FormattedMessage
       id="xpack.securitySolution.flyout.entityDetails.userDetails.observedData.tabLabel"

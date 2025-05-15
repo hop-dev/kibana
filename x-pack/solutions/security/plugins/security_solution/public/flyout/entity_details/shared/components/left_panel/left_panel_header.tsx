@@ -23,6 +23,7 @@ export enum EntityDetailsLeftPanelTab {
   OKTA = 'okta_document',
   ENTRA = 'entra_document',
   OBSERVED_DATA = 'observed_data',
+  ENTITY_RESOLUTION = 'entity_resolution',
   CSP_INSIGHTS = 'csp_insights',
 }
 

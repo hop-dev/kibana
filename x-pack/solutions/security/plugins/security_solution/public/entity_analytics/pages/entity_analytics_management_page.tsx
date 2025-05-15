@@ -46,7 +46,7 @@ export const EntityAnalyticsManagementPage = () => {
   useEffect(() => {
     get()
       ?.then(({ definitions }) =>
-        definitions.includes(ENTITY_DEFINITION_ID) ? setSate('installed') : setState('uninstalled')
+        definitions.includes(ENTITY_DEFINITION_ID) ? setState('installed') : setState('uninstalled')
       )
       .catch((error) => {
         // 404 means the model is not installed

@@ -39,6 +39,8 @@ export const useTabs = (
     const entraManagedUser = managedUser[ManagedUserDatasetKey.ENTRA];
     const oktaManagedUser = managedUser[ManagedUserDatasetKey.OKTA];
 
+    tabs.push(getEntityResolutionTab(name, scopeId));
+
     if (isRiskScoreExist) {
       tabs.push(
         getRiskInputTab({
@@ -56,8 +58,6 @@ export const useTabs = (
     if (entraManagedUser) {
       tabs.push(getEntraTab(entraManagedUser));
     }
-
-    tabs.push(getEntityResolutionTab(name, scopeId));
 
     if (hasMisconfigurationFindings || hasNonClosedAlerts) {
       tabs.push(getInsightsInputTab({ name, fieldName: EntityIdentifierFields.userName, scopeId }));

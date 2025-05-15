@@ -58,7 +58,7 @@ export const RelatedEntitiesSummary: React.FC<Props> = ({ resolution, onOpen }) 
     title: <EuiText>{'Entity Resolution'}</EuiText>,
 
     link: {
-      callback: () => onOpen(EntityDetailsLeftPanelTab.OBSERVED_DATA),
+      callback: () => onOpen(EntityDetailsLeftPanelTab.ENTITY_RESOLUTION),
 
       tooltip: 'View all related entities',
     },

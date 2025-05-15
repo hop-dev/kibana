@@ -96,6 +96,7 @@ const RiskScorePreviewSection: React.FC<{
   if (isLoading) {
     return <EuiLoadingElastic size="xl" />;
   }
+
   const normalisedRiskScore = data?.scores?.user?.[0].calculated_score_norm as number;
   const riskLevel = data?.scores?.user?.[0].calculated_level as RiskSeverity;
   const badgeColor = RISK_SEVERITY_COLOUR[riskLevel];
