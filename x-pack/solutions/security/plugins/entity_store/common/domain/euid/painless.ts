@@ -9,6 +9,26 @@ import type { EntityType, EuidAttribute } from '../definitions/entity_schema';
 import { getEntityDefinitionWithoutId } from '../definitions/registry';
 import { isEuidField, isEuidSeparator } from './commons';
 
+/**
+ * Returns an Elasticsearch runtime keyword field mapping whose Painless script
+ * computes the typed EUID for the given entity type.
+ *
+ * The script wraps {@link getEuidPainlessEvaluation} in a
+ * small helper so the value is emitted via `emit()` as required by keyword
+ * runtime fields.
+ */
+export function getEuidPainlessRuntimeMapping(entityType: EntityType): {
+  type: 'keyword';
+  script: { source: string };
+} {
+  const returnScript = getEuidPainlessEvaluation(entityType);
+  const emitScript = `String euid_eval(def doc) { ${returnScript} } def result = euid_eval(doc); if (result != null) { emit(result); }`;
+  return {
+    type: 'keyword',
+    script: { source: emitScript },
+  };
+}
+
 export function getEuidPainlessEvaluation(entityType: EntityType): string {
   const { identityField } = getEntityDefinitionWithoutId(entityType);
 

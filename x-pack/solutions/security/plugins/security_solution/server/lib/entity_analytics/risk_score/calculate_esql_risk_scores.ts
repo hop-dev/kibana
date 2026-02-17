@@ -16,7 +16,7 @@ import {
 } from '@kbn/rule-registry-plugin/common/technical_rule_data_field_names';
 import { toEntries } from 'fp-ts/Record';
 
-import { generateEUID, getEntityIdRuntimeMappings } from './entity_identifiers';
+import { euid } from '@kbn/entity-store/common';
 import { EntityTypeToNewIdentifierField } from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
 import type { EntityType } from '../../../../common/search_strategy';
@@ -304,7 +304,12 @@ export const getCompositeQuery = (
     ignore_unavailable: true,
     runtime_mappings: {
       ...params.runtimeMappings,
-      ...getEntityIdRuntimeMappings(entityTypes),
+      ...Object.fromEntries(
+        entityTypes.map((entityType) => [
+          EntityTypeToNewIdentifierField[entityType],
+          euid.getEuidPainlessRuntimeMapping(entityType),
+        ])
+      ),
     },
     query: {
       function_score: {
@@ -367,7 +372,7 @@ export const getESQL = (
              kibana.alert.uuid as alert_id,
              event.kind as category,
              @timestamp as time
-    | ${generateEUID(entityType)}
+    | EVAL ${identifierField} = ${euid.getEuidEsqlEvaluation(entityType, { withTypeId: true })}
     | WHERE ${rangeClause}
     | EVAL rule_name_b64 = TO_BASE64(rule_name),
            category_b64 = TO_BASE64(category)

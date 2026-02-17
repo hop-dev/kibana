@@ -25,6 +25,7 @@ export const FF_ENABLE_ENTITY_STORE_V2 = 'securitySolution:entityStoreEnableV2';
 export const euid = {
   getEuidFromObject: euidModule.getEuidFromObject,
   getEuidPainlessEvaluation: euidModule.getEuidPainlessEvaluation,
+  getEuidPainlessRuntimeMapping: euidModule.getEuidPainlessRuntimeMapping,
   getEuidDslFilterBasedOnDocument: euidModule.getEuidDslFilterBasedOnDocument,
   getEuidEsqlDocumentsContainsIdFilter: euidModule.getEuidEsqlDocumentsContainsIdFilter,
   getEuidEsqlEvaluation: euidModule.getEuidEsqlEvaluation,
