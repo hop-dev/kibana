@@ -27,6 +27,7 @@ describe('getEuidPainlessRuntimeMapping', () => {
 
       expect(mapping.type).toBe('keyword');
       expect(mapping.script).toBeDefined();
+      expect(mapping.script.source).toContain('emit(result)');
       expect(mapping.script.source).toContain(returnScript);
     });
   });

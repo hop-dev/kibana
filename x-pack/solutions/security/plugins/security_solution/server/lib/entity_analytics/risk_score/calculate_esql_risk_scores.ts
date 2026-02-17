@@ -19,6 +19,15 @@ import { toEntries } from 'fp-ts/Record';
 import { euid } from '@kbn/entity-store/common';
 import { EntityTypeToNewIdentifierField } from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
+
+/**
+ * Internal runtime field name for risk score composite aggregation and ESQL.
+ * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
+ * Painless script referencing the same field it defines, which causes script_exception
+ * in composite aggs. API responses still use EntityTypeToNewIdentifierField for id_field.
+ */
+const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
+
 import type { EntityType } from '../../../../common/search_strategy';
 import type { ExperimentalFeatures } from '../../../../common';
 
@@ -85,6 +94,9 @@ export const calculateScoresWithESQL = async (
           .search<never, RiskScoreCompositeBuckets>(query)
           .catch((e) => {
             logger.error(`Error executing composite query for ${entityType}: ${e.message}`);
+            logger.debug(
+              `Full composite query error: ${JSON.stringify(e?.body?.error?.root_cause || e)}`
+            );
             error = e;
             return null;
           });
@@ -160,9 +172,7 @@ export const calculateScoresWithESQL = async (
           buckets: Array<{ key: Record<string, string> }>;
           after_key?: Record<string, string>;
         };
-        const entities = buckets.map(
-          ({ key }) => key[(EntityTypeToNewIdentifierField as Record<string, string>)[entityType]]
-        );
+        const entities = buckets.map(({ key }) => key[getRiskScoreEntityIdField(entityType)]);
 
         if (entities.length === 0 || (entities.length === 1 && entities[0] === '')) {
           // TODO fix the possibility of the blank string on the composite aggregation side
@@ -173,9 +183,9 @@ export const calculateScoresWithESQL = async (
         }
         const bounds = {
           lower: (params.afterKeys as Record<string, Record<string, string>>)[entityType]?.[
-            (EntityTypeToNewIdentifierField as Record<string, string>)[entityType]
+            getRiskScoreEntityIdField(entityType)
           ],
-          upper: afterKey?.[(EntityTypeToNewIdentifierField as Record<string, string>)[entityType]],
+          upper: afterKey?.[getRiskScoreEntityIdField(entityType)],
         };
 
         const query = getESQL(
@@ -306,7 +316,7 @@ export const getCompositeQuery = (
       ...params.runtimeMappings,
       ...Object.fromEntries(
         entityTypes.map((entityType) => [
-          EntityTypeToNewIdentifierField[entityType],
+          getRiskScoreEntityIdField(entityType),
           euid.getEuidPainlessRuntimeMapping(entityType),
         ])
       ),
@@ -329,7 +339,7 @@ export const getCompositeQuery = (
       },
     },
     aggs: entityTypes.reduce((aggs, entityType) => {
-      const idField = EntityTypeToNewIdentifierField[entityType];
+      const idField = getRiskScoreEntityIdField(entityType);
       return {
         ...aggs,
         [entityType]: {
@@ -354,7 +364,7 @@ export const getESQL = (
   pageSize: number,
   index: string = '.alerts-security.alerts-default'
 ) => {
-  const identifierField = EntityTypeToNewIdentifierField[entityType];
+  const identifierField = getRiskScoreEntityIdField(entityType);
 
   const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
   const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
@@ -363,7 +373,7 @@ export const getESQL = (
   }
   const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
 
-  const query = /* SQL */ `
+  const query = /* ESQL */ `
   FROM ${index} METADATA _index
     | WHERE kibana.alert.risk_score IS NOT NULL
     | RENAME kibana.alert.risk_score as risk_score,

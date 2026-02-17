@@ -6,7 +6,11 @@
  */
 
 export { getEuidFromObject } from './memory';
-export { getEuidPainlessEvaluation, getEuidPainlessRuntimeMapping } from './painless';
+export {
+  getEuidPainlessEvaluation,
+  getEuidPainlessRuntimeMapping,
+  type GetEuidPainlessEvaluationOptions,
+} from './painless';
 export { getEuidDslFilterBasedOnDocument } from './dsl';
 export {
   getEuidEsqlDocumentsContainsIdFilter,
