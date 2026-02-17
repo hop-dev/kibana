@@ -30,8 +30,6 @@ interface HostPanelHeaderProps {
 
 const linkTitleCSS = { width: 'fit-content' };
 
-const urlParamOverride = { timeline: { isOpen: false } };
-
 export const HostPanelHeader = ({ hostName, lastSeen }: HostPanelHeaderProps) => {
   const lastSeenDate = lastSeen?.date;
   const isLoading = lastSeen?.isLoading ?? false;
