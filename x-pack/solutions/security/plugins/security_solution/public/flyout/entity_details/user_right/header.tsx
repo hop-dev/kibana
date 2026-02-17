@@ -34,8 +34,6 @@ interface UserPanelHeaderProps {
 
 const linkTitleCSS = { width: 'fit-content' };
 
-const urlParamOverride = { timeline: { isOpen: false } };
-
 export const UserPanelHeader = ({ userName, managedUser, lastSeen }: UserPanelHeaderProps) => {
   const observedUserLastSeenDate = lastSeen?.date;
   const isLoading = lastSeen?.isLoading ?? false;
