@@ -22,9 +22,14 @@ import {
 } from '@elastic/eui';
 import type { BoolQuery } from '@kbn/es-query';
 import { FormattedMessage } from '@kbn/i18n-react';
+import { useUiSetting$ } from '@kbn/kibana-react-plugin/public';
+import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/common';
 import { PageScope } from '../../../data_view_manager/constants';
 import type { EntityType } from '../../../../common/entity_analytics/types';
-import { EntityTypeToNewIdentifierField } from '../../../../common/entity_analytics/types';
+import {
+  EntityTypeToIdentifierField,
+  EntityTypeToNewIdentifierField,
+} from '../../../../common/entity_analytics/types';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
 import { RISK_SCORE_INDEX_PATTERN } from '../../../../common/entity_analytics/risk_engine';
 import { RiskScorePreviewTable } from './risk_score_preview_table';
@@ -156,6 +161,10 @@ const RiskEnginePreview: React.FC<{
   alertFilters?: Array<AlertFilter>;
 }> = ({ includeClosedAlerts, from, to, alertFilters }) => {
   const entityTypes = useEntityAnalyticsTypes();
+  const [entityStoreV2Enabled] = useUiSetting$<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+  const identifierFieldMap = entityStoreV2Enabled
+    ? EntityTypeToNewIdentifierField
+    : EntityTypeToIdentifierField;
 
   const [filters] = useState<{ bool: BoolQuery }>({
     bool: { must: [], filter: [], should: [], must_not: [] },
@@ -213,7 +222,7 @@ const RiskEnginePreview: React.FC<{
           <RiskScorePreviewPanel
             items={getRiskiestScores(
               data?.scores[entityType],
-              EntityTypeToNewIdentifierField[entityType]
+              identifierFieldMap[entityType]
             )}
             showMessage={
               <FormattedMessage

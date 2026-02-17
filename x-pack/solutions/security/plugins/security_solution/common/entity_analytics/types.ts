@@ -29,16 +29,16 @@ export enum EntityIdentifierFields {
   serviceEntityId = 'service.entity.id',
 }
 
-export const EntityTypeToIdentifierField: Record<EntityType, EntityIdentifierFields> = {
+export const EntityTypeToIdentifierField = {
   [EntityType.host]: EntityIdentifierFields.hostName,
   [EntityType.user]: EntityIdentifierFields.userName,
   [EntityType.service]: EntityIdentifierFields.serviceName,
   [EntityType.generic]: EntityIdentifierFields.generic,
-};
+} as const satisfies Record<EntityType, EntityIdentifierFields>;
 
-export const EntityTypeToNewIdentifierField: Record<EntityType, EntityIdentifierFields> = {
+export const EntityTypeToNewIdentifierField = {
   [EntityType.host]: EntityIdentifierFields.hostEntityId,
   [EntityType.user]: EntityIdentifierFields.userEntityId,
   [EntityType.service]: EntityIdentifierFields.serviceEntityId,
   [EntityType.generic]: EntityIdentifierFields.generic,
-};
+} as const satisfies Record<EntityType, EntityIdentifierFields>;

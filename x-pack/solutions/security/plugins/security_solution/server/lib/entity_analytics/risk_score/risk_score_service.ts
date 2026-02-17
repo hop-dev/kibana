@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, IUiSettingsClient, Logger } from '@kbn/core/server';
+import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/common';
 import { getPrivilegedMonitorUsersIndex } from '../../../../common/entity_analytics/privileged_user_monitoring/utils';
 import type { ExperimentalFeatures } from '../../../../common';
 import type { RiskScoresPreviewResponse } from '../../../../common/api/entity_analytics';
@@ -75,8 +76,10 @@ export const riskScoreServiceFactory = ({
   });
   return {
     calculateScores: async (params) => {
+      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
       return calculateScoresWithESQL({
         ...params,
+        useEntityStoreV2,
         assetCriticalityService,
         privmonUserCrudService,
         esClient,
@@ -85,9 +88,11 @@ export const riskScoreServiceFactory = ({
         filters: params.filters || [],
       });
     },
-    calculateAndPersistScores: (params) =>
-      calculateAndPersistRiskScores({
+    calculateAndPersistScores: async (params) => {
+      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+      return calculateAndPersistRiskScores({
         ...params,
+        useEntityStoreV2,
         assetCriticalityService,
         privmonUserCrudService,
         esClient,
@@ -95,7 +100,8 @@ export const riskScoreServiceFactory = ({
         riskScoreDataClient,
         spaceId,
         experimentalFeatures,
-      }),
+      });
+    },
     getConfigurationWithDefaults: async (entityAnalyticsConfig: EntityAnalyticsConfig) => {
       const savedObjectConfig = await riskEngineDataClient.getConfiguration();
 

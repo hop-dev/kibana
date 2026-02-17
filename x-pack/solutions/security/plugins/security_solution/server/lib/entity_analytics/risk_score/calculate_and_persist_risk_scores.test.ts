@@ -39,6 +39,7 @@ const calculateAndPersistRecentHostRiskScores = (
     privmonUserCrudService: privmonUserCrudServiceMock.create(),
     runtimeMappings: {},
     experimentalFeatures: {} as ExperimentalFeatures,
+    useEntityStoreV2: false,
   });
 };
 

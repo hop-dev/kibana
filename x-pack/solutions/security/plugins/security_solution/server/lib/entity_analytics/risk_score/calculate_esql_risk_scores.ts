@@ -5,6 +5,14 @@
  * 2.0.
  */
 
+// TODO: When entityStoreV2 (securitySolution:entityStoreEnableV2) is permanently enabled:
+// 1. Remove the `useEntityStoreV2` parameter from calculateScoresWithESQL, getCompositeQuery,
+//    getESQL, and buildRiskScoreBucket.
+// 2. Delete all V1 (legacy) code paths — the `else` branches and the V1 block in getESQL.
+// 3. Remove the EntityTypeToIdentifierField import; rename EntityTypeToNewIdentifierField
+//    to EntityTypeToIdentifierField in types.ts and update all references.
+// 4. Remove the FF read from risk_score_service.ts and risk_score_preview_section.tsx.
+
 import { isEmpty, omit } from 'lodash';
 import type { FieldValue, QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
@@ -17,7 +25,10 @@ import {
 import { toEntries } from 'fp-ts/Record';
 
 import { euid } from '@kbn/entity-store/common';
-import { EntityTypeToNewIdentifierField } from '../../../../common/entity_analytics/types';
+import {
+  EntityTypeToIdentifierField,
+  EntityTypeToNewIdentifierField,
+} from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
 
 /**
@@ -57,12 +68,13 @@ export const calculateScoresWithESQL = async (
     esClient: ElasticsearchClient;
     logger: Logger;
     experimentalFeatures: ExperimentalFeatures;
+    useEntityStoreV2: boolean;
   } & CalculateScoresParams & {
       filters?: Array<{ entity_types: string[]; filter: string }>;
     }
 ): Promise<RiskScoresPreviewResponse> =>
   withSecuritySpan('calculateRiskScores', async () => {
-    const { identifierType, logger, esClient } = params;
+    const { identifierType, logger, esClient, useEntityStoreV2 } = params;
     const now = new Date().toISOString();
 
     const identifierTypes: EntityType[] = identifierType
@@ -74,7 +86,7 @@ export const calculateScoresWithESQL = async (
       const filter = getFilters(params, entityType);
       return {
         entityType,
-        query: getCompositeQuery([entityType], filter, params),
+        query: getCompositeQuery([entityType], filter, params, useEntityStoreV2),
       };
     });
 
@@ -172,9 +184,15 @@ export const calculateScoresWithESQL = async (
           buckets: Array<{ key: Record<string, string> }>;
           after_key?: Record<string, string>;
         };
-        const entities = buckets.map(({ key }) => key[getRiskScoreEntityIdField(entityType)]);
+        const entityIdField = useEntityStoreV2
+          ? getRiskScoreEntityIdField(entityType)
+          : (EntityTypeToIdentifierField as Record<string, string>)[entityType];
+        const entities = buckets.map(({ key }) => key[entityIdField]);
 
-        if (entities.length === 0 || (entities.length === 1 && entities[0] === '')) {
+        const hasNoEntities = useEntityStoreV2
+          ? entities.length === 0 || (entities.length === 1 && entities[0] === '')
+          : entities.length === 0;
+        if (hasNoEntities) {
           // TODO fix the possibility of the blank string on the composite aggregation side
           return Promise.resolve([
             entityType as EntityType,
@@ -183,9 +201,9 @@ export const calculateScoresWithESQL = async (
         }
         const bounds = {
           lower: (params.afterKeys as Record<string, Record<string, string>>)[entityType]?.[
-            getRiskScoreEntityIdField(entityType)
+            entityIdField
           ],
-          upper: afterKey?.[getRiskScoreEntityIdField(entityType)],
+          upper: afterKey?.[entityIdField],
         };
 
         const query = getESQL(
@@ -193,7 +211,8 @@ export const calculateScoresWithESQL = async (
           bounds,
           params.alertSampleSizePerShard || 10000,
           params.pageSize,
-          params.index
+          params.index,
+          useEntityStoreV2
         );
 
         const entityFilter = getFilters(params, entityType as EntityType);
@@ -202,7 +221,11 @@ export const calculateScoresWithESQL = async (
             query,
             filter: { bool: { filter: entityFilter } },
           })
-          .then((rs) => rs.values.map(buildRiskScoreBucket(entityType as EntityType, params.index)))
+          .then((rs) =>
+            rs.values.map(
+              buildRiskScoreBucket(entityType as EntityType, params.index, useEntityStoreV2)
+            )
+          )
 
           .then(async (riskScoreBuckets) => {
             return applyScoreModifiers({
@@ -218,9 +241,9 @@ export const calculateScoresWithESQL = async (
               page: {
                 buckets: riskScoreBuckets,
                 bounds,
-                identifierField: (EntityTypeToNewIdentifierField as Record<string, string>)[
-                  entityType
-                ],
+                identifierField: useEntityStoreV2
+                  ? (EntityTypeToNewIdentifierField as Record<string, string>)[entityType]
+                  : (EntityTypeToIdentifierField as Record<string, string>)[entityType],
               },
             });
           })
@@ -306,21 +329,26 @@ const getFilters = (options: CalculateScoresParams, entityType?: EntityType) => 
 export const getCompositeQuery = (
   entityTypes: EntityType[],
   filter: QueryDslQueryContainer[],
-  params: CalculateScoresParams
+  params: CalculateScoresParams,
+  useEntityStoreV2: boolean
 ) => {
+  const runtimeMappings = useEntityStoreV2
+    ? {
+        ...params.runtimeMappings,
+        ...Object.fromEntries(
+          entityTypes.map((entityType) => [
+            getRiskScoreEntityIdField(entityType),
+            euid.getEuidPainlessRuntimeMapping(entityType),
+          ])
+        ),
+      }
+    : params.runtimeMappings;
+
   return {
     size: 0,
     index: params.index,
     ignore_unavailable: true,
-    runtime_mappings: {
-      ...params.runtimeMappings,
-      ...Object.fromEntries(
-        entityTypes.map((entityType) => [
-          getRiskScoreEntityIdField(entityType),
-          euid.getEuidPainlessRuntimeMapping(entityType),
-        ])
-      ),
-    },
+    runtime_mappings: runtimeMappings,
     query: {
       function_score: {
         query: {
@@ -339,7 +367,9 @@ export const getCompositeQuery = (
       },
     },
     aggs: entityTypes.reduce((aggs, entityType) => {
-      const idField = getRiskScoreEntityIdField(entityType);
+      const idField = useEntityStoreV2
+        ? getRiskScoreEntityIdField(entityType)
+        : EntityTypeToIdentifierField[entityType];
       return {
         ...aggs,
         [entityType]: {
@@ -362,28 +392,63 @@ export const getESQL = (
   },
   sampleSize: number,
   pageSize: number,
-  index: string = '.alerts-security.alerts-default'
+  index: string = '.alerts-security.alerts-default',
+  useEntityStoreV2: boolean = false
 ) => {
-  const identifierField = getRiskScoreEntityIdField(entityType);
+  if (useEntityStoreV2) {
+    // V2: EUID-based identification with runtime EVAL
+    const identifierField = getRiskScoreEntityIdField(entityType);
 
-  const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
-  const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
+    const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
+    const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
+    if (!lower && !upper) {
+      throw new Error('Either lower or upper after key must be provided for pagination');
+    }
+    const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
+
+    return /* ESQL */ `
+    FROM ${index} METADATA _index
+      | WHERE kibana.alert.risk_score IS NOT NULL
+      | RENAME kibana.alert.risk_score as risk_score,
+               kibana.alert.rule.name as rule_name,
+               kibana.alert.rule.uuid as rule_id,
+               kibana.alert.uuid as alert_id,
+               event.kind as category,
+               @timestamp as time
+      | EVAL ${identifierField} = ${euid.getEuidEsqlEvaluation(entityType, { withTypeId: true })}
+      | WHERE ${rangeClause}
+      | EVAL rule_name_b64 = TO_BASE64(rule_name),
+             category_b64 = TO_BASE64(category)
+      | EVAL input = CONCAT(""" {"risk_score": """", risk_score::keyword, """", "time": """", time::keyword, """", "index": """", _index, """", "rule_name_b64": """", rule_name_b64, """\", "category_b64": """", category_b64, """\", "id": \"""", alert_id, """\" } """)
+      | STATS
+          alert_count = count(risk_score),
+          scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
+          risk_inputs = TOP(input, 10, "desc")
+      BY ${identifierField}
+      | SORT scores DESC
+      | LIMIT ${pageSize}
+    `;
+  }
+
+  // V1: Legacy name-based identification with KQL range filter
+  const identifierField = EntityTypeToIdentifierField[entityType];
+
+  const lower = afterKeys.lower ? `${identifierField} > ${afterKeys.lower}` : undefined;
+  const upper = afterKeys.upper ? `${identifierField} <= ${afterKeys.upper}` : undefined;
   if (!lower && !upper) {
     throw new Error('Either lower or upper after key must be provided for pagination');
   }
-  const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
+  const rangeClause = [lower, upper].filter(Boolean).join(' and ');
 
-  const query = /* ESQL */ `
+  return /* SQL */ `
   FROM ${index} METADATA _index
-    | WHERE kibana.alert.risk_score IS NOT NULL
+    | WHERE kibana.alert.risk_score IS NOT NULL AND KQL("${rangeClause}")
     | RENAME kibana.alert.risk_score as risk_score,
              kibana.alert.rule.name as rule_name,
              kibana.alert.rule.uuid as rule_id,
              kibana.alert.uuid as alert_id,
              event.kind as category,
              @timestamp as time
-    | EVAL ${identifierField} = ${euid.getEuidEsqlEvaluation(entityType, { withTypeId: true })}
-    | WHERE ${rangeClause}
     | EVAL rule_name_b64 = TO_BASE64(rule_name),
            category_b64 = TO_BASE64(category)
     | EVAL input = CONCAT(""" {"risk_score": """", risk_score::keyword, """", "time": """", time::keyword, """", "index": """", _index, """", "rule_name_b64": """", rule_name_b64, """\", "category_b64": """", category_b64, """\", "id": \"""", alert_id, """\" } """)
@@ -395,12 +460,10 @@ export const getESQL = (
     | SORT scores DESC
     | LIMIT ${pageSize}
   `;
-
-  return query;
 };
 
 export const buildRiskScoreBucket =
-  (entityType: EntityType, index: string) =>
+  (entityType: EntityType, index: string, useEntityStoreV2: boolean) =>
   (row: FieldValue[]): RiskScoreBucket => {
     const [count, score, _inputs, entity] = row as [
       number,
@@ -454,7 +517,11 @@ export const buildRiskScoreBucket =
     });
 
     return {
-      key: { [EntityTypeToNewIdentifierField[entityType]]: entity },
+      key: {
+        [(useEntityStoreV2 ? EntityTypeToNewIdentifierField : EntityTypeToIdentifierField)[
+          entityType
+        ]]: entity,
+      },
       doc_count: count,
       top_inputs: {
         doc_count: inputs.length,

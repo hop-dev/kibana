@@ -29,6 +29,7 @@ export const calculateAndPersistRiskScores = async (
     spaceId: string;
     riskScoreDataClient: RiskScoreDataClient;
     experimentalFeatures: ExperimentalFeatures;
+    useEntityStoreV2: boolean;
   }
 ): Promise<CalculationResults> => {
   const { riskScoreDataClient, spaceId, returnScores, refresh, ...rest } = params;
