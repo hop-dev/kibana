@@ -9,27 +9,13 @@ import type { EntityType, EuidAttribute } from '../definitions/entity_schema';
 import { getEntityDefinitionWithoutId } from '../definitions/registry';
 import { isEuidField, isEuidSeparator } from './commons';
 
-/** Identity field names that are typically defined as runtime fields in the same request; script must not reference them to avoid circular/unsupported doc lookup. */
-const RUNTIME_IDENTITY_FIELDS = new Set([
-  'host.entity.id',
-  'user.entity.id',
-  'service.entity.id',
-  'entity.id',
-]);
-
 /**
  * Returns an Elasticsearch runtime keyword field mapping whose Painless script
  * computes the typed EUID for the given entity type.
  *
- * The script wraps {@link getEuidPainlessEvaluation} in a
- * small helper so the value is emitted via `emit()` as required by keyword
- * runtime fields. When used in composite aggs, use a runtime field name other
- * than ECS identity fields (e.g. risk_score.entity_id.user) so the script can
- * safely reference doc['user.entity.id'] from the document.
- *
  * Example usage:
  * ```ts
- * runtime_mappings: { 'risk_score.entity_id.user': getEuidPainlessRuntimeMapping('user') }
+ * runtime_mappings: { 'user_id': getEuidPainlessRuntimeMapping('user') }
  * ```
  *
  * @param entityType - The entity type string (e.g. 'host', 'user', 'generic')
@@ -48,18 +34,7 @@ export function getEuidPainlessRuntimeMapping(entityType: EntityType): {
 }
 
 /**
- * Options for getEuidPainlessEvaluation.
- * @property forRuntimeField - When true, omit clauses that reference identity fields (host.entity.id, user.entity.id, etc.) so the script is safe to use as a runtime field that defines one of those fields (avoids circular doc lookup in composite aggs).
- */
-export interface GetEuidPainlessEvaluationOptions {
-  forRuntimeField?: boolean;
-}
-
-/**
  * Constructs a Painless evaluation for the provided entity type to generate the entity id.
- *
- * To use in a runtime field, you can wrap the generation around a function and emit the value.
- * Use forRuntimeField: true when the script will define an identity field (e.g. host.entity.id) so it does not reference that or other identity fields.
  *
  * Example usage:
  * ```ts
@@ -71,31 +46,17 @@ export interface GetEuidPainlessEvaluationOptions {
  * ```
  *
  * @param entityType - The entity type string (e.g. 'host', 'user', 'generic')
- * @param options - forRuntimeField: omit clauses that reference identity fields (for use as runtime field script)
  * @returns A Painless evaluation string that computes the entity id.
  */
-export function getEuidPainlessEvaluation(
-  entityType: EntityType,
-  options: GetEuidPainlessEvaluationOptions = {}
-): string {
-  const { forRuntimeField = false } = options;
+export function getEuidPainlessEvaluation(entityType: EntityType): string {
   const { identityField } = getEntityDefinitionWithoutId(entityType);
 
-  const euidFieldsFiltered = forRuntimeField
-    ? identityField.euidFields.filter(
-        (composedField) =>
-          !composedField.some(
-            (attr) => isEuidField(attr) && RUNTIME_IDENTITY_FIELDS.has(attr.field)
-          )
-      )
-    : identityField.euidFields;
-
-  if (euidFieldsFiltered.length === 0) {
+  if (identityField.euidFields.length === 0) {
     throw new Error('No euid fields found, invalid euid logic definition');
   }
 
-  if (euidFieldsFiltered.length === 1) {
-    const first = euidFieldsFiltered[0][0];
+  if (identityField.euidFields.length === 1) {
+    const first = identityField.euidFields[0][0];
     if (isEuidSeparator(first)) {
       throw new Error('Separator found in single field, invalid euid logic definition');
     }
@@ -106,7 +67,7 @@ export function getEuidPainlessEvaluation(
   }
 
   const prefix = `"${entityType}:"`;
-  const clauses = euidFieldsFiltered.map((composedField) => {
+  const clauses = identityField.euidFields.map((composedField) => {
     const condition = buildPainlessCondition(composedField);
     const valueExpr = buildPainlessValueExpr(composedField);
     return `if (${condition}) { return ${prefix} + ${valueExpr}; }`;

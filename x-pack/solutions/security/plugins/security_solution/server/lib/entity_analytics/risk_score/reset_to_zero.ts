@@ -32,15 +32,6 @@ export interface ResetToZeroDependencies {
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
 const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
-const RISK_SCORE_ID_FIELD = 'risk.id_field';
-
-const getExpectedIdentifierField = ({
-  entityType,
-  useEntityStoreV2,
-}: {
-  entityType: EntityType;
-  useEntityStoreV2: boolean;
-}) => (useEntityStoreV2 ? EntityIdentifierFields.generic : EntityTypeToIdentifierField[entityType]);
 
 export const resetToZero = async ({
   esClient,
@@ -55,20 +46,21 @@ export const resetToZero = async ({
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
-  const expectedIdentifierField = getExpectedIdentifierField({ entityType, useEntityStoreV2 });
+  const identifierField = useEntityStoreV2
+    ? EntityIdentifierFields.generic
+    : EntityTypeToIdentifierField[entityType];
   const excludedEntitiesClause = `AND id_value NOT IN (${excludedEntities
     .map((e) => `"${e}"`)
     .join(',')})`;
   const esql = /* sql */ `
     FROM ${alias} 
     | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
-    | EVAL id_value = TO_STRING(${entityField}),
-           id_field = TO_STRING(${entityType}.${RISK_SCORE_ID_FIELD})
+    | EVAL id_value = TO_STRING(${entityField})
     | WHERE id_value IS NOT NULL AND id_value != "" ${
       excludedEntities.length > 0 ? excludedEntitiesClause : ''
     }
-    | STATS count = count(id_value), id_field = FIRST(id_field) BY id_value
-    | KEEP id_value, id_field
+    | STATS count = count(id_value) BY id_value
+    | KEEP id_value
     `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
@@ -92,26 +84,6 @@ export const resetToZero = async ({
     acc.push(entity);
     return acc;
   }, []);
-
-  const extractedIdentifierFields = Array.from(
-    new Set(
-      response.values.flatMap((row) => {
-        const [, idField] = row;
-        return typeof idField === 'string' && idField !== '' ? [idField] : [];
-      })
-    )
-  );
-
-  const identifierField =
-    extractedIdentifierFields.length === 1 ? extractedIdentifierFields[0] : expectedIdentifierField;
-
-  if (extractedIdentifierFields.length > 1) {
-    logger.warn(
-      `Multiple id_field values found while resetting ${entityType} scores (${extractedIdentifierFields.join(
-        ', '
-      )}); falling back to ${expectedIdentifierField}.`
-    );
-  }
 
   const buckets: RiskScoreBucket[] = entities.map((entity) => {
     const bucket: RiskScoreBucket = {

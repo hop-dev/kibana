@@ -9,8 +9,8 @@
 // 1. Remove the `useEntityStoreV2` parameter from calculateScoresWithESQL, getCompositeQuery,
 //    getESQL, and buildRiskScoreBucket.
 // 2. Delete all V1 (legacy) code paths — the `else` branches and the V1 block in getESQL.
-// 3. Remove the EntityTypeToIdentifierField import; rename EntityTypeToNewIdentifierField
-//    to EntityTypeToIdentifierField in types.ts and update all references.
+// 3. Remove legacy identifier field mapping (`EntityTypeToIdentifierField`) and keep `entity.id`
+//    as the single output id field across entity types.
 // 4. Remove the FF read from risk_score_service.ts and risk_score_preview_section.tsx.
 
 import { isEmpty, omit } from 'lodash';
@@ -53,7 +53,7 @@ import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privi
  * Internal runtime field name for risk score composite aggregation and ESQL.
  * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
  * Painless script referencing the same field it defines, which causes script_exception
- * in composite aggs. API responses still use EntityTypeToNewIdentifierField for id_field.
+ * in composite aggs. API responses continue to expose normalized `entity.id` for V2.
  */
 const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
 

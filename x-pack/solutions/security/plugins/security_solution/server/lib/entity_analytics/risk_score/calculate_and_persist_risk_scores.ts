@@ -49,7 +49,9 @@ export const calculateAndPersistRiskScores = async (
     generic: scores.generic?.map((score: { id_value: string }) => score.id_value) || [],
   };
 
-  if (!scores.host?.length && !scores.user?.length && !scores.service?.length) {
+  const hasAnyScores = Object.values(entities).some((entityIds) => entityIds.length > 0);
+
+  if (!hasAnyScores) {
     return {
       after_keys: {},
       errors: [],
