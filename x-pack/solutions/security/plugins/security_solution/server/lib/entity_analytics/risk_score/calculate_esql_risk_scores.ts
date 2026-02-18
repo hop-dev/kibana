@@ -187,13 +187,11 @@ export const calculateScoresWithESQL = async (
         const entityIdField = useEntityStoreV2
           ? getRiskScoreEntityIdField(entityType)
           : (EntityTypeToIdentifierField as Record<string, string>)[entityType];
-        const entities = buckets.map(({ key }) => key[entityIdField]);
+        const entities = buckets
+          .map(({ key }) => key[entityIdField])
+          .filter((entity): entity is string => entity != null && entity !== '');
 
-        const hasNoEntities = useEntityStoreV2
-          ? entities.length === 0 || (entities.length === 1 && entities[0] === '')
-          : entities.length === 0;
-        if (hasNoEntities) {
-          // TODO fix the possibility of the blank string on the composite aggregation side
+        if (entities.length === 0) {
           return Promise.resolve([
             entityType as EntityType,
             { afterKey: afterKey || {}, scores: [] },
@@ -215,6 +213,10 @@ export const calculateScoresWithESQL = async (
           useEntityStoreV2
         );
 
+        const identitySourceFields = useEntityStoreV2
+          ? euid.getIdentitySourceFields(entityType as EntityType).identitySourceFields
+          : undefined;
+
         const entityFilter = getFilters(params, entityType as EntityType);
         return esClient.esql
           .query({
@@ -223,7 +225,12 @@ export const calculateScoresWithESQL = async (
           })
           .then((rs) =>
             rs.values.map(
-              buildRiskScoreBucket(entityType as EntityType, params.index, useEntityStoreV2)
+              buildRiskScoreBucket(
+                entityType as EntityType,
+                params.index,
+                useEntityStoreV2,
+                identitySourceFields
+              )
             )
           )
 
@@ -396,8 +403,9 @@ export const getESQL = (
   useEntityStoreV2: boolean = false
 ) => {
   if (useEntityStoreV2) {
-    // V2: EUID-based identification with runtime EVAL
+    // V2: EUID-based identification with runtime EVAL and identity source fields for entity store
     const identifierField = getRiskScoreEntityIdField(entityType);
+    const { identitySourceFields } = euid.getIdentitySourceFields(entityType);
 
     const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
     const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
@@ -405,6 +413,17 @@ export const getESQL = (
       throw new Error('Either lower or upper after key must be provided for pagination');
     }
     const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
+
+    const identityStats = identitySourceFields
+      .map((field, i) => `id_src_${i} = FIRST(TO_STRING(${field}), time)`)
+      .join(',\n          ');
+
+    const statsClause = `| STATS
+          alert_count = count(risk_score),
+          scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
+          risk_inputs = TOP(input, 10, "desc"),
+          ${identityStats}
+      BY ${identifierField}`;
 
     return /* ESQL */ `
     FROM ${index} METADATA _index
@@ -420,11 +439,7 @@ export const getESQL = (
       | EVAL rule_name_b64 = TO_BASE64(rule_name),
              category_b64 = TO_BASE64(category)
       | EVAL input = CONCAT(""" {"risk_score": """", risk_score::keyword, """", "time": """", time::keyword, """", "index": """", _index, """", "rule_name_b64": """", rule_name_b64, """\", "category_b64": """", category_b64, """\", "id": \"""", alert_id, """\" } """)
-      | STATS
-          alert_count = count(risk_score),
-          scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
-          risk_inputs = TOP(input, 10, "desc")
-      BY ${identifierField}
+      ${statsClause}
       | SORT scores DESC
       | LIMIT ${pageSize}
     `;
@@ -462,15 +477,32 @@ export const getESQL = (
   `;
 };
 
+const BASE_ROW_LENGTH = 4; // count, score, risk_inputs, entity (BY column is last in ESQL response)
+
 export const buildRiskScoreBucket =
-  (entityType: EntityType, index: string, useEntityStoreV2: boolean) =>
+  (
+    entityType: EntityType,
+    index: string,
+    useEntityStoreV2: boolean,
+    identitySourceFields?: string[]
+  ) =>
   (row: FieldValue[]): RiskScoreBucket => {
-    const [count, score, _inputs, entity] = row as [
-      number,
-      number,
-      string | string[], // ES Multivalue nonsense: if it's just one value we get the value, if it's multiple we get an array
-      string
-    ];
+    const identityCount = identitySourceFields?.length ?? 0;
+    const entityIndex = BASE_ROW_LENGTH - 1 + identityCount;
+    const count = row[0] as number;
+    const score = row[1] as number;
+    const _inputs = row[2] as string | string[];
+    const entity = row[entityIndex] as string;
+
+    const identitySource: Record<string, string | null> | undefined =
+      identityCount > 0 && identitySourceFields
+        ? Object.fromEntries(
+            identitySourceFields.map((field, i) => {
+              const v = row[3 + i];
+              return [field, v == null || v === '' ? null : String(v)];
+            })
+          )
+        : undefined;
 
     const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
       let parsedRiskInputData = JSON.parse('{}');
@@ -516,7 +548,7 @@ export const buildRiskScoreBucket =
       };
     });
 
-    return {
+    const bucket: RiskScoreBucket = {
       key: {
         [(useEntityStoreV2 ? EntityTypeToNewIdentifierField : EntityTypeToIdentifierField)[
           entityType
@@ -537,4 +569,8 @@ export const buildRiskScoreBucket =
         },
       },
     };
+    if (identitySource !== undefined) {
+      bucket.identity_source = identitySource;
+    }
+    return bucket;
   };

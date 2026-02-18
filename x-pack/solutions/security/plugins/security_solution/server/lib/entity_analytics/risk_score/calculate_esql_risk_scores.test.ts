@@ -5,8 +5,9 @@
  * 2.0.
  */
 
-import { EntityType } from '../../../../common/search_strategy';
+import { euid } from '@kbn/entity-store/common';
 import type { FieldValue } from '@elastic/elasticsearch/lib/api/types';
+import { EntityType } from '../../../../common/search_strategy';
 import { buildRiskScoreBucket, getCompositeQuery, getESQL } from './calculate_esql_risk_scores';
 import type { CalculateScoresParams, RiskScoreBucket } from '../types';
 import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from './constants';
@@ -138,6 +139,37 @@ describe('Calculate risk scores with ESQL', () => {
       )(esqlResultRow as FieldValue[]);
 
       expect(bucket.key).toEqual({ 'service.entity.id': 'service:my-svc' });
+    });
+
+    it('V2: includes identity_source when identitySourceFields is passed', () => {
+      const identitySourceFields = euid.getIdentitySourceFields(
+        EntityType.host
+      ).identitySourceFields;
+      // Row: count, score, inputs, ...identityValues, entity (BY column last)
+      const idVals = ['eid-1', 'hid-2', 'server1', 'example.com', 'server1.example.com'];
+      const esqlResultRow = [
+        10,
+        100,
+        sampleInputs,
+        ...idVals,
+        'host:server1.example.com',
+      ] as FieldValue[];
+
+      const bucket = buildRiskScoreBucket(
+        EntityType.host,
+        '.alerts-security.alerts-default',
+        true,
+        identitySourceFields
+      )(esqlResultRow);
+
+      expect(bucket.key).toEqual({ 'host.entity.id': 'host:server1.example.com' });
+      expect(bucket.identity_source).toEqual({
+        'host.entity.id': 'eid-1',
+        'host.id': 'hid-2',
+        'host.name': 'server1',
+        'host.domain': 'example.com',
+        'host.hostname': 'server1.example.com',
+      });
     });
 
     it('parses esql results into RiskScoreBucket', () => {

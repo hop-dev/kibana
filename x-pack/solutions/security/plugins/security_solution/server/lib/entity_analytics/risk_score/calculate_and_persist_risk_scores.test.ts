@@ -177,5 +177,49 @@ describe('calculateAndPersistRiskScores', () => {
       });
       expect(options).toEqual({ refresh: undefined });
     });
+
+    it('includes identity source fields in V2 document when present on score', async () => {
+      const hostScoreWithIdentity = {
+        '@timestamp': '2024-01-15T12:00:00Z',
+        id_field: 'host.entity.id',
+        id_value: 'host:server1.example.com',
+        calculated_level: EntityRiskLevelsEnum.High,
+        calculated_score: 75,
+        calculated_score_norm: 42,
+        category_1_score: 50,
+        category_1_count: 5,
+        notes: [],
+        inputs: [],
+        identity_source: {
+          'host.entity.id': null,
+          'host.id': null,
+          'host.name': 'server1',
+          'host.domain': 'example.com',
+          'host.hostname': 'server1.example.com',
+        },
+      };
+      (calculateScoresWithESQL as jest.Mock).mockResolvedValueOnce(
+        calculateScoresWithESQLMock.buildResponse({
+          scores: { host: [hostScoreWithIdentity], user: [], service: [], generic: [] },
+        })
+      );
+
+      await calculate(true);
+
+      const [bulkObjects] = mockUpsertEntitiesBulk.mock.calls[0];
+      expect(bulkObjects).toHaveLength(1);
+      const doc = bulkObjects[0].document as Record<string, unknown>;
+      expect(doc['host.name']).toBe('server1');
+      expect(doc['host.domain']).toBe('example.com');
+      expect(doc['host.hostname']).toBe('server1.example.com');
+      expect(doc.entity).toEqual({
+        id: 'host:server1.example.com',
+        risk: {
+          calculated_score: 75,
+          calculated_score_norm: 42,
+          calculated_level: 'High',
+        },
+      });
+    });
   });
 });

@@ -12,17 +12,33 @@ import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analyt
 import type { BulkObject } from '../entity_store_v2/temp_entity_store_v2_writer';
 import { TempEntityStoreV2Writer } from '../entity_store_v2/temp_entity_store_v2_writer';
 
-const scoreToV2Document = (score: EntityRiskScoreRecord) => ({
-  '@timestamp': score['@timestamp'],
-  entity: {
-    id: score.id_value,
-    risk: {
-      calculated_score: score.calculated_score,
-      calculated_score_norm: score.calculated_score_norm,
-      calculated_level: score.calculated_level,
+type ScoreWithIdentity = EntityRiskScoreRecord & {
+  identity_source?: Record<string, string | null>;
+};
+
+const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> => {
+  const base = {
+    '@timestamp': score['@timestamp'],
+    entity: {
+      id: score.id_value,
+      risk: {
+        calculated_score: score.calculated_score,
+        calculated_score_norm: score.calculated_score_norm,
+        calculated_level: score.calculated_level,
+      },
     },
-  },
-});
+  };
+  const identitySource = score.identity_source;
+  if (identitySource && Object.keys(identitySource).length > 0) {
+    const identityFields = Object.fromEntries(
+      Object.entries(identitySource).filter(
+        (entry): entry is [string, string] => entry[1] != null && entry[1] !== ''
+      )
+    );
+    return { ...identityFields, ...base };
+  }
+  return base;
+};
 
 const buildV2BulkObjectsFromScores = (
   scores: Partial<Record<EntityType, EntityRiskScoreRecord[]>>

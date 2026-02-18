@@ -51,7 +51,9 @@ export function getEuidPainlessRuntimeMapping(entityType: EntityType): {
  * Options for getEuidPainlessEvaluation.
  * @property forRuntimeField - When true, omit clauses that reference identity fields (host.entity.id, user.entity.id, etc.) so the script is safe to use as a runtime field that defines one of those fields (avoids circular doc lookup in composite aggs).
  */
-export type GetEuidPainlessEvaluationOptions = { forRuntimeField?: boolean };
+export interface GetEuidPainlessEvaluationOptions {
+  forRuntimeField?: boolean;
+}
 
 /**
  * Constructs a Painless evaluation for the provided entity type to generate the entity id.

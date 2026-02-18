@@ -46,7 +46,12 @@ exports[`Calculate risk scores with ESQL ESQL query V2 (entity store v2, useEnti
       | STATS
           alert_count = count(risk_score),
           scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, 10000, \\"desc\\"), 1.5),
-          risk_inputs = TOP(input, 10, \\"desc\\")
+          risk_inputs = TOP(input, 10, \\"desc\\"),
+          id_src_0 = FIRST(TO_STRING(host.entity.id), time),
+          id_src_1 = FIRST(TO_STRING(host.id), time),
+          id_src_2 = FIRST(TO_STRING(host.name), time),
+          id_src_3 = FIRST(TO_STRING(host.domain), time),
+          id_src_4 = FIRST(TO_STRING(host.hostname), time)
       BY host_id
       | SORT scores DESC
       | LIMIT 3500

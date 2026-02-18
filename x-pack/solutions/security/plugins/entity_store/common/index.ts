@@ -30,9 +30,11 @@ export const euid = {
   getEuidEsqlDocumentsContainsIdFilter: euidModule.getEuidEsqlDocumentsContainsIdFilter,
   getEuidEsqlEvaluation: euidModule.getEuidEsqlEvaluation,
   getEuidEsqlFilterBasedOnDocument: euidModule.getEuidEsqlFilterBasedOnDocument,
+  getIdentitySourceFields: euidModule.getIdentitySourceFields,
 };
 
 export type { EntityType } from './domain/definitions/entity_schema';
+export type { IdentitySourceFields } from './domain/euid';
 
 export type EntityStoreStatus = z.infer<typeof EntityStoreStatus>;
 export const EntityStoreStatus = z.enum([
