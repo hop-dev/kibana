@@ -105,7 +105,7 @@ describe('Calculate risk scores with ESQL', () => {
       expect(bucket.key).toEqual({ 'host.name': 'hostname' });
     });
 
-    it('V2: keys bucket by host.entity.id when useEntityStoreV2 is true', () => {
+    it('V2: keys bucket by entity.id when useEntityStoreV2 is true', () => {
       const esqlResultRow = [10, 100, sampleInputs, 'host:abc123'];
 
       const bucket = buildRiskScoreBucket(
@@ -114,10 +114,10 @@ describe('Calculate risk scores with ESQL', () => {
         true
       )(esqlResultRow as FieldValue[]);
 
-      expect(bucket.key).toEqual({ 'host.entity.id': 'host:abc123' });
+      expect(bucket.key).toEqual({ 'entity.id': 'host:abc123' });
     });
 
-    it('V2: keys bucket by user.entity.id for user entity type', () => {
+    it('V2: keys bucket by entity.id for user entity type', () => {
       const esqlResultRow = [5, 80, sampleInputs.slice(0, 1), 'user:alice'];
 
       const bucket = buildRiskScoreBucket(
@@ -126,10 +126,10 @@ describe('Calculate risk scores with ESQL', () => {
         true
       )(esqlResultRow as FieldValue[]);
 
-      expect(bucket.key).toEqual({ 'user.entity.id': 'user:alice' });
+      expect(bucket.key).toEqual({ 'entity.id': 'user:alice' });
     });
 
-    it('V2: keys bucket by service.entity.id for service entity type', () => {
+    it('V2: keys bucket by entity.id for service entity type', () => {
       const esqlResultRow = [3, 60, sampleInputs.slice(0, 1), 'service:my-svc'];
 
       const bucket = buildRiskScoreBucket(
@@ -138,7 +138,7 @@ describe('Calculate risk scores with ESQL', () => {
         true
       )(esqlResultRow as FieldValue[]);
 
-      expect(bucket.key).toEqual({ 'service.entity.id': 'service:my-svc' });
+      expect(bucket.key).toEqual({ 'entity.id': 'service:my-svc' });
     });
 
     it('V2: includes identity_source when identitySourceFields is passed', () => {
@@ -162,7 +162,7 @@ describe('Calculate risk scores with ESQL', () => {
         identitySourceFields
       )(esqlResultRow);
 
-      expect(bucket.key).toEqual({ 'host.entity.id': 'host:server1.example.com' });
+      expect(bucket.key).toEqual({ 'entity.id': 'host:server1.example.com' });
       expect(bucket.identity_source).toEqual({
         'host.entity.id': 'eid-1',
         'host.id': 'hid-2',

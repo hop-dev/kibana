@@ -26,18 +26,10 @@ import { toEntries } from 'fp-ts/Record';
 
 import { euid } from '@kbn/entity-store/common';
 import {
+  EntityIdentifierFields,
   EntityTypeToIdentifierField,
-  EntityTypeToNewIdentifierField,
 } from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
-
-/**
- * Internal runtime field name for risk score composite aggregation and ESQL.
- * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
- * Painless script referencing the same field it defines, which causes script_exception
- * in composite aggs. API responses still use EntityTypeToNewIdentifierField for id_field.
- */
-const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
 
 import type { EntityType } from '../../../../common/search_strategy';
 import type { ExperimentalFeatures } from '../../../../common';
@@ -56,6 +48,44 @@ import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from './constants';
 import { filterFromRange } from './helpers';
 import { applyScoreModifiers } from './apply_score_modifiers';
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
+
+/**
+ * Internal runtime field name for risk score composite aggregation and ESQL.
+ * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
+ * Painless script referencing the same field it defines, which causes script_exception
+ * in composite aggs. API responses still use EntityTypeToNewIdentifierField for id_field.
+ */
+const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
+
+/**
+ * ID based risk scoring uses two different id fields depending on context:
+ * - query: temporary runtime field (e.g. `host_id`) used inside composite aggs/ESQL
+ * - output: normalized `entity.id` returned in API buckets
+ */
+const getQueryIdentifierField = (entityType: EntityType, useEntityStoreV2: boolean): string =>
+  useEntityStoreV2
+    ? getRiskScoreEntityIdField(entityType)
+    : EntityTypeToIdentifierField[entityType];
+
+const getOutputIdentifierField = (entityType: EntityType, useEntityStoreV2: boolean): string =>
+  useEntityStoreV2 ? EntityIdentifierFields.generic : EntityTypeToIdentifierField[entityType];
+
+/**
+ * Build V2 identity projection for ESQL.
+ * We emit positional columns (`id_src_0`, `id_src_1`, ...) because ESQL
+ * STATS aliases must be static strings, while source field names vary by entity type.
+ * The positional values are rehydrated back to their real names in buildRiskScoreBucket.
+ */
+const getIdentityStatsForEsql = (
+  entityType: EntityType
+): { identitySourceFields: string[]; identityStatsColumns: string } => {
+  const { identitySourceFields } = euid.getIdentitySourceFields(entityType);
+  const identityStatsColumns = identitySourceFields
+    .map((field, i) => `id_src_${i} = FIRST(TO_STRING(${field}), time)`)
+    .join(',\n          ');
+
+  return { identitySourceFields, identityStatsColumns };
+};
 
 type ESQLResults = Array<
   [EntityType, { scores: EntityRiskScoreRecord[]; afterKey: EntityAfterKey }]
@@ -184,9 +214,8 @@ export const calculateScoresWithESQL = async (
           buckets: Array<{ key: Record<string, string> }>;
           after_key?: Record<string, string>;
         };
-        const entityIdField = useEntityStoreV2
-          ? getRiskScoreEntityIdField(entityType)
-          : (EntityTypeToIdentifierField as Record<string, string>)[entityType];
+        const typedEntityType = entityType as EntityType;
+        const entityIdField = getQueryIdentifierField(typedEntityType, useEntityStoreV2);
         const entities = buckets
           .map(({ key }) => key[entityIdField])
           .filter((entity): entity is string => entity != null && entity !== '');
@@ -205,7 +234,7 @@ export const calculateScoresWithESQL = async (
         };
 
         const query = getESQL(
-          entityType as EntityType,
+          typedEntityType,
           bounds,
           params.alertSampleSizePerShard || 10000,
           params.pageSize,
@@ -214,10 +243,10 @@ export const calculateScoresWithESQL = async (
         );
 
         const identitySourceFields = useEntityStoreV2
-          ? euid.getIdentitySourceFields(entityType as EntityType).identitySourceFields
+          ? getIdentityStatsForEsql(typedEntityType).identitySourceFields
           : undefined;
 
-        const entityFilter = getFilters(params, entityType as EntityType);
+        const entityFilter = getFilters(params, typedEntityType);
         return esClient.esql
           .query({
             query,
@@ -226,7 +255,7 @@ export const calculateScoresWithESQL = async (
           .then((rs) =>
             rs.values.map(
               buildRiskScoreBucket(
-                entityType as EntityType,
+                typedEntityType,
                 params.index,
                 useEntityStoreV2,
                 identitySourceFields
@@ -238,7 +267,7 @@ export const calculateScoresWithESQL = async (
             return applyScoreModifiers({
               now,
               experimentalFeatures: params.experimentalFeatures,
-              identifierType: entityType as EntityType,
+              identifierType: typedEntityType,
               deps: {
                 assetCriticalityService: params.assetCriticalityService,
                 privmonUserCrudService: params.privmonUserCrudService,
@@ -248,9 +277,7 @@ export const calculateScoresWithESQL = async (
               page: {
                 buckets: riskScoreBuckets,
                 bounds,
-                identifierField: useEntityStoreV2
-                  ? (EntityTypeToNewIdentifierField as Record<string, string>)[entityType]
-                  : (EntityTypeToIdentifierField as Record<string, string>)[entityType],
+                identifierField: getOutputIdentifierField(typedEntityType, useEntityStoreV2),
               },
             });
           })
@@ -374,9 +401,7 @@ export const getCompositeQuery = (
       },
     },
     aggs: entityTypes.reduce((aggs, entityType) => {
-      const idField = useEntityStoreV2
-        ? getRiskScoreEntityIdField(entityType)
-        : EntityTypeToIdentifierField[entityType];
+      const idField = getQueryIdentifierField(entityType, useEntityStoreV2);
       return {
         ...aggs,
         [entityType]: {
@@ -404,8 +429,8 @@ export const getESQL = (
 ) => {
   if (useEntityStoreV2) {
     // V2: EUID-based identification with runtime EVAL and identity source fields for entity store
-    const identifierField = getRiskScoreEntityIdField(entityType);
-    const { identitySourceFields } = euid.getIdentitySourceFields(entityType);
+    const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
+    const { identityStatsColumns } = getIdentityStatsForEsql(entityType);
 
     const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
     const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
@@ -414,15 +439,11 @@ export const getESQL = (
     }
     const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
 
-    const identityStats = identitySourceFields
-      .map((field, i) => `id_src_${i} = FIRST(TO_STRING(${field}), time)`)
-      .join(',\n          ');
-
     const statsClause = `| STATS
           alert_count = count(risk_score),
           scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
           risk_inputs = TOP(input, 10, "desc"),
-          ${identityStats}
+          ${identityStatsColumns}
       BY ${identifierField}`;
 
     return /* ESQL */ `
@@ -446,7 +467,7 @@ export const getESQL = (
   }
 
   // V1: Legacy name-based identification with KQL range filter
-  const identifierField = EntityTypeToIdentifierField[entityType];
+  const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
 
   const lower = afterKeys.lower ? `${identifierField} > ${afterKeys.lower}` : undefined;
   const upper = afterKeys.upper ? `${identifierField} <= ${afterKeys.upper}` : undefined;
@@ -494,6 +515,10 @@ export const buildRiskScoreBucket =
     const _inputs = row[2] as string | string[];
     const entity = row[entityIndex] as string;
 
+    /**
+     * V2 ESQL appends dynamic identity columns (`id_src_0`, `id_src_1`, ...) before the BY column.
+     * Rebuild an object keyed by the original field names so consumers do not deal with positional columns.
+     */
     const identitySource: Record<string, string | null> | undefined =
       identityCount > 0 && identitySourceFields
         ? Object.fromEntries(
@@ -550,9 +575,7 @@ export const buildRiskScoreBucket =
 
     const bucket: RiskScoreBucket = {
       key: {
-        [(useEntityStoreV2 ? EntityTypeToNewIdentifierField : EntityTypeToIdentifierField)[
-          entityType
-        ]]: entity,
+        [getOutputIdentifierField(entityType, useEntityStoreV2)]: entity,
       },
       doc_count: count,
       top_inputs: {
