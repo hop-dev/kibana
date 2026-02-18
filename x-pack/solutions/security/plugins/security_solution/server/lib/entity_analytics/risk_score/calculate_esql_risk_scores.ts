@@ -509,7 +509,42 @@ export const getESQL = (
   `;
 };
 
-const BASE_ROW_LENGTH = 4; // count, score, risk_inputs, entity (BY column is last in ESQL response)
+/**
+ * ESQL row layout:
+ * - base columns: count, score, risk_inputs
+ * - optional V2 columns: id_src_0...id_src_n
+ * - trailing BY column: entity identifier
+ */
+const ESQL_ROW_INDEX = {
+  count: 0,
+  score: 1,
+  riskInputs: 2,
+  identityStart: 3,
+} as const;
+
+const getEntityRowIndex = (identityCount: number): number =>
+  ESQL_ROW_INDEX.identityStart + identityCount;
+
+/**
+ * V2 ESQL appends dynamic identity columns (`id_src_0`, `id_src_1`, ...) before the BY column.
+ * This function rebuilds an object keyed by the original field names
+ */
+const buildIdentitySourceFromRow = (
+  row: FieldValue[],
+  identitySourceFields: string[] | undefined,
+  useEntityStoreV2: boolean
+): RiskScoreBucket['identity_source'] => {
+  if (!useEntityStoreV2 || !identitySourceFields || identitySourceFields.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    identitySourceFields
+      .map((field, i) => [field, row[ESQL_ROW_INDEX.identityStart + i]])
+      .filter(([, value]) => value != null && value !== '')
+      .map(([field, value]) => [field, String(value)])
+  );
+};
 
 export const buildRiskScoreBucket =
   (
@@ -520,25 +555,11 @@ export const buildRiskScoreBucket =
   ) =>
   (row: FieldValue[]): RiskScoreBucket => {
     const identityCount = identitySourceFields?.length ?? 0;
-    const entityIndex = BASE_ROW_LENGTH - 1 + identityCount;
-    const count = row[0] as number;
-    const score = row[1] as number;
-    const _inputs = row[2] as string | string[];
-    const entity = row[entityIndex] as string;
-
-    /**
-     * V2 ESQL appends dynamic identity columns (`id_src_0`, `id_src_1`, ...) before the BY column.
-     * Rebuild an object keyed by the original field names so consumers do not deal with positional columns.
-     */
-    const identitySource: Record<string, string | null> | undefined =
-      identityCount > 0 && identitySourceFields
-        ? Object.fromEntries(
-            identitySourceFields.map((field, i) => {
-              const v = row[3 + i];
-              return [field, v == null || v === '' ? null : String(v)];
-            })
-          )
-        : undefined;
+    const count = row[ESQL_ROW_INDEX.count] as number;
+    const score = row[ESQL_ROW_INDEX.score] as number;
+    const _inputs = row[ESQL_ROW_INDEX.riskInputs] as string | string[];
+    const entity = row[getEntityRowIndex(identityCount)] as string;
+    const identitySource = buildIdentitySourceFromRow(row, identitySourceFields, useEntityStoreV2);
 
     const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
       let parsedRiskInputData = JSON.parse('{}');
