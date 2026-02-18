@@ -15,6 +15,7 @@ import type { CalculateAndPersistScoresParams } from '../types';
 import { calculateScoresWithESQL } from './calculate_esql_risk_scores';
 import type { RiskScoresCalculationResponse } from '../../../../common/api/entity_analytics';
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
+import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
 
 export type CalculationResults = RiskScoresCalculationResponse & {
   entities: Record<EntityType, string[]>;
@@ -67,9 +68,22 @@ export const calculateAndPersistRiskScores = async (
 
   const { errors, docs_written: scoresWritten } = await writer.bulk({ ...scores, refresh });
 
+  const allErrors = [...errors];
+
+  if (params.useEntityStoreV2) {
+    const entityStoreErrors = await persistRiskScoresToEntityStore({
+      esClient: params.esClient,
+      logger: params.logger,
+      spaceId,
+      scores,
+      refresh,
+    });
+    allErrors.push(...entityStoreErrors);
+  }
+
   const result = {
     after_keys: afterKeys,
-    errors,
+    errors: allErrors,
     scores_written: scoresWritten,
     entities,
   };
