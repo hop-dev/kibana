@@ -121,8 +121,10 @@ export const riskScoreServiceFactory = ({
     resetToZero: async (
       deps: Pick<ResetToZeroDependencies, 'refresh' | 'entityType' | 'excludedEntities'>
     ) => {
+      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
       const results = await resetToZero({
         ...deps,
+        useEntityStoreV2,
         esClient,
         dataClient: riskScoreDataClient,
         spaceId,
