@@ -72,19 +72,29 @@ const getOutputIdentifierField = (entityType: EntityType, useEntityStoreV2: bool
 
 /**
  * Build V2 identity projection for ESQL.
- * We emit positional columns (`id_src_0`, `id_src_1`, ...) because ESQL
- * STATS aliases must be static strings, while source field names vary by entity type.
- * The positional values are rehydrated back to their real names in buildRiskScoreBucket.
+ * Returns the identity source fields, the columns to emit for the identity stats,
+ * and the clause to filter documents by the required fields.
  */
 const getIdentityStatsForEsql = (
   entityType: EntityType
-): { identitySourceFields: string[]; identityStatsColumns: string } => {
-  const { identitySourceFields } = euid.getIdentitySourceFields(entityType);
+): {
+  identitySourceFields: string[];
+  identityStatsColumns: string;
+  requiresOneOfClause: string;
+} => {
+  const { identitySourceFields, requiresOneOf } = euid.getIdentitySourceFields(entityType);
+
+  // Emit positional columns (`id_src_0`, `id_src_1`, ...) for each identity source field
   const identityStatsColumns = identitySourceFields
     .map((field, i) => `id_src_${i} = FIRST(TO_STRING(${field}), time)`)
     .join(',\n          ');
 
-  return { identitySourceFields, identityStatsColumns };
+  // At least one of the required fields must be present for identity to be valid
+  const requiresOneOfClause = requiresOneOf
+    .map((field) => `(${field} IS NOT NULL AND TO_STRING(${field}) != "")`)
+    .join(' OR ');
+
+  return { identitySourceFields, identityStatsColumns, requiresOneOfClause };
 };
 
 type ESQLResults = Array<
@@ -430,7 +440,7 @@ export const getESQL = (
   if (useEntityStoreV2) {
     // V2: EUID-based identification with runtime EVAL and identity source fields for entity store
     const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
-    const { identityStatsColumns } = getIdentityStatsForEsql(entityType);
+    const { identityStatsColumns, requiresOneOfClause } = getIdentityStatsForEsql(entityType);
 
     const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
     const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
@@ -449,6 +459,7 @@ export const getESQL = (
     return /* ESQL */ `
     FROM ${index} METADATA _index
       | WHERE kibana.alert.risk_score IS NOT NULL
+      | WHERE ${requiresOneOfClause}
       | RENAME kibana.alert.risk_score as risk_score,
                kibana.alert.rule.name as rule_name,
                kibana.alert.rule.uuid as rule_id,
@@ -466,7 +477,7 @@ export const getESQL = (
     `;
   }
 
-  // V1: Legacy name-based identification with KQL range filter
+  // V1: Legacy name-based identification
   const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
 
   const lower = afterKeys.lower ? `${identifierField} > ${afterKeys.lower}` : undefined;
