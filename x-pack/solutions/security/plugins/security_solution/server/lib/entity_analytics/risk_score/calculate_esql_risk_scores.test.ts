@@ -141,7 +141,7 @@ describe('Calculate risk scores with ESQL', () => {
       expect(bucket.key).toEqual({ 'entity.id': 'service:my-svc' });
     });
 
-    it('V2: includes identity_source when identitySourceFields is passed', () => {
+    it('V2: includes euid_fields when identitySourceFields is passed', () => {
       const identitySourceFields = euid.getEuidSourceFields(EntityType.host).identitySourceFields;
       // Row: count, score, inputs, ...identityValues, entity (BY column last)
       const idVals = ['eid-1', 'hid-2', 'server1', 'example.com', 'server1.example.com'];
@@ -161,7 +161,7 @@ describe('Calculate risk scores with ESQL', () => {
       )(esqlResultRow);
 
       expect(bucket.key).toEqual({ 'entity.id': 'host:server1.example.com' });
-      expect(bucket.identity_source).toEqual({
+      expect(bucket.euid_fields).toEqual({
         'host.entity.id': 'eid-1',
         'host.id': 'hid-2',
         'host.name': 'server1',

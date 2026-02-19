@@ -190,7 +190,7 @@ describe('calculateAndPersistRiskScores', () => {
         category_1_count: 5,
         notes: [],
         inputs: [],
-        identity_source: {
+        euid_fields: {
           'host.entity.id': null,
           'host.id': null,
           'host.name': 'server1',

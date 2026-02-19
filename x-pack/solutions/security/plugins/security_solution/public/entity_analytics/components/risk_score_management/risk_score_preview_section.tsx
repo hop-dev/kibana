@@ -28,7 +28,7 @@ import { PageScope } from '../../../data_view_manager/constants';
 import type { EntityType } from '../../../../common/entity_analytics/types';
 import {
   EntityTypeToIdentifierField,
-  EntityTypeToNewIdentifierField,
+  EntityIdentifierFields,
 } from '../../../../common/entity_analytics/types';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
 import { RISK_SCORE_INDEX_PATTERN } from '../../../../common/entity_analytics/risk_engine';
@@ -143,7 +143,7 @@ const RiskScorePreviewPanel = ({
         buttonContent={trigger === 'closed' ? showMessage : hideMessage}
         forceState={trigger}
         onToggle={onToggle}
-        extraAction={<EuiIcon type={EntityIconByType[type]} />}
+        extraAction={<EuiIcon type={EntityIconByType[type]} aria-hidden={true} />}
       >
         <>
           <EuiSpacer size={'m'} />
@@ -162,9 +162,11 @@ const RiskEnginePreview: React.FC<{
 }> = ({ includeClosedAlerts, from, to, alertFilters }) => {
   const entityTypes = useEntityAnalyticsTypes();
   const [entityStoreV2Enabled] = useUiSetting$<boolean>(FF_ENABLE_ENTITY_STORE_V2);
-  const identifierFieldMap = entityStoreV2Enabled
-    ? EntityTypeToNewIdentifierField
-    : EntityTypeToIdentifierField;
+  const getEntityIdentifierField = (entityType: EntityType) => {
+    return entityStoreV2Enabled
+      ? EntityIdentifierFields.generic
+      : EntityTypeToIdentifierField[entityType];
+  };
 
   const [filters] = useState<{ bool: BoolQuery }>({
     bool: { must: [], filter: [], should: [], must_not: [] },
@@ -222,7 +224,7 @@ const RiskEnginePreview: React.FC<{
           <RiskScorePreviewPanel
             items={getRiskiestScores(
               data?.scores[entityType],
-              identifierFieldMap[entityType]
+              getEntityIdentifierField(entityType)
             )}
             showMessage={
               <FormattedMessage

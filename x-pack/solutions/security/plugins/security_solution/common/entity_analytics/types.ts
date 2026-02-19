@@ -23,22 +23,11 @@ export enum EntityIdentifierFields {
   userName = 'user.name',
   serviceName = 'service.name',
   generic = 'entity.id',
-  // New entity ID fields for EUID-based identification
-  hostEntityId = 'host.entity.id',
-  userEntityId = 'user.entity.id',
-  serviceEntityId = 'service.entity.id',
 }
 
-export const EntityTypeToIdentifierField = {
+export const EntityTypeToIdentifierField: Record<EntityType, EntityIdentifierFields> = {
   [EntityType.host]: EntityIdentifierFields.hostName,
   [EntityType.user]: EntityIdentifierFields.userName,
   [EntityType.service]: EntityIdentifierFields.serviceName,
   [EntityType.generic]: EntityIdentifierFields.generic,
-} as const satisfies Record<EntityType, EntityIdentifierFields>;
-
-export const EntityTypeToNewIdentifierField = {
-  [EntityType.host]: EntityIdentifierFields.hostEntityId,
-  [EntityType.user]: EntityIdentifierFields.userEntityId,
-  [EntityType.service]: EntityIdentifierFields.serviceEntityId,
-  [EntityType.generic]: EntityIdentifierFields.generic,
-} as const satisfies Record<EntityType, EntityIdentifierFields>;
+};

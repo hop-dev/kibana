@@ -487,7 +487,7 @@ export const getESQL = (
   }
   const rangeClause = [lower, upper].filter(Boolean).join(' and ');
 
-  return /* SQL */ `
+  return /* ESQL */ `
   FROM ${index} METADATA _index
     | WHERE kibana.alert.risk_score IS NOT NULL AND KQL("${rangeClause}")
     | RENAME kibana.alert.risk_score as risk_score,
@@ -533,7 +533,7 @@ const buildIdentitySourceFromRow = (
   row: FieldValue[],
   identitySourceFields: string[] | undefined,
   useEntityStoreV2: boolean
-): RiskScoreBucket['identity_source'] => {
+): RiskScoreBucket['euid_fields'] => {
   if (!useEntityStoreV2 || !identitySourceFields || identitySourceFields.length === 0) {
     return undefined;
   }
@@ -625,7 +625,7 @@ export const buildRiskScoreBucket =
       },
     };
     if (identitySource !== undefined) {
-      bucket.identity_source = identitySource;
+      bucket.euid_fields = identitySource;
     }
     return bucket;
   };

@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import { set } from '@kbn/safer-lodash-set';
 
 import { EntityType } from '../../../../common/search_strategy';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
@@ -13,11 +14,11 @@ import type { BulkObject } from '../entity_store_v2/temp_entity_store_v2_writer'
 import { TempEntityStoreV2Writer } from '../entity_store_v2/temp_entity_store_v2_writer';
 
 type ScoreWithIdentity = EntityRiskScoreRecord & {
-  identity_source?: Record<string, string | null>;
+  euid_fields?: Record<string, string | null>;
 };
 
 const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> => {
-  const base = {
+  const document: Record<string, unknown> = {
     '@timestamp': score['@timestamp'],
     entity: {
       id: score.id_value,
@@ -28,27 +29,34 @@ const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> =>
       },
     },
   };
-  const identitySource = score.identity_source;
-  if (identitySource && Object.keys(identitySource).length > 0) {
-    const identityFields = Object.fromEntries(
-      Object.entries(identitySource).filter(
-        (entry): entry is [string, string] => entry[1] != null && entry[1] !== ''
-      )
-    );
-    return { ...identityFields, ...base };
-  }
-  return base;
+  // euid fields are flattened and may conain null or empty values
+  // apply them to the document if they are not null or empty
+  Object.entries(score.euid_fields || {}).forEach(([path, value]) => {
+    if (value != null && value !== '') {
+      set(document, path, value);
+    }
+  });
+
+  return document;
 };
 
 const buildV2BulkObjectsFromScores = (
   scores: Partial<Record<EntityType, EntityRiskScoreRecord[]>>
-): BulkObject[] =>
-  (Object.values(EntityType) as EntityType[]).flatMap((entityType) =>
-    (scores[entityType] ?? []).map((score) => ({
-      type: entityType,
-      document: scoreToV2Document(score),
-    }))
-  );
+): BulkObject[] => {
+  const result: BulkObject[] = [];
+  Object.values(EntityType).forEach((entityType) => {
+    const entityScores = scores[entityType];
+    if (entityScores) {
+      entityScores.forEach((score) => {
+        result.push({
+          type: entityType,
+          document: scoreToV2Document(score as ScoreWithIdentity),
+        });
+      });
+    }
+  });
+  return result;
+};
 
 export const persistRiskScoresToEntityStore = async ({
   esClient,

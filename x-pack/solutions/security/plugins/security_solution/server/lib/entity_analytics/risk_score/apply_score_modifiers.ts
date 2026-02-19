@@ -150,7 +150,7 @@ export const riskScoreDocFactory =
 
     const legacyCat2Fields = buildLegacyCriticalityFields(found);
 
-    const record: EntityRiskScoreRecord & { identity_source?: IdentitySourceFieldsMap } = {
+    const record: EntityRiskScoreRecord & { euid_fields?: IdentitySourceFieldsMap } = {
       '@timestamp': now,
       id_field: identifierField,
       id_value: bucket.key[identifierField],
@@ -169,8 +169,8 @@ export const riskScoreDocFactory =
         contribution_score: riskInput.contribution,
       })),
     };
-    if (bucket.identity_source !== undefined) {
-      record.identity_source = bucket.identity_source;
+    if (bucket.euid_fields !== undefined) {
+      record.euid_fields = bucket.euid_fields;
     }
     return record as EntityRiskScoreRecord;
   };
