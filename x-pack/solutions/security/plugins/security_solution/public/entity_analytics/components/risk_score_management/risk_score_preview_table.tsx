@@ -10,8 +10,10 @@ import { EuiInMemoryTable } from '@elastic/eui';
 import type { EuiBasicTableColumn } from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
 import { FormattedMessage } from '@kbn/i18n-react';
+import { useUiSetting$ } from '@kbn/kibana-react-plugin/public';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
 import type { RiskSeverity } from '../../../../common/search_strategy';
+import { FF_ENABLE_ENTITY_STORE_V2 } from '../../../../common/entity_analytics/entity_store/constants';
 import { RiskScoreLevel } from '../severity/common';
 import { EntityDetailsLink } from '../../../common/components/links';
 import type { EntityType } from '../../../../common/entity_analytics/types';
@@ -27,15 +29,23 @@ export const RiskScorePreviewTable = ({
   items: EntityRiskScoreRecord[];
   type: EntityType;
 }) => {
+  const [entityStoreV2Enabled] = useUiSetting$<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+  const nameColumnTitle = entityStoreV2Enabled ? (
+    <FormattedMessage
+      id="xpack.securitySolution.riskScore.previewTable.idColumnTitle"
+      defaultMessage="ID"
+    />
+  ) : (
+    <FormattedMessage
+      id="xpack.securitySolution.riskScore.previewTable.nameColumnTitle"
+      defaultMessage="Name"
+    />
+  );
+
   const columns: RiskScoreColumn[] = [
     {
       field: 'id_value',
-      name: (
-        <FormattedMessage
-          id="xpack.securitySolution.riskScore.previewTable.nameColumnTitle"
-          defaultMessage="Name"
-        />
-      ),
+      name: nameColumnTitle,
       render: (entityName: string) => (
         <EntityDetailsLink entityName={entityName} entityType={type} />
       ),
