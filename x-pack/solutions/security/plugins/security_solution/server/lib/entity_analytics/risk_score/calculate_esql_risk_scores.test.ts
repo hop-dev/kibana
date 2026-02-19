@@ -142,9 +142,7 @@ describe('Calculate risk scores with ESQL', () => {
     });
 
     it('V2: includes identity_source when identitySourceFields is passed', () => {
-      const identitySourceFields = euid.getIdentitySourceFields(
-        EntityType.host
-      ).identitySourceFields;
+      const identitySourceFields = euid.getEuidSourceFields(EntityType.host).identitySourceFields;
       // Row: count, score, inputs, ...identityValues, entity (BY column last)
       const idVals = ['eid-1', 'hid-2', 'server1', 'example.com', 'server1.example.com'];
       const esqlResultRow = [

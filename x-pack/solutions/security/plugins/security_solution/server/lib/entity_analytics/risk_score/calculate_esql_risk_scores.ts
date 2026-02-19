@@ -82,7 +82,7 @@ const getIdentityStatsForEsql = (
   identityStatsColumns: string;
   requiresOneOfClause: string;
 } => {
-  const { identitySourceFields, requiresOneOf } = euid.getIdentitySourceFields(entityType);
+  const { identitySourceFields, requiresOneOf } = euid.getEuidSourceFields(entityType);
 
   // Emit positional columns (`id_src_0`, `id_src_1`, ...) for each identity source field
   const identityStatsColumns = identitySourceFields
