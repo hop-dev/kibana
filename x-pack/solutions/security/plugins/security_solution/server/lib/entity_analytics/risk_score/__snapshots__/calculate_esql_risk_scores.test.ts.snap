@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Calculate risk scores with ESQL ESQL query V1 (legacy, useEntityStoreV2=false) matches snapshot 1`] = `
+exports[`Calculate risk scores with ESQL ESQL query V1 (legacy, idBasedRiskScoringEnabled=false) matches snapshot 1`] = `
 "
   FROM .alerts-security.alerts-default METADATA _index
     | WHERE kibana.alert.risk_score IS NOT NULL AND KQL(\\"host.name > abel and host.name <= zuzanna\\")
@@ -23,7 +23,7 @@ exports[`Calculate risk scores with ESQL ESQL query V1 (legacy, useEntityStoreV2
   "
 `;
 
-exports[`Calculate risk scores with ESQL ESQL query V2 (entity store v2, useEntityStoreV2=true) matches snapshot 1`] = `
+exports[`Calculate risk scores with ESQL ESQL query V2 (entity store v2, idBasedRiskScoringEnabled=true) matches snapshot 1`] = `
 "
     FROM .alerts-security.alerts-default METADATA _index
       | WHERE kibana.alert.risk_score IS NOT NULL

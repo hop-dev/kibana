@@ -6,7 +6,7 @@
  */
 
 // TODO: When entityStoreV2 (securitySolution:entityStoreEnableV2) is permanently enabled:
-// 1. Remove the `useEntityStoreV2` parameter from calculateScoresWithESQL, getCompositeQuery,
+// 1. Remove the `idBasedRiskScoringEnabled` parameter from calculateScoresWithESQL, getCompositeQuery,
 //    getESQL, and buildRiskScoreBucket.
 // 2. Delete all V1 (legacy) code paths — the `else` branches and the V1 block in getESQL.
 // 3. Remove legacy identifier field mapping (`EntityTypeToIdentifierField`) and keep `entity.id`
@@ -62,13 +62,21 @@ const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}
  * - query: temporary runtime field (e.g. `host_id`) used inside composite aggs/ESQL
  * - output: normalized `entity.id` returned in API buckets
  */
-const getQueryIdentifierField = (entityType: EntityType, useEntityStoreV2: boolean): string =>
-  useEntityStoreV2
+const getQueryIdentifierField = (
+  entityType: EntityType,
+  idBasedRiskScoringEnabled: boolean
+): string =>
+  idBasedRiskScoringEnabled
     ? getRiskScoreEntityIdField(entityType)
     : EntityTypeToIdentifierField[entityType];
 
-const getOutputIdentifierField = (entityType: EntityType, useEntityStoreV2: boolean): string =>
-  useEntityStoreV2 ? EntityIdentifierFields.generic : EntityTypeToIdentifierField[entityType];
+const getOutputIdentifierField = (
+  entityType: EntityType,
+  idBasedRiskScoringEnabled: boolean
+): string =>
+  idBasedRiskScoringEnabled
+    ? EntityIdentifierFields.generic
+    : EntityTypeToIdentifierField[entityType];
 
 /**
  * Build V2 identity projection for ESQL.
@@ -108,13 +116,13 @@ export const calculateScoresWithESQL = async (
     esClient: ElasticsearchClient;
     logger: Logger;
     experimentalFeatures: ExperimentalFeatures;
-    useEntityStoreV2: boolean;
+    idBasedRiskScoringEnabled: boolean;
   } & CalculateScoresParams & {
       filters?: Array<{ entity_types: string[]; filter: string }>;
     }
 ): Promise<RiskScoresPreviewResponse> =>
   withSecuritySpan('calculateRiskScores', async () => {
-    const { identifierType, logger, esClient, useEntityStoreV2 } = params;
+    const { identifierType, logger, esClient, idBasedRiskScoringEnabled } = params;
     const now = new Date().toISOString();
 
     const identifierTypes: EntityType[] = identifierType
@@ -126,7 +134,7 @@ export const calculateScoresWithESQL = async (
       const filter = getFilters(params, entityType);
       return {
         entityType,
-        query: getCompositeQuery([entityType], filter, params, useEntityStoreV2),
+        query: getCompositeQuery([entityType], filter, params, idBasedRiskScoringEnabled),
       };
     });
 
@@ -225,7 +233,7 @@ export const calculateScoresWithESQL = async (
           after_key?: Record<string, string>;
         };
         const typedEntityType = entityType as EntityType;
-        const entityIdField = getQueryIdentifierField(typedEntityType, useEntityStoreV2);
+        const entityIdField = getQueryIdentifierField(typedEntityType, idBasedRiskScoringEnabled);
         const entities = buckets
           .map(({ key }) => key[entityIdField])
           .filter((entity): entity is string => entity != null && entity !== '');
@@ -249,10 +257,10 @@ export const calculateScoresWithESQL = async (
           params.alertSampleSizePerShard || 10000,
           params.pageSize,
           params.index,
-          useEntityStoreV2
+          idBasedRiskScoringEnabled
         );
 
-        const identitySourceFields = useEntityStoreV2
+        const identitySourceFields = idBasedRiskScoringEnabled
           ? getIdentityStatsForEsql(typedEntityType).identitySourceFields
           : undefined;
 
@@ -267,7 +275,7 @@ export const calculateScoresWithESQL = async (
               buildRiskScoreBucket(
                 typedEntityType,
                 params.index,
-                useEntityStoreV2,
+                idBasedRiskScoringEnabled,
                 identitySourceFields
               )
             )
@@ -287,7 +295,10 @@ export const calculateScoresWithESQL = async (
               page: {
                 buckets: riskScoreBuckets,
                 bounds,
-                identifierField: getOutputIdentifierField(typedEntityType, useEntityStoreV2),
+                identifierField: getOutputIdentifierField(
+                  typedEntityType,
+                  idBasedRiskScoringEnabled
+                ),
               },
             });
           })
@@ -374,9 +385,9 @@ export const getCompositeQuery = (
   entityTypes: EntityType[],
   filter: QueryDslQueryContainer[],
   params: CalculateScoresParams,
-  useEntityStoreV2: boolean
+  idBasedRiskScoringEnabled: boolean
 ) => {
-  const runtimeMappings = useEntityStoreV2
+  const runtimeMappings = idBasedRiskScoringEnabled
     ? {
         ...params.runtimeMappings,
         ...Object.fromEntries(
@@ -411,7 +422,7 @@ export const getCompositeQuery = (
       },
     },
     aggs: entityTypes.reduce((aggs, entityType) => {
-      const idField = getQueryIdentifierField(entityType, useEntityStoreV2);
+      const idField = getQueryIdentifierField(entityType, idBasedRiskScoringEnabled);
       return {
         ...aggs,
         [entityType]: {
@@ -435,11 +446,11 @@ export const getESQL = (
   sampleSize: number,
   pageSize: number,
   index: string = '.alerts-security.alerts-default',
-  useEntityStoreV2: boolean = false
+  idBasedRiskScoringEnabled: boolean = false
 ) => {
-  if (useEntityStoreV2) {
+  if (idBasedRiskScoringEnabled) {
     // V2: EUID-based identification with runtime EVAL and identity source fields for entity store
-    const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
+    const identifierField = getQueryIdentifierField(entityType, idBasedRiskScoringEnabled);
     const { identityStatsColumns, requiresOneOfClause } = getIdentityStatsForEsql(entityType);
 
     const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
@@ -478,7 +489,7 @@ export const getESQL = (
   }
 
   // V1: Legacy name-based identification
-  const identifierField = getQueryIdentifierField(entityType, useEntityStoreV2);
+  const identifierField = getQueryIdentifierField(entityType, idBasedRiskScoringEnabled);
 
   const lower = afterKeys.lower ? `${identifierField} > ${afterKeys.lower}` : undefined;
   const upper = afterKeys.upper ? `${identifierField} <= ${afterKeys.upper}` : undefined;
@@ -532,9 +543,9 @@ const getEntityRowIndex = (identityCount: number): number =>
 const buildIdentitySourceFromRow = (
   row: FieldValue[],
   identitySourceFields: string[] | undefined,
-  useEntityStoreV2: boolean
+  idBasedRiskScoringEnabled: boolean
 ): RiskScoreBucket['euid_fields'] => {
-  if (!useEntityStoreV2 || !identitySourceFields || identitySourceFields.length === 0) {
+  if (!idBasedRiskScoringEnabled || !identitySourceFields || identitySourceFields.length === 0) {
     return undefined;
   }
 
@@ -550,7 +561,7 @@ export const buildRiskScoreBucket =
   (
     entityType: EntityType,
     index: string,
-    useEntityStoreV2: boolean,
+    idBasedRiskScoringEnabled: boolean,
     identitySourceFields?: string[]
   ) =>
   (row: FieldValue[]): RiskScoreBucket => {
@@ -559,7 +570,11 @@ export const buildRiskScoreBucket =
     const score = row[ESQL_ROW_INDEX.score] as number;
     const _inputs = row[ESQL_ROW_INDEX.riskInputs] as string | string[];
     const entity = row[getEntityRowIndex(identityCount)] as string;
-    const identitySource = buildIdentitySourceFromRow(row, identitySourceFields, useEntityStoreV2);
+    const identitySource = buildIdentitySourceFromRow(
+      row,
+      identitySourceFields,
+      idBasedRiskScoringEnabled
+    );
 
     const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
       let parsedRiskInputData = JSON.parse('{}');
@@ -607,7 +622,7 @@ export const buildRiskScoreBucket =
 
     const bucket: RiskScoreBucket = {
       key: {
-        [getOutputIdentifierField(entityType, useEntityStoreV2)]: entity,
+        [getOutputIdentifierField(entityType, idBasedRiskScoringEnabled)]: entity,
       },
       doc_count: count,
       top_inputs: {

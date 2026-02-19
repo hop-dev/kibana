@@ -48,7 +48,7 @@ describe('resetToZero', () => {
       assetCriticalityService: assetCriticalityServiceMock.create(),
       logger,
       excludedEntities: [],
-      useEntityStoreV2: false,
+      idBasedRiskScoringEnabled: false,
       refresh: 'wait_for',
     });
 
@@ -80,7 +80,7 @@ describe('resetToZero', () => {
       assetCriticalityService: assetCriticalityServiceMock.create(),
       logger,
       excludedEntities: ['host:do-not-reset'],
-      useEntityStoreV2: true,
+      idBasedRiskScoringEnabled: true,
       refresh: 'wait_for',
     });
 
@@ -126,7 +126,7 @@ describe('resetToZero', () => {
       assetCriticalityService: assetCriticalityServiceMock.create(),
       logger,
       excludedEntities: [],
-      useEntityStoreV2: false,
+      idBasedRiskScoringEnabled: false,
     });
 
     expect(result).toEqual({ scoresWritten: 0 });

@@ -10,13 +10,12 @@ import { EuiInMemoryTable } from '@elastic/eui';
 import type { EuiBasicTableColumn } from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
 import { FormattedMessage } from '@kbn/i18n-react';
-import { useUiSetting$ } from '@kbn/kibana-react-plugin/public';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
 import type { RiskSeverity } from '../../../../common/search_strategy';
-import { FF_ENABLE_ENTITY_STORE_V2 } from '../../../../common/entity_analytics/entity_store/constants';
 import { RiskScoreLevel } from '../severity/common';
 import { EntityDetailsLink } from '../../../common/components/links';
 import type { EntityType } from '../../../../common/entity_analytics/types';
+import { useIsIdBasedRiskScoringEnabled } from './is_id_based_risk_scoring_enabled';
 
 type RiskScoreColumn = EuiBasicTableColumn<EntityRiskScoreRecord> & {
   field: keyof EntityRiskScoreRecord;
@@ -29,8 +28,8 @@ export const RiskScorePreviewTable = ({
   items: EntityRiskScoreRecord[];
   type: EntityType;
 }) => {
-  const [entityStoreV2Enabled] = useUiSetting$<boolean>(FF_ENABLE_ENTITY_STORE_V2);
-  const nameColumnTitle = entityStoreV2Enabled ? (
+  const idBasedRiskScoringEnabled = useIsIdBasedRiskScoringEnabled();
+  const nameColumnTitle = idBasedRiskScoringEnabled ? (
     <FormattedMessage
       id="xpack.securitySolution.riskScore.previewTable.idColumnTitle"
       defaultMessage="ID"

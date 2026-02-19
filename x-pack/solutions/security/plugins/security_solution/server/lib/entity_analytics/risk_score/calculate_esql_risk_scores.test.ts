@@ -14,7 +14,7 @@ import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from './constants';
 
 describe('Calculate risk scores with ESQL', () => {
   describe('ESQL query', () => {
-    describe('V1 (legacy, useEntityStoreV2=false)', () => {
+    describe('V1 (legacy, idBasedRiskScoringEnabled=false)', () => {
       it('matches snapshot', () => {
         const q = getESQL(
           EntityType.host,
@@ -42,7 +42,7 @@ describe('Calculate risk scores with ESQL', () => {
       });
     });
 
-    describe('V2 (entity store v2, useEntityStoreV2=true)', () => {
+    describe('V2 (entity store v2, idBasedRiskScoringEnabled=true)', () => {
       it('matches snapshot', () => {
         const q = getESQL(
           EntityType.host,
@@ -93,7 +93,7 @@ describe('Calculate risk scores with ESQL', () => {
       '{ "risk_score": "10", "time": "2021-08-19T18:00:01.000Z", "rule_name": "Test rule 1", "id": "test_id_1" }',
     ];
 
-    it('V1: keys bucket by host.name when useEntityStoreV2 is false', () => {
+    it('V1: keys bucket by host.name when idBasedRiskScoringEnabled is false', () => {
       const esqlResultRow = [10, 100, sampleInputs, 'hostname'];
 
       const bucket = buildRiskScoreBucket(
@@ -105,7 +105,7 @@ describe('Calculate risk scores with ESQL', () => {
       expect(bucket.key).toEqual({ 'host.name': 'hostname' });
     });
 
-    it('V2: keys bucket by entity.id when useEntityStoreV2 is true', () => {
+    it('V2: keys bucket by entity.id when idBasedRiskScoringEnabled is true', () => {
       const esqlResultRow = [10, 100, sampleInputs, 'host:abc123'];
 
       const bucket = buildRiskScoreBucket(

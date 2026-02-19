@@ -26,7 +26,7 @@ export interface ResetToZeroDependencies {
   assetCriticalityService: AssetCriticalityService;
   logger: Logger;
   excludedEntities: string[];
-  useEntityStoreV2: boolean;
+  idBasedRiskScoringEnabled: boolean;
   refresh?: 'wait_for';
 }
 
@@ -42,11 +42,11 @@ export const resetToZero = async ({
   logger,
   refresh,
   excludedEntities,
-  useEntityStoreV2,
+  idBasedRiskScoringEnabled,
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
-  const identifierField = useEntityStoreV2
+  const identifierField = idBasedRiskScoringEnabled
     ? EntityIdentifierFields.generic
     : EntityTypeToIdentifierField[entityType];
   const excludedEntitiesClause = `AND id_value NOT IN (${excludedEntities
@@ -120,7 +120,7 @@ export const resetToZero = async ({
     throw e;
   });
 
-  if (useEntityStoreV2) {
+  if (idBasedRiskScoringEnabled) {
     const entityStoreErrors = await persistRiskScoresToEntityStore({
       esClient,
       logger,

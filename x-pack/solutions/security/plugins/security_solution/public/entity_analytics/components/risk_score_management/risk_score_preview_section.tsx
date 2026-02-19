@@ -22,8 +22,6 @@ import {
 } from '@elastic/eui';
 import type { BoolQuery } from '@kbn/es-query';
 import { FormattedMessage } from '@kbn/i18n-react';
-import { useUiSetting$ } from '@kbn/kibana-react-plugin/public';
-import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/common';
 import { PageScope } from '../../../data_view_manager/constants';
 import type { EntityType } from '../../../../common/entity_analytics/types';
 import {
@@ -43,6 +41,7 @@ import { useIsExperimentalFeatureEnabled } from '../../../common/hooks/use_exper
 import { useDataView } from '../../../data_view_manager/hooks/use_data_view';
 import { useEntityAnalyticsTypes } from '../../hooks/use_enabled_entity_types';
 import type { AlertFilter } from './common';
+import { useIsIdBasedRiskScoringEnabled } from './is_id_based_risk_scoring_enabled';
 
 interface IRiskScorePreviewPanel {
   showMessage: React.ReactNode;
@@ -161,9 +160,9 @@ const RiskEnginePreview: React.FC<{
   alertFilters?: Array<AlertFilter>;
 }> = ({ includeClosedAlerts, from, to, alertFilters }) => {
   const entityTypes = useEntityAnalyticsTypes();
-  const [entityStoreV2Enabled] = useUiSetting$<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+  const idBasedRiskScoringEnabled = useIsIdBasedRiskScoringEnabled();
   const getEntityIdentifierField = (entityType: EntityType) => {
-    return entityStoreV2Enabled
+    return idBasedRiskScoringEnabled
       ? EntityIdentifierFields.generic
       : EntityTypeToIdentifierField[entityType];
   };

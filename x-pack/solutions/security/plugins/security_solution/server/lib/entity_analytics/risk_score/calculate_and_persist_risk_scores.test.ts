@@ -36,7 +36,7 @@ const calculateAndPersistRecentHostRiskScores = (
   esClient: ElasticsearchClient,
   logger: Logger,
   riskScoreDataClient: RiskScoreDataClient,
-  useEntityStoreV2 = false
+  idBasedRiskScoringEnabled = false
 ) => {
   return calculateAndPersistRiskScores({
     afterKeys: {},
@@ -52,7 +52,7 @@ const calculateAndPersistRecentHostRiskScores = (
     privmonUserCrudService: privmonUserCrudServiceMock.create(),
     runtimeMappings: {},
     experimentalFeatures: {} as ExperimentalFeatures,
-    useEntityStoreV2,
+    idBasedRiskScoringEnabled,
   });
 };
 
@@ -61,12 +61,12 @@ describe('calculateAndPersistRiskScores', () => {
   let logger: Logger;
   let riskScoreDataClient: RiskScoreDataClient;
 
-  const calculate = (useEntityStoreV2 = false) =>
+  const calculate = (idBasedRiskScoringEnabled = false) =>
     calculateAndPersistRecentHostRiskScores(
       esClient,
       logger,
       riskScoreDataClient,
-      useEntityStoreV2
+      idBasedRiskScoringEnabled
     );
 
   beforeEach(() => {
@@ -116,7 +116,7 @@ describe('calculateAndPersistRiskScores', () => {
       expect(riskScoreDataClient.upgradeIfNeeded).toHaveBeenCalled();
     });
 
-    it('does not call TempEntityStoreV2Writer when useEntityStoreV2 is false', async () => {
+    it('does not call TempEntityStoreV2Writer when idBasedRiskScoringEnabled is false', async () => {
       await calculate(false);
 
       expect(MockTempEntityStoreV2Writer).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe('calculateAndPersistRiskScores', () => {
     });
   });
 
-  describe('when useEntityStoreV2 is true', () => {
+  describe('when idBasedRiskScoringEnabled is true', () => {
     it('does not call TempEntityStoreV2Writer when there are no scores to persist', async () => {
       (calculateScoresWithESQL as jest.Mock).mockResolvedValueOnce(
         calculateScoresWithESQLMock.buildResponse({ scores: { host: [] } })

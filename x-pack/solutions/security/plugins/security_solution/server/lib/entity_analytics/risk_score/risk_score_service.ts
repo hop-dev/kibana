@@ -6,7 +6,6 @@
  */
 
 import type { ElasticsearchClient, IUiSettingsClient, Logger } from '@kbn/core/server';
-import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/common';
 import { getPrivilegedMonitorUsersIndex } from '../../../../common/entity_analytics/privileged_user_monitoring/utils';
 import type { ExperimentalFeatures } from '../../../../common';
 import type { RiskScoresPreviewResponse } from '../../../../common/api/entity_analytics';
@@ -27,6 +26,7 @@ import { calculateScoresWithESQL } from './calculate_esql_risk_scores';
 import type { ResetToZeroDependencies } from './reset_to_zero';
 import { resetToZero } from './reset_to_zero';
 import { createPrivilegedUsersCrudService } from '../privilege_monitoring/users/privileged_users_crud';
+import { getIsIdBasedRiskScoringEnabled } from './is_id_based_risk_scoring_enabled';
 
 export type RiskEngineConfigurationWithDefaults = RiskEngineConfiguration & {
   alertSampleSizePerShard: number;
@@ -76,10 +76,10 @@ export const riskScoreServiceFactory = ({
   });
   return {
     calculateScores: async (params) => {
-      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+      const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
       return calculateScoresWithESQL({
         ...params,
-        useEntityStoreV2,
+        idBasedRiskScoringEnabled,
         assetCriticalityService,
         privmonUserCrudService,
         esClient,
@@ -89,10 +89,10 @@ export const riskScoreServiceFactory = ({
       });
     },
     calculateAndPersistScores: async (params) => {
-      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+      const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
       return calculateAndPersistRiskScores({
         ...params,
-        useEntityStoreV2,
+        idBasedRiskScoringEnabled,
         assetCriticalityService,
         privmonUserCrudService,
         esClient,
@@ -121,10 +121,10 @@ export const riskScoreServiceFactory = ({
     resetToZero: async (
       deps: Pick<ResetToZeroDependencies, 'refresh' | 'entityType' | 'excludedEntities'>
     ) => {
-      const useEntityStoreV2 = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
+      const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
       const results = await resetToZero({
         ...deps,
-        useEntityStoreV2,
+        idBasedRiskScoringEnabled,
         esClient,
         dataClient: riskScoreDataClient,
         spaceId,
