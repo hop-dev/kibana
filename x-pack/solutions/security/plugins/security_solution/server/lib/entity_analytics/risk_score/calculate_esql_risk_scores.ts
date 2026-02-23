@@ -25,10 +25,6 @@ import {
 import { toEntries } from 'fp-ts/Record';
 
 import { euid } from '@kbn/entity-store/common';
-import {
-  EntityIdentifierFields,
-  EntityTypeToIdentifierField,
-} from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
 
 import type { EntityType } from '../../../../common/search_strategy';
@@ -45,38 +41,14 @@ import type { AssetCriticalityService } from '../asset_criticality/asset_critica
 import type { RiskScoresPreviewResponse } from '../../../../common/api/entity_analytics';
 import type { CalculateScoresParams, RiskScoreBucket, RiskScoreCompositeBuckets } from '../types';
 import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from './constants';
-import { filterFromRange } from './helpers';
+import {
+  filterFromRange,
+  getOutputIdentifierField,
+  getQueryIdentifierField,
+  getRiskScoreEntityIdField,
+} from './helpers';
 import { applyScoreModifiers } from './apply_score_modifiers';
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
-
-/**
- * Internal runtime field name for risk score composite aggregation and ESQL.
- * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
- * Painless script referencing the same field it defines, which causes script_exception
- * in composite aggs. API responses continue to expose normalized `entity.id` for V2.
- */
-const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
-
-/**
- * ID based risk scoring uses two different id fields depending on context:
- * - query: temporary runtime field (e.g. `host_id`) used inside composite aggs/ESQL
- * - output: normalized `entity.id` returned in API buckets
- */
-const getQueryIdentifierField = (
-  entityType: EntityType,
-  idBasedRiskScoringEnabled: boolean
-): string =>
-  idBasedRiskScoringEnabled
-    ? getRiskScoreEntityIdField(entityType)
-    : EntityTypeToIdentifierField[entityType];
-
-const getOutputIdentifierField = (
-  entityType: EntityType,
-  idBasedRiskScoringEnabled: boolean
-): string =>
-  idBasedRiskScoringEnabled
-    ? EntityIdentifierFields.generic
-    : EntityTypeToIdentifierField[entityType];
 
 /**
  * Build V2 identity projection for ESQL.

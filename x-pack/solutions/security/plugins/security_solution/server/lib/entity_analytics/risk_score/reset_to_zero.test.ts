@@ -37,7 +37,7 @@ describe('resetToZero', () => {
 
   it('uses legacy id field and does not write to entity store when V2 is disabled', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host-a', 'host.name']],
+      values: [['host-a']],
     });
 
     const result = await resetToZero({
@@ -53,6 +53,10 @@ describe('resetToZero', () => {
     });
 
     expect(result).toEqual({ scoresWritten: 1 });
+
+    const esqlQuery = (esClient.esql.query as jest.Mock).mock.calls[0][0].query;
+    expect(esqlQuery).toContain('host.risk.id_value');
+
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
         expect.objectContaining({
@@ -69,7 +73,7 @@ describe('resetToZero', () => {
 
   it('uses entity.id and writes zero scores to entity store when V2 is enabled', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:abc123', null]],
+      values: [['host:abc123']],
     });
 
     await resetToZero({
@@ -83,6 +87,10 @@ describe('resetToZero', () => {
       idBasedRiskScoringEnabled: true,
       refresh: 'wait_for',
     });
+
+    const esqlQuery = (esClient.esql.query as jest.Mock).mock.calls[0][0].query;
+    expect(esqlQuery).toContain('host.risk.id_value');
+    expect(esqlQuery).toContain('NOT IN ("host:do-not-reset")');
 
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
@@ -113,9 +121,9 @@ describe('resetToZero', () => {
     });
   });
 
-  it('ignores invalid id_value rows safely', async () => {
+  it('returns zero scores written when no entities have non-zero scores', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [[null, 'host.name'], ['', 'host.name']],
+      values: [],
     });
 
     const result = await resetToZero({
@@ -130,6 +138,60 @@ describe('resetToZero', () => {
     });
 
     expect(result).toEqual({ scoresWritten: 0 });
-    expect(writerBulkMock).toHaveBeenCalledWith({ host: [], refresh: undefined });
+    expect(writerBulkMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores invalid id_value rows safely', async () => {
+    (esClient.esql.query as jest.Mock).mockResolvedValue({
+      values: [[null], ['']],
+    });
+
+    const result = await resetToZero({
+      esClient,
+      dataClient,
+      spaceId: 'default',
+      entityType: EntityType.host,
+      assetCriticalityService: assetCriticalityServiceMock.create(),
+      logger,
+      excludedEntities: [],
+      idBasedRiskScoringEnabled: false,
+    });
+
+    expect(result).toEqual({ scoresWritten: 0 });
+    expect(writerBulkMock).not.toHaveBeenCalled();
+  });
+
+  it('handles user entity type with V2 enabled', async () => {
+    (esClient.esql.query as jest.Mock).mockResolvedValue({
+      values: [['user:jane.doe']],
+    });
+
+    await resetToZero({
+      esClient,
+      dataClient,
+      spaceId: 'default',
+      entityType: EntityType.user,
+      assetCriticalityService: assetCriticalityServiceMock.create(),
+      logger,
+      excludedEntities: [],
+      idBasedRiskScoringEnabled: true,
+      refresh: 'wait_for',
+    });
+
+    const esqlQuery = (esClient.esql.query as jest.Mock).mock.calls[0][0].query;
+    expect(esqlQuery).toContain('user.risk.id_value');
+    expect(esqlQuery).toContain('user.risk.calculated_score_norm');
+
+    expect(writerBulkMock).toHaveBeenCalledWith({
+      user: [
+        expect.objectContaining({
+          id_field: 'entity.id',
+          id_value: 'user:jane.doe',
+          calculated_score: 0,
+        }),
+      ],
+      refresh: 'wait_for',
+    });
+    expect(persistRiskScoresToEntityStore).toHaveBeenCalled();
   });
 });

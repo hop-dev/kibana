@@ -8,7 +8,10 @@
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { Logger } from '@kbn/core/server';
 import type { EntityType } from '../../../../common/entity_analytics/types';
-import { EntityTypeToIdentifierField } from '../../../../common/entity_analytics/types';
+import {
+  EntityIdentifierFields,
+  EntityTypeToIdentifierField,
+} from '../../../../common/entity_analytics/types';
 import type {
   RiskScoresCalculationResponse,
   AssetCriticalityRecord,
@@ -32,6 +35,38 @@ import { RIEMANN_ZETA_VALUE } from './constants';
 
 export const getFieldForIdentifier = (identifierType: EntityType): string =>
   EntityTypeToIdentifierField[identifierType];
+
+/**
+ * Internal runtime field name for risk score composite aggregation and ESQL.
+ * Using our own name (instead of ECS identity fields like user.entity.id) avoids the
+ * Painless script referencing the same field it defines, which causes script_exception
+ * in composite aggs. API responses continue to expose normalized `entity.id` for V2.
+ */
+export const getRiskScoreEntityIdField = (entityType: string): string => `${entityType}_id`;
+
+/**
+ * Returns the identifier field used inside queries (composite aggs, ESQL BY clauses).
+ * V2 uses a synthetic runtime field; V1 uses the legacy ECS field.
+ */
+export const getQueryIdentifierField = (
+  entityType: EntityType,
+  idBasedRiskScoringEnabled: boolean
+): string =>
+  idBasedRiskScoringEnabled
+    ? getRiskScoreEntityIdField(entityType)
+    : EntityTypeToIdentifierField[entityType];
+
+/**
+ * Returns the identifier field exposed in API responses and stored in risk score documents.
+ * V2 normalizes to `entity.id`; V1 uses the per-type ECS field.
+ */
+export const getOutputIdentifierField = (
+  entityType: EntityType,
+  idBasedRiskScoringEnabled: boolean
+): string =>
+  idBasedRiskScoringEnabled
+    ? EntityIdentifierFields.generic
+    : EntityTypeToIdentifierField[entityType];
 
 export const getAfterKeyForIdentifierType = ({
   afterKeys,
