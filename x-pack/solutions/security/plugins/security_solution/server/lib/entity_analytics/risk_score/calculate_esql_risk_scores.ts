@@ -88,21 +88,15 @@ const getIdentityStatsForEsql = (
 ): {
   identitySourceFields: string[];
   identityStatsColumns: string;
-  requiresOneOfClause: string;
 } => {
-  const { identitySourceFields, requiresOneOf } = euid.getEuidSourceFields(entityType);
+  const { identitySourceFields } = euid.getEuidSourceFields(entityType);
 
   // Emit positional columns (`id_src_0`, `id_src_1`, ...) for each identity source field
   const identityStatsColumns = identitySourceFields
     .map((field, i) => `id_src_${i} = FIRST(TO_STRING(${field}), time)`)
     .join(',\n          ');
 
-  // At least one of the required fields must be present for identity to be valid
-  const requiresOneOfClause = requiresOneOf
-    .map((field) => `(${field} IS NOT NULL AND TO_STRING(${field}) != "")`)
-    .join(' OR ');
-
-  return { identitySourceFields, identityStatsColumns, requiresOneOfClause };
+  return { identitySourceFields, identityStatsColumns };
 };
 
 type ESQLResults = Array<
@@ -451,7 +445,8 @@ export const getESQL = (
   if (idBasedRiskScoringEnabled) {
     // V2: EUID-based identification with runtime EVAL and identity source fields for entity store
     const identifierField = getQueryIdentifierField(entityType, idBasedRiskScoringEnabled);
-    const { identityStatsColumns, requiresOneOfClause } = getIdentityStatsForEsql(entityType);
+    const { identityStatsColumns } = getIdentityStatsForEsql(entityType);
+    const docContainsEuidField = euid.getEuidEsqlDocumentsContainsIdFilter(entityType);
 
     const lower = afterKeys.lower ? `${identifierField} > "${afterKeys.lower}"` : undefined;
     const upper = afterKeys.upper ? `${identifierField} <= "${afterKeys.upper}"` : undefined;
@@ -470,7 +465,7 @@ export const getESQL = (
     return /* ESQL */ `
     FROM ${index} METADATA _index
       | WHERE kibana.alert.risk_score IS NOT NULL
-      | WHERE ${requiresOneOfClause}
+      | WHERE ${docContainsEuidField}
       | RENAME kibana.alert.risk_score as risk_score,
                kibana.alert.rule.name as rule_name,
                kibana.alert.rule.uuid as rule_id,
