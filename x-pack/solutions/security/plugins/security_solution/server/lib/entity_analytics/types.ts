@@ -76,8 +76,8 @@ export interface RiskScoreBucket {
       };
     };
   };
-  /** V2 only: identity source field values for entity store persistence */
-  identity_source?: IdentitySourceFieldsMap;
+  /** Entity Store V2 only: identity source field values for entity store persistence */
+  euid_fields?: IdentitySourceFieldsMap;
 }
 
 export interface RiskEngineConfiguration {
