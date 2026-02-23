@@ -894,3 +894,13 @@ export const getRiskScoreIndexTemplate = async (
 
   return indexTemplates[0]?.index_template?.template;
 };
+
+const ENTITY_STORE_V2_SETTING = 'securitySolution:entityStoreEnableV2';
+
+export const enableEntityStoreV2 = async (kibanaServer: KbnClient): Promise<void> => {
+  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: true });
+};
+
+export const disableEntityStoreV2 = async (kibanaServer: KbnClient): Promise<void> => {
+  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: false });
+};
