@@ -159,6 +159,20 @@ const formatForResponse = ({
   };
 };
 
+/**
+ * Removes the internal `euid_fields` property from score records so it is not
+ * persisted to the risk score index or returned in API responses.
+ */
+export const stripEuidFields = (scores: Partial<Record<string, EntityRiskScoreRecord[]>>): void => {
+  for (const entityScores of Object.values(scores)) {
+    if (entityScores) {
+      for (const score of entityScores) {
+        delete (score as Record<string, unknown>).euid_fields;
+      }
+    }
+  }
+};
+
 export const processScores = async ({
   assetCriticalityService,
   buckets,
