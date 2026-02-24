@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 
 import type { ExperimentalFeatures } from '../../../../common';
 import type { EntityType } from '../../../../common/search_strategy';
@@ -32,6 +33,7 @@ export const calculateAndPersistRiskScores = async (
     riskScoreDataClient: RiskScoreDataClient;
     experimentalFeatures: ExperimentalFeatures;
     idBasedRiskScoringEnabled: boolean;
+    entityStoreCRUDClient?: EntityStoreCRUDClient;
   }
 ): Promise<CalculationResults> => {
   const { riskScoreDataClient, spaceId, returnScores, refresh, ...rest } = params;
@@ -71,13 +73,11 @@ export const calculateAndPersistRiskScores = async (
 
   const allErrors: string[] = [];
 
-  if (params.idBasedRiskScoringEnabled) {
+  if (params.idBasedRiskScoringEnabled && params.entityStoreCRUDClient) {
     const entityStoreErrors = await persistRiskScoresToEntityStore({
-      esClient: params.esClient,
+      entityStoreCRUDClient: params.entityStoreCRUDClient,
       logger: params.logger,
-      spaceId,
       scores,
-      refresh,
     });
     allErrors.push(...entityStoreErrors);
   }

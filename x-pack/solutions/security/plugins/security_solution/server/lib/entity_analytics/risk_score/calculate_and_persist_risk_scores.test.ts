@@ -7,6 +7,7 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import { assetCriticalityServiceMock } from '../asset_criticality/asset_criticality_service.mock';
 import { privmonUserCrudServiceMock } from '../privilege_monitoring/users/privileged_users_crud.mock';
 
@@ -21,22 +22,12 @@ import { EntityRiskLevelsEnum } from '../../../../common/api/entity_analytics/co
 
 jest.mock('./calculate_esql_risk_scores');
 
-const mockUpsertEntitiesBulk = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
-jest.mock('../entity_store_v2/temp_entity_store_v2_writer', () => ({
-  TempEntityStoreV2Writer: jest.fn().mockImplementation(() => ({
-    upsertEntitiesBulk: mockUpsertEntitiesBulk,
-  })),
-}));
-
-const { TempEntityStoreV2Writer: MockTempEntityStoreV2Writer } = jest.requireMock(
-  '../entity_store_v2/temp_entity_store_v2_writer'
-);
-
 const calculateAndPersistRecentHostRiskScores = (
   esClient: ElasticsearchClient,
   logger: Logger,
   riskScoreDataClient: RiskScoreDataClient,
-  idBasedRiskScoringEnabled = false
+  idBasedRiskScoringEnabled = false,
+  entityStoreCRUDClient?: EntityStoreCRUDClient
 ) => {
   return calculateAndPersistRiskScores({
     afterKeys: {},
@@ -53,6 +44,7 @@ const calculateAndPersistRecentHostRiskScores = (
     runtimeMappings: {},
     experimentalFeatures: {} as ExperimentalFeatures,
     idBasedRiskScoringEnabled,
+    entityStoreCRUDClient,
   });
 };
 
@@ -60,21 +52,24 @@ describe('calculateAndPersistRiskScores', () => {
   let esClient: ElasticsearchClient;
   let logger: Logger;
   let riskScoreDataClient: RiskScoreDataClient;
+  let mockUpsertEntitiesBulk: jest.Mock;
+  let mockEntityStoreCRUDClient: EntityStoreCRUDClient;
 
   const calculate = (idBasedRiskScoringEnabled = false) =>
     calculateAndPersistRecentHostRiskScores(
       esClient,
       logger,
       riskScoreDataClient,
-      idBasedRiskScoringEnabled
+      idBasedRiskScoringEnabled,
+      mockEntityStoreCRUDClient
     );
 
   beforeEach(() => {
     esClient = elasticsearchServiceMock.createScopedClusterClient().asCurrentUser;
     logger = loggingSystemMock.createLogger();
     riskScoreDataClient = riskScoreDataClientMock.create();
-    mockUpsertEntitiesBulk.mockClear();
-    (MockTempEntityStoreV2Writer as jest.Mock).mockClear();
+    mockUpsertEntitiesBulk = jest.fn().mockResolvedValue([]);
+    mockEntityStoreCRUDClient = { upsertEntitiesBulk: mockUpsertEntitiesBulk };
   });
 
   describe('with no risk scores to persist', () => {
@@ -116,27 +111,25 @@ describe('calculateAndPersistRiskScores', () => {
       expect(riskScoreDataClient.upgradeIfNeeded).toHaveBeenCalled();
     });
 
-    it('does not call TempEntityStoreV2Writer when idBasedRiskScoringEnabled is false', async () => {
+    it('does not call entity store when idBasedRiskScoringEnabled is false', async () => {
       await calculate(false);
 
-      expect(MockTempEntityStoreV2Writer).not.toHaveBeenCalled();
       expect(mockUpsertEntitiesBulk).not.toHaveBeenCalled();
     });
   });
 
   describe('when idBasedRiskScoringEnabled is true', () => {
-    it('does not call TempEntityStoreV2Writer when there are no scores to persist', async () => {
+    it('does not call entity store when there are no scores to persist', async () => {
       (calculateScoresWithESQL as jest.Mock).mockResolvedValueOnce(
         calculateScoresWithESQLMock.buildResponse({ scores: { host: [] } })
       );
 
       await calculate(true);
 
-      expect(MockTempEntityStoreV2Writer).not.toHaveBeenCalled();
       expect(mockUpsertEntitiesBulk).not.toHaveBeenCalled();
     });
 
-    it('calls TempEntityStoreV2Writer.upsertEntitiesBulk with BulkObjects derived from scores', async () => {
+    it('calls upsertEntitiesBulk with BulkObjects derived from scores', async () => {
       const hostScore = {
         '@timestamp': '2024-01-15T12:00:00Z',
         id_field: 'host.entity.id',
@@ -157,13 +150,12 @@ describe('calculateAndPersistRiskScores', () => {
 
       await calculate(true);
 
-      expect(MockTempEntityStoreV2Writer).toHaveBeenCalledWith(esClient, 'default');
       expect(mockUpsertEntitiesBulk).toHaveBeenCalledTimes(1);
-      const [bulkObjects, options] = mockUpsertEntitiesBulk.mock.calls[0];
+      const [bulkObjects, force] = mockUpsertEntitiesBulk.mock.calls[0];
       expect(bulkObjects).toHaveLength(1);
       expect(bulkObjects[0]).toEqual({
         type: EntityType.host,
-        document: {
+        doc: {
           '@timestamp': hostScore['@timestamp'],
           entity: {
             id: hostScore.id_value,
@@ -175,7 +167,7 @@ describe('calculateAndPersistRiskScores', () => {
           },
         },
       });
-      expect(options).toEqual({ refresh: undefined });
+      expect(force).toBe(true);
     });
 
     it('includes identity source fields in V2 document when present on score', async () => {
@@ -208,10 +200,14 @@ describe('calculateAndPersistRiskScores', () => {
 
       const [bulkObjects] = mockUpsertEntitiesBulk.mock.calls[0];
       expect(bulkObjects).toHaveLength(1);
-      const doc = bulkObjects[0].document as Record<string, unknown>;
-      expect(doc['host.name']).toBe('server1');
-      expect(doc['host.domain']).toBe('example.com');
-      expect(doc['host.hostname']).toBe('server1.example.com');
+      const doc = bulkObjects[0].doc as Record<string, unknown>;
+      expect(doc.host).toEqual(
+        expect.objectContaining({
+          name: 'server1',
+          domain: 'example.com',
+          hostname: 'server1.example.com',
+        })
+      );
       expect(doc.entity).toEqual({
         id: 'host:server1.example.com',
         risk: {

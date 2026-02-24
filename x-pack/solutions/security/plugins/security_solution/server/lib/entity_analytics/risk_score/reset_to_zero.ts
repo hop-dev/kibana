@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../common/entity_analytics/types';
 import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
@@ -23,6 +24,7 @@ export interface ResetToZeroDependencies {
   logger: Logger;
   excludedEntities: string[];
   idBasedRiskScoringEnabled: boolean;
+  entityStoreCRUDClient?: EntityStoreCRUDClient;
   refresh?: 'wait_for';
 }
 
@@ -39,6 +41,7 @@ export const resetToZero = async ({
   refresh,
   excludedEntities,
   idBasedRiskScoringEnabled,
+  entityStoreCRUDClient,
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const identifierField = getOutputIdentifierField(entityType, idBasedRiskScoringEnabled);
@@ -71,13 +74,11 @@ export const resetToZero = async ({
     throw e;
   });
 
-  if (idBasedRiskScoringEnabled) {
+  if (idBasedRiskScoringEnabled && entityStoreCRUDClient) {
     const entityStoreErrors = await persistRiskScoresToEntityStore({
-      esClient,
+      entityStoreCRUDClient,
       logger,
-      spaceId,
       scores: { [entityType]: scores },
-      refresh,
     });
 
     if (entityStoreErrors.length > 0) {

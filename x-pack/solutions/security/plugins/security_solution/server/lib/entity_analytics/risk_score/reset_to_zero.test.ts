@@ -7,6 +7,7 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import { assetCriticalityServiceMock } from '../asset_criticality/asset_criticality_service.mock';
 import { riskScoreDataClientMock } from './risk_score_data_client.mock';
 import type { RiskScoreDataClient } from './risk_score_data_client';
@@ -21,6 +22,7 @@ describe('resetToZero', () => {
   let logger: Logger;
   let dataClient: RiskScoreDataClient;
   let writerBulkMock: jest.Mock;
+  let mockEntityStoreCRUDClient: EntityStoreCRUDClient;
 
   beforeEach(() => {
     esClient = elasticsearchServiceMock.createScopedClusterClient().asCurrentUser;
@@ -29,6 +31,7 @@ describe('resetToZero', () => {
     writerBulkMock = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
     (dataClient.getWriter as jest.Mock).mockResolvedValue({ bulk: writerBulkMock });
     (persistRiskScoresToEntityStore as jest.Mock).mockResolvedValue([]);
+    mockEntityStoreCRUDClient = { upsertEntitiesBulk: jest.fn().mockResolvedValue([]) };
   });
 
   afterEach(() => {
@@ -85,6 +88,7 @@ describe('resetToZero', () => {
       logger,
       excludedEntities: ['host:do-not-reset'],
       idBasedRiskScoringEnabled: true,
+      entityStoreCRUDClient: mockEntityStoreCRUDClient,
       refresh: 'wait_for',
     });
 
@@ -104,9 +108,8 @@ describe('resetToZero', () => {
       refresh: 'wait_for',
     });
     expect(persistRiskScoresToEntityStore).toHaveBeenCalledWith({
-      esClient,
+      entityStoreCRUDClient: mockEntityStoreCRUDClient,
       logger,
-      spaceId: 'default',
       scores: {
         host: [
           expect.objectContaining({
@@ -117,7 +120,6 @@ describe('resetToZero', () => {
           }),
         ],
       },
-      refresh: 'wait_for',
     });
   });
 
@@ -175,6 +177,7 @@ describe('resetToZero', () => {
       logger,
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
+      entityStoreCRUDClient: mockEntityStoreCRUDClient,
       refresh: 'wait_for',
     });
 
