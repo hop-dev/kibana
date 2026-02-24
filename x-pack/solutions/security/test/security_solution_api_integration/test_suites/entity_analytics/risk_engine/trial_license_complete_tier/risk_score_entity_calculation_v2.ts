@@ -16,6 +16,7 @@ import { dataGeneratorFactory } from '../../../detections_response/utils';
 import {
   buildDocument,
   createAndSyncRuleAndAlertsFactory,
+  deleteAllRiskScores,
   readRiskScores,
   normalizeScores,
   waitForRiskScoresToBePresent,
@@ -116,6 +117,7 @@ export default ({ getService }: FtrProviderContext): void => {
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
         await riskEngineRoutes.cleanUp();
+        await deleteAllRiskScores(log, es, undefined, true);
       });
 
       it('calculates and persists risk score for entity', async () => {

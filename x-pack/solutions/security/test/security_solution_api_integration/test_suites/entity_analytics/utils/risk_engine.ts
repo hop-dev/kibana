@@ -181,12 +181,16 @@ export const areRiskScoreIndicesEmpty = async ({
 
 /**
  * Deletes all risk scores from a given index or indices, defaults to `risk-score.risk-score-*`
- * For use inside of afterEach blocks of tests
+ * For use inside of afterEach blocks of tests.
+ *
+ * When `deleteIndices` is true, also removes the underlying data streams and indices so that
+ * subsequent `init()` calls don't hit "data stream conflicts with index" errors.
  */
 export const deleteAllRiskScores = async (
   log: ToolingLog,
   es: Client,
-  index: string[] = ['risk-score.risk-score-default']
+  index: string[] = ['risk-score.risk-score-default', 'risk-score.risk-score-latest-default'],
+  deleteIndices: boolean = false
 ): Promise<void> => {
   await countDownTest(
     async () => {
@@ -205,6 +209,13 @@ export const deleteAllRiskScores = async (
     'deleteAllRiskScores',
     log
   );
+
+  if (deleteIndices) {
+    for (const idx of index) {
+      await es.indices.deleteDataStream({ name: idx }).catch(() => {});
+      await es.indices.delete({ index: idx, allow_no_indices: true }).catch(() => {});
+    }
+  }
 };
 
 /**
@@ -246,9 +257,17 @@ export const waitForRiskScoresToBePresent = async ({
   index?: string[];
   scoreCount?: number;
 }): Promise<void> => {
+  let lastSnapshot = '';
   await waitFor(
     async () => {
       const riskScores = await readRiskScores(es, index, scoreCount + 10);
+      const snapshot = JSON.stringify(riskScores);
+      if (snapshot !== lastSnapshot) {
+        lastSnapshot = snapshot;
+        log.debug(
+          `waitForRiskScoresToBePresent: found ${riskScores.length}/${scoreCount} scores: ${snapshot}`
+        );
+      }
       return riskScores.length >= scoreCount;
     },
     'waitForRiskScoresToBePresent',
@@ -897,10 +916,16 @@ export const getRiskScoreIndexTemplate = async (
 
 const ENTITY_STORE_V2_SETTING = 'securitySolution:entityStoreEnableV2';
 
-export const enableEntityStoreV2 = async (kibanaServer: KbnClient): Promise<void> => {
-  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: true });
+export const enableEntityStoreV2 = async (
+  kibanaServer: KbnClient,
+  space?: string
+): Promise<void> => {
+  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: true }, { space });
 };
 
-export const disableEntityStoreV2 = async (kibanaServer: KbnClient): Promise<void> => {
-  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: false });
+export const disableEntityStoreV2 = async (
+  kibanaServer: KbnClient,
+  space?: string
+): Promise<void> => {
+  await kibanaServer.uiSettings.update({ [ENTITY_STORE_V2_SETTING]: false }, { space });
 };

@@ -12,6 +12,7 @@ import { dataGeneratorFactory } from '../../../../detections_response/utils';
 import {
   buildDocument,
   createAndSyncRuleAndAlertsFactory,
+  deleteAllRiskScores,
   readRiskScores,
   waitForRiskScoresToBePresent,
   normalizeScores,
@@ -55,6 +56,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
       before(async () => {
         await riskEngineRoutes.cleanUp();
+        await deleteAllRiskScores(log, es, undefined, true);
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -73,6 +75,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
       afterEach(async () => {
         await riskEngineRoutes.cleanUp();
+        await deleteAllRiskScores(log, es, undefined, true);
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });
@@ -173,6 +176,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
           describe('modifying configuration', () => {
             beforeEach(async () => {
+              await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
               await riskEngineRoutes.disable();
             });
 
@@ -192,6 +196,33 @@ export default ({ getService }: FtrProviderContext): void => {
                 const riskScores = await readRiskScores(es);
 
                 expect(riskScores.length).to.be.greaterThan(29);
+              });
+            });
+
+            describe('when page size is smaller than the number of entities', () => {
+              beforeEach(async () => {
+                await updateRiskEngineConfigSO({
+                  attributes: {
+                    pageSize: 2,
+                  },
+                  kibanaServer,
+                });
+                await riskEngineRoutes.enable();
+              });
+
+              it('@skipInServerlessMKI pages through all entities via composite aggregation', async () => {
+                await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
+                const scores = await readRiskScores(es);
+
+                const expectedIds = Array(10)
+                  .fill(0)
+                  .map((_, index) => `host:host-${index}`);
+
+                expect(
+                  normalizeScores(scores)
+                    .map(({ id_value: idValue }) => idValue)
+                    .sort()
+                ).to.eql([...expectedIds, ...expectedIds].sort());
               });
             });
           });

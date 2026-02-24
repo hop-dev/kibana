@@ -12,6 +12,7 @@ import { dataGeneratorFactory } from '../../../../detections_response/utils';
 import {
   buildDocument,
   createAndSyncRuleAndAlertsFactory,
+  deleteAllRiskScores,
   readRiskScores,
   waitForRiskScoresToBePresent,
   normalizeScores,
@@ -29,14 +30,6 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
   const kibanaServer = getService('kibanaServer');
 
   describe('@ess Risk Scoring Task in non-default space - V2 (id-based)', () => {
-    before(async () => {
-      await enableEntityStoreV2(kibanaServer);
-    });
-
-    after(async () => {
-      await disableEntityStoreV2(kibanaServer);
-    });
-
     describe('with alerts in a non-default space', () => {
       const { indexListOfDocuments } = dataGeneratorFactory({
         es,
@@ -45,7 +38,10 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
       const namespace = uuidv4();
       const documentId = uuidv4();
-      const index = [`risk-score.risk-score-${namespace}`];
+      const index = [
+        `risk-score.risk-score-${namespace}`,
+        `risk-score.risk-score-latest-${namespace}`,
+      ];
       const createAndSyncRuleAndAlertsForOtherSpace = createAndSyncRuleAndAlertsFactory({
         supertest,
         log,
@@ -77,6 +73,8 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
           disabledFeatures: [],
         });
 
+        await enableEntityStoreV2(kibanaServer, namespace);
+
         await indexListOfDocuments(
           Array(10)
             .fill(0)
@@ -93,7 +91,9 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
 
       afterEach(async () => {
+        await disableEntityStoreV2(kibanaServer, namespace);
         await riskEngineRoutesForNamespace.cleanUp();
+        await deleteAllRiskScores(log, es, index, true);
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
         await getService('spaces').delete(namespace);
