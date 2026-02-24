@@ -77,14 +77,10 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
           disabledFeatures: [],
         });
 
-        const baseEvent = buildDocument({ host: { name: 'host-1' } }, documentId);
         await indexListOfDocuments(
           Array(10)
-            .fill(baseEvent)
-            .map((_baseEvent, _index) => ({
-              ..._baseEvent,
-              'host.name': `host-${_index}`,
-            }))
+            .fill(0)
+            .map((_, _index) => buildDocument({ host: { name: `host-${_index}` } }, documentId))
         );
 
         await createAndSyncRuleAndAlertsForOtherSpace({

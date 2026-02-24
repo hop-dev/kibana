@@ -82,14 +82,10 @@ export default ({ getService }: FtrProviderContext): void => {
 
         beforeEach(async () => {
           documentId = uuidv4();
-          const baseEvent = buildDocument({ host: { name: 'host-1' } }, documentId);
           await indexListOfDocuments(
             Array(10)
-              .fill(baseEvent)
-              .map((_baseEvent, index) => ({
-                ..._baseEvent,
-                'host.name': `host-${index}`,
-              }))
+              .fill(0)
+              .map((_, index) => buildDocument({ host: { name: `host-${index}` } }, documentId))
           );
 
           await createAndSyncRuleAndAlerts({
@@ -153,13 +149,9 @@ export default ({ getService }: FtrProviderContext): void => {
               const expectedIds = Array(10)
                 .fill(0)
                 .map((_, index) => `host:host-${index}`);
-              const actualIds = normalizeScores(scores).map(
-                ({ id_value: idValue }) => idValue
-              );
+              const actualIds = normalizeScores(scores).map(({ id_value: idValue }) => idValue);
 
-              expect(actualIds.sort()).to.eql(
-                [...expectedIds, ...expectedIds].sort()
-              );
+              expect(actualIds.sort()).to.eql([...expectedIds, ...expectedIds].sort());
             });
           });
 
@@ -212,25 +204,17 @@ export default ({ getService }: FtrProviderContext): void => {
 
         beforeEach(async () => {
           hostId = uuidv4();
-          const hostEvent = buildDocument({ host: { name: 'host-1' } }, hostId);
           await indexListOfDocuments(
             Array(10)
-              .fill(hostEvent)
-              .map((event, index) => ({
-                ...event,
-                'host.name': `host-${index}`,
-              }))
+              .fill(0)
+              .map((_, index) => buildDocument({ host: { name: `host-${index}` } }, hostId))
           );
 
           userId = uuidv4();
-          const userEvent = buildDocument({ user: { name: 'user-1' } }, userId);
           await indexListOfDocuments(
             Array(10)
-              .fill(userEvent)
-              .map((event, index) => ({
-                ...event,
-                'user.name': `user-${index}`,
-              }))
+              .fill(0)
+              .map((_, index) => buildDocument({ user: { name: `user-${index}` } }, userId))
           );
 
           await createAndSyncRuleAndAlerts({
