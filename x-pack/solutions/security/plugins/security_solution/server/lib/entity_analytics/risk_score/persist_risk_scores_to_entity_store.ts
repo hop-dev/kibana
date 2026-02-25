@@ -21,7 +21,6 @@ const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> =>
   const document: Record<string, unknown> = {
     '@timestamp': score['@timestamp'],
     entity: {
-      id: score.id_value,
       risk: {
         calculated_score: score.calculated_score,
         calculated_score_norm: score.calculated_score_norm,
