@@ -17,6 +17,7 @@ import {
   buildDocument,
   createAndSyncRuleAndAlertsFactory,
   deleteAllRiskScores,
+  deleteAllEntityStoreEntities,
   readRiskScores,
   normalizeScores,
   waitForRiskScoresToBePresent,
@@ -27,6 +28,11 @@ import {
   enableEntityStoreV2,
   disableEntityStoreV2,
   sanitizeScores,
+  entityStoreV2RouteHelpersFactory,
+  getEntitiesById,
+  getEntityId,
+  getEntityRisk,
+  waitForEntityStoreFieldValues,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -39,6 +45,7 @@ export default ({ getService }: FtrProviderContext): void => {
   const kibanaServer = getService('kibanaServer');
 
   const riskEngineRoutes = riskEngineRouteHelpersFactory(supertest);
+  const entityStoreRoutes = entityStoreV2RouteHelpersFactory(supertest, es);
 
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
 
@@ -82,9 +89,12 @@ export default ({ getService }: FtrProviderContext): void => {
 
     before(async () => {
       await enableEntityStoreV2(kibanaServer);
+      await entityStoreRoutes.uninstall({ cleanIndices: true });
+      await entityStoreRoutes.install();
     });
 
     after(async () => {
+      await entityStoreRoutes.uninstall();
       await disableEntityStoreV2(kibanaServer);
     });
 
@@ -118,9 +128,10 @@ export default ({ getService }: FtrProviderContext): void => {
         await deleteAllRules(supertest, log);
         await riskEngineRoutes.cleanUp();
         await deleteAllRiskScores(log, es, undefined, true);
+        await deleteAllEntityStoreEntities(log, es);
       });
 
-      it('calculates and persists risk score for entity', async () => {
+      it('calculates and persists risk score for entity and propagates to entity store', async () => {
         const documentId = uuidv4();
         await indexListOfDocuments([buildDocument({ host: { name: 'host-1' } }, documentId)]);
         await createRuleAndWaitExecution(documentId);
@@ -153,6 +164,24 @@ export default ({ getService }: FtrProviderContext): void => {
 
         expect(persistedScoreByApi).to.eql(expectedScore);
         expect(persistedScoreByApi).to.eql(persistedScoreByEngine);
+
+        // Verify the score propagated to the entity store
+        await entityStoreRoutes.forceLogExtraction();
+        await waitForEntityStoreFieldValues({
+          es,
+          log,
+          entityIds: ['host:host-1'],
+          fieldName: 'entity.risk.calculated_score_norm',
+          expectedValuesByEntityId: { 'host:host-1': expectedScore.calculated_score_norm },
+        });
+
+        const entities = await getEntitiesById({ es, entityIds: ['host:host-1'] });
+        expect(entities.length).to.eql(1);
+        expect(getEntityId(entities[0])).to.eql('host:host-1');
+        const risk = getEntityRisk(entities[0]);
+        expect(risk).to.be.ok();
+        expect(risk!.calculated_score_norm).to.eql(expectedScore.calculated_score_norm);
+        expect(risk!.calculated_level).to.eql(expectedScore.calculated_level);
       });
 
       // TODO: asset criticality currently does not work with entity store v2 unskip as part of https://github.com/elastic/security-team/issues/15904
