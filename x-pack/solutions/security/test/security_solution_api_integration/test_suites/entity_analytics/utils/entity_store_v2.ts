@@ -9,7 +9,7 @@ import { X_ELASTIC_INTERNAL_ORIGIN_REQUEST } from '@kbn/core-http-common';
 import type { Client } from '@elastic/elasticsearch';
 import type { ToolingLog } from '@kbn/tooling-log';
 import type SuperTest from 'supertest';
-import { waitFor } from '@kbn/detections-response-ftr-services';
+import { waitFor, routeWithNamespace } from '@kbn/detections-response-ftr-services';
 
 const ENTITY_STORE_V2_LATEST_INDEX_PREFIX = '.entities.v2.latest.security_';
 const ENTITY_STORE_V2_UPDATES_INDEX_PREFIX = '.entities.v2.updates.security_';
@@ -229,54 +229,57 @@ export const entityStoreV2RouteHelpersFactory = (
   supertest: SuperTest.Agent,
   es: Client,
   namespace = 'default'
-) => ({
-  install: async (expectStatusCode: number = 201) => {
-    const response = await supertest
-      .post(ENTITY_STORE_V2_INSTALL_URL)
-      .set('kbn-xsrf', 'true')
-      .set('elastic-api-version', '2')
-      .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-      .send({});
-    if (response.status !== expectStatusCode && response.status !== 200) {
-      throw new Error(
-        `Expected entity store install status ${expectStatusCode}, got ${response.status}: ${response.text}`
+) => {
+  const ns = namespace === 'default' ? undefined : namespace;
+  return {
+    install: async (expectStatusCode: number = 201) => {
+      const response = await supertest
+        .post(routeWithNamespace(ENTITY_STORE_V2_INSTALL_URL, ns))
+        .set('kbn-xsrf', 'true')
+        .set('elastic-api-version', '2')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .send({});
+      if (response.status !== expectStatusCode && response.status !== 200) {
+        throw new Error(
+          `Expected entity store install status ${expectStatusCode}, got ${response.status}: ${response.text}`
+        );
+      }
+      return response;
+    },
+
+    /**
+     * Uninstalls the entity store via the API. When `cleanIndices` is true, also
+     * forcefully removes any orphaned ES indices/data streams that may linger
+     * after a crashed test run where the API-level uninstall can't reach them.
+     */
+    uninstall: async ({ cleanIndices = false }: { cleanIndices?: boolean } = {}) => {
+      const response = await supertest
+        .post(routeWithNamespace(ENTITY_STORE_V2_UNINSTALL_URL, ns))
+        .set('kbn-xsrf', 'true')
+        .set('elastic-api-version', '2')
+        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+        .send({});
+      if (cleanIndices) {
+        await cleanupEntityStoreV2Indices(es, namespace);
+      }
+      return response;
+    },
+
+    forceLogExtraction: async (entityTypes: string[] = ['host', 'user']) => {
+      const now = new Date();
+      const fromDateISO = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+      const toDateISO = now.toISOString();
+      const responses = await Promise.all(
+        entityTypes.map((entityType) =>
+          supertest
+            .post(routeWithNamespace(forceLogExtractionUrl(entityType), ns))
+            .set('kbn-xsrf', 'true')
+            .set('elastic-api-version', '2')
+            .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+            .send({ fromDateISO, toDateISO })
+        )
       );
-    }
-    return response;
-  },
-
-  /**
-   * Uninstalls the entity store via the API. When `cleanIndices` is true, also
-   * forcefully removes any orphaned ES indices/data streams that may linger
-   * after a crashed test run where the API-level uninstall can't reach them.
-   */
-  uninstall: async ({ cleanIndices = false }: { cleanIndices?: boolean } = {}) => {
-    const response = await supertest
-      .post(ENTITY_STORE_V2_UNINSTALL_URL)
-      .set('kbn-xsrf', 'true')
-      .set('elastic-api-version', '2')
-      .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-      .send({});
-    if (cleanIndices) {
-      await cleanupEntityStoreV2Indices(es, namespace);
-    }
-    return response;
-  },
-
-  forceLogExtraction: async (entityTypes: string[] = ['host', 'user']) => {
-    const now = new Date();
-    const fromDateISO = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
-    const toDateISO = now.toISOString();
-    const responses = await Promise.all(
-      entityTypes.map((entityType) =>
-        supertest
-          .post(forceLogExtractionUrl(entityType))
-          .set('kbn-xsrf', 'true')
-          .set('elastic-api-version', '2')
-          .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-          .send({ fromDateISO, toDateISO })
-      )
-    );
-    return responses;
-  },
-});
+      return responses;
+    },
+  };
+};

@@ -44,10 +44,7 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
       const namespace = uuidv4();
       const documentId = uuidv4();
-      const index = [
-        `risk-score.risk-score-${namespace}`,
-        `risk-score.risk-score-latest-${namespace}`,
-      ];
+      const index = [`risk-score.risk-score-${namespace}`];
       const createAndSyncRuleAndAlertsForOtherSpace = createAndSyncRuleAndAlertsFactory({
         supertest,
         log,
@@ -74,43 +71,49 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
 
       beforeEach(async () => {
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
+        await Promise.all([deleteAllAlerts(supertest, log, es), deleteAllRules(supertest, log)]);
 
-        const spaces = getService('spaces');
-        await spaces.create({
+        await getService('spaces').create({
           id: namespace,
           name: namespace,
           disabledFeatures: [],
         });
 
-        await enableEntityStoreV2(kibanaServer, namespace);
+        await Promise.all([
+          enableEntityStoreV2(kibanaServer, namespace),
+          indexListOfDocuments(
+            Array(10)
+              .fill(0)
+              .map((_, _index) => buildDocument({ host: { name: `host-${_index}` } }, documentId))
+          ),
+        ]);
+
         await entityStoreRoutesForNamespace.uninstall({ cleanIndices: true });
-        await entityStoreRoutesForNamespace.install();
 
-        await indexListOfDocuments(
-          Array(10)
-            .fill(0)
-            .map((_, _index) => buildDocument({ host: { name: `host-${_index}` } }, documentId))
-        );
-
-        await createAndSyncRuleAndAlertsForOtherSpace({
-          query: `id: ${documentId}`,
-          alerts: 10,
-          riskScore: 40,
-        });
+        await Promise.all([
+          entityStoreRoutesForNamespace.install(),
+          createAndSyncRuleAndAlertsForOtherSpace({
+            query: `id: ${documentId}`,
+            alerts: 10,
+            riskScore: 40,
+          }),
+        ]);
 
         await riskEngineRoutesForNamespace.init();
       });
 
       afterEach(async () => {
-        await entityStoreRoutesForNamespace.uninstall();
-        await deleteAllEntityStoreEntities(log, es, namespace);
-        await disableEntityStoreV2(kibanaServer, namespace);
-        await riskEngineRoutesForNamespace.cleanUp();
-        await deleteAllRiskScores(log, es, index, true);
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
+        await Promise.all([
+          entityStoreRoutesForNamespace.uninstall(),
+          riskEngineRoutesForNamespace.cleanUp(),
+          deleteAllAlerts(supertest, log, es),
+          deleteAllRules(supertest, log),
+        ]);
+        await Promise.all([
+          deleteAllEntityStoreEntities(log, es, namespace),
+          disableEntityStoreV2(kibanaServer, namespace),
+          deleteAllRiskScores(log, es, index, true),
+        ]);
         await getService('spaces').delete(namespace);
       });
 
