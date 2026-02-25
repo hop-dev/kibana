@@ -133,6 +133,46 @@ export const waitForEntityStoreEntitiesToBePresent = async ({
   );
 };
 
+export const waitForEntityStoreFieldValues = async ({
+  es,
+  log,
+  entityIds,
+  fieldName,
+  expectedValuesByEntityId,
+  namespace = 'default',
+}: {
+  es: Client;
+  log: ToolingLog;
+  entityIds: string[];
+  fieldName: string;
+  expectedValuesByEntityId: Record<string, number>;
+  namespace?: string;
+}): Promise<void> => {
+  let lastSnapshot = '';
+  await waitFor(
+    async () => {
+      const entities = await getEntitiesById({ es, entityIds, namespace });
+      const converged =
+        entities.length >= entityIds.length &&
+        entities.every((entity) => {
+          const entityId = entity['entity.id'];
+          if (typeof entityId !== 'string' || !(entityId in expectedValuesByEntityId)) return true;
+          return (entity[fieldName] as number | undefined) === expectedValuesByEntityId[entityId];
+        });
+      const snapshot = JSON.stringify(
+        entities.map((e) => ({ id: e['entity.id'], [fieldName]: e[fieldName] }))
+      );
+      if (snapshot !== lastSnapshot) {
+        lastSnapshot = snapshot;
+        log.debug(`waitForEntityStoreFieldValues: converged=${converged}, entities: ${snapshot}`);
+      }
+      return converged;
+    },
+    'waitForEntityStoreFieldValues',
+    log
+  );
+};
+
 export const deleteAllEntityStoreEntities = async (
   log: ToolingLog,
   es: Client,
