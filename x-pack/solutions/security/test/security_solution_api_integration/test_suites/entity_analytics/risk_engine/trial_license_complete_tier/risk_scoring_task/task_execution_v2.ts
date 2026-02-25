@@ -132,6 +132,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
             // Verify scores propagated to the entity store
             await entityStoreRoutes.forceLogExtraction();
+
             await waitForEntityStoreFieldValues({
               es,
               log,

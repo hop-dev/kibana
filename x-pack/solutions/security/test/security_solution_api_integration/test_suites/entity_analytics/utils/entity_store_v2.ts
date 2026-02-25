@@ -133,6 +133,11 @@ export const waitForEntityStoreEntitiesToBePresent = async ({
   );
 };
 
+// Entity store score fields are mapped as float (IEEE 754 single-precision).
+// Values written as double-precision in _source get truncated to float when
+// read back via ES|QL during log extraction. Convert to float for comparison.
+const toFloat32 = (v: number): number => Math.fround(v);
+
 export const waitForEntityStoreFieldValues = async ({
   es,
   log,
@@ -148,6 +153,9 @@ export const waitForEntityStoreFieldValues = async ({
   expectedValuesByEntityId: Record<string, number>;
   namespace?: string;
 }): Promise<void> => {
+  const floatExpected = Object.fromEntries(
+    Object.entries(expectedValuesByEntityId).map(([id, v]) => [id, toFloat32(v)])
+  );
   let lastSnapshot = '';
   await waitFor(
     async () => {
@@ -156,8 +164,8 @@ export const waitForEntityStoreFieldValues = async ({
         entities.length >= entityIds.length &&
         entities.every((entity) => {
           const entityId = entity['entity.id'];
-          if (typeof entityId !== 'string' || !(entityId in expectedValuesByEntityId)) return true;
-          return (entity[fieldName] as number | undefined) === expectedValuesByEntityId[entityId];
+          if (typeof entityId !== 'string' || !(entityId in floatExpected)) return true;
+          return (entity[fieldName] as number | undefined) === floatExpected[entityId];
         });
       const snapshot = JSON.stringify(
         entities.map((e) => ({ id: e['entity.id'], [fieldName]: e[fieldName] }))
