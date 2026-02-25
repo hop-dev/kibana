@@ -68,34 +68,33 @@ export default ({ getService }: FtrProviderContext): void => {
         await riskEngineRoutes.cleanUp();
         await deleteAllRiskScores(log, es, undefined, true);
         await deleteAllEntityStoreEntities(log, es);
+        await deleteAllAlerts(supertest, log, es);
+        await deleteAllRules(supertest, log);
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
-      });
-
-      after(async () => {
-        await esArchiver.unload(
-          'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
-        );
-      });
-
-      beforeEach(async () => {
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
       });
 
       afterEach(async () => {
         await riskEngineRoutes.cleanUp();
         await deleteAllRiskScores(log, es, undefined, true);
         await deleteAllEntityStoreEntities(log, es);
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
       });
 
+      after(async () => {
+        await deleteAllAlerts(supertest, log, es);
+        await deleteAllRules(supertest, log);
+        await esArchiver.unload(
+          'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
+        );
+      });
+
+      // Alerts and rules are created once and shared across tests in this block.
+      // Tests must treat alerts as read-only; only risk engine state is reset between tests.
       describe('with some alerts containing hosts', () => {
         let documentId: string;
 
-        beforeEach(async () => {
+        before(async () => {
           documentId = uuidv4();
           await indexListOfDocuments(
             Array(10)
@@ -256,7 +255,7 @@ export default ({ getService }: FtrProviderContext): void => {
         let hostId: string;
         let userId: string;
 
-        beforeEach(async () => {
+        before(async () => {
           hostId = uuidv4();
           await indexListOfDocuments(
             Array(10)
