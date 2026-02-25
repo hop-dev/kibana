@@ -11,7 +11,7 @@ import type { EntityType } from '../../../../common/entity_analytics/types';
 import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
 import type { IdentitySourceFieldsMap, RiskScoreBucket } from '../types';
-import { getOutputIdentifierField, processScores } from './helpers';
+import { getOutputIdentifierField, parseIdentitySourceFields, processScores } from './helpers';
 import { getIndexPatternDataStream } from './configurations';
 import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
 
@@ -59,6 +59,10 @@ export const resetToZero = async ({
     idBasedRiskScoringEnabled,
   });
 
+  logger.debug(
+    `Reset to zero fetched ${entityType} entities with non-zero scores: ${JSON.stringify(entities)}`
+  );
+
   if (entities.length === 0) {
     return { scoresWritten: 0 };
   }
@@ -80,6 +84,11 @@ export const resetToZero = async ({
   });
 
   if (idBasedRiskScoringEnabled && entityStoreCRUDClient) {
+    logger.debug(
+      `Reset to zero persisting ${entityType} risk scores to entity store: ${JSON.stringify(
+        scores
+      )}`
+    );
     const entityStoreErrors = await persistRiskScoresToEntityStore({
       entityStoreCRUDClient,
       logger,
@@ -123,10 +132,10 @@ const fetchEntitiesWithNonZeroScores = async ({
 }): Promise<EntityWithIdentity[]> => {
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
   const euidFieldsPresenceClause = idBasedRiskScoringEnabled
-    ? // NOTE: When V2 is enabled, only reset docs that have euid_fields persisted.
-      // This intentionally excludes legacy/V1 scores (without euid_fields), which
+    ? // NOTE: When V2 is enabled, only reset docs that have euid_fields_raw persisted.
+      // This intentionally excludes legacy/V1 scores (without euid_fields_raw), which
       // therefore will no longer be reset to zero by this V2 path.
-      `AND ${entityType}.risk.euid_fields IS NOT NULL`
+      `AND ${entityType}.risk.euid_fields_raw IS NOT NULL`
     : '';
   const excludedEntitiesClause =
     excludedEntities.length > 0
@@ -138,12 +147,12 @@ const fetchEntitiesWithNonZeroScores = async ({
     | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
     | EVAL id_value = TO_STRING(${entityField})
     | WHERE id_value IS NOT NULL AND id_value != "" ${euidFieldsPresenceClause} ${excludedEntitiesClause}
-    | EVAL euid_fields = ${entityType}.risk.euid_fields
+    | EVAL euid_fields_raw = TO_STRING(${entityType}.risk.euid_fields_raw)
     | SORT @timestamp DESC
-    | KEEP id_value, euid_fields
+    | KEEP id_value, euid_fields_raw
     `;
 
-  logger.debug(`Reset to zero ESQL query:\n${esql}`);
+  logger.trace(`Reset to zero ESQL query:\n${esql}`);
 
   const response = await esClient.esql.query({ query: esql }).catch((e) => {
     logger.error(
@@ -155,17 +164,16 @@ const fetchEntitiesWithNonZeroScores = async ({
     throw e;
   });
 
+  logger.debug(`Reset to zero ESQL response:\n${JSON.stringify(response)}`);
+
   const seenEntities = new Set<string>();
   return response.values.reduce<EntityWithIdentity[]>((acc, row) => {
-    const [idValue, euidFields] = row;
+    const [idValue, euidFieldsRaw] = row;
     if (typeof idValue === 'string' && idValue !== '' && !seenEntities.has(idValue)) {
       seenEntities.add(idValue);
       acc.push({
         idValue,
-        euidFields:
-          euidFields && typeof euidFields === 'object'
-            ? (euidFields as IdentitySourceFieldsMap)
-            : undefined,
+        euidFields: parseIdentitySourceFields(euidFieldsRaw),
       });
     }
     return acc;

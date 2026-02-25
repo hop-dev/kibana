@@ -19,9 +19,13 @@ import type { AssetCriticalityService } from '../asset_criticality';
 
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 
-import type { IdentitySourceFieldsMap, RiskScoreBucket } from '../types';
+import type { RiskScoreBucket } from '../types';
 import { RIEMANN_ZETA_VALUE } from './constants';
-import { getGlobalWeightForIdentifierType, max10DecimalPlaces } from './helpers';
+import {
+  getGlobalWeightForIdentifierType,
+  max10DecimalPlaces,
+  serializeIdentitySourceFields,
+} from './helpers';
 
 import {
   applyCriticalityModifier,
@@ -150,7 +154,7 @@ export const riskScoreDocFactory =
 
     const legacyCat2Fields = buildLegacyCriticalityFields(found);
 
-    const record: EntityRiskScoreRecord & { euid_fields?: IdentitySourceFieldsMap } = {
+    const record: EntityRiskScoreRecord = {
       '@timestamp': now,
       id_field: identifierField,
       id_value: bucket.key[identifierField],
@@ -170,7 +174,7 @@ export const riskScoreDocFactory =
       })),
     };
     if (bucket.euid_fields !== undefined) {
-      record.euid_fields = bucket.euid_fields;
+      record.euid_fields_raw = serializeIdentitySourceFields(bucket.euid_fields);
     }
     return record as EntityRiskScoreRecord;
   };

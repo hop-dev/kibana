@@ -12,12 +12,9 @@ import type { Entity } from '@kbn/entity-store/common';
 
 import { EntityType } from '../../../../common/search_strategy';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
+import { parseIdentitySourceFields } from './helpers';
 
-type ScoreWithIdentity = EntityRiskScoreRecord & {
-  euid_fields?: Record<string, string | null>;
-};
-
-const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> => {
+const scoreToV2Document = (score: EntityRiskScoreRecord): Record<string, unknown> => {
   const document: Record<string, unknown> = {
     '@timestamp': score['@timestamp'],
     entity: {
@@ -28,13 +25,15 @@ const scoreToV2Document = (score: ScoreWithIdentity): Record<string, unknown> =>
       },
     },
   };
-  // euid fields are flattened and may contain null or empty values
+  // Identity source fields may contain null or empty values
   // apply them to the document if they are not null or empty
-  Object.entries(score.euid_fields || {}).forEach(([path, value]) => {
-    if (value != null && value !== '') {
-      set(document, path, value);
+  Object.entries(parseIdentitySourceFields(score.euid_fields_raw) || {}).forEach(
+    ([path, value]) => {
+      if (value != null && value !== '') {
+        set(document, path, value);
+      }
     }
-  });
+  );
 
   return document;
 };
@@ -49,7 +48,7 @@ const buildV2BulkObjectsFromScores = (
       entityScores.forEach((score) => {
         result.push({
           type: entityType,
-          doc: scoreToV2Document(score as ScoreWithIdentity) as Entity,
+          doc: scoreToV2Document(score) as Entity,
         });
       });
     }

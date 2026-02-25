@@ -183,13 +183,8 @@ describe('calculateAndPersistRiskScores', () => {
         category_1_count: 5,
         notes: [],
         inputs: [],
-        euid_fields: {
-          'host.entity.id': null,
-          'host.id': null,
-          'host.name': 'server1',
-          'host.domain': 'example.com',
-          'host.hostname': 'server1.example.com',
-        },
+        euid_fields_raw:
+          '{"host.domain":"example.com","host.entity.id":null,"host.hostname":"server1.example.com","host.id":null,"host.name":"server1"}',
       };
       (calculateScoresWithESQL as jest.Mock).mockResolvedValueOnce(
         calculateScoresWithESQLMock.buildResponse({

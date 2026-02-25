@@ -83,6 +83,34 @@ export const isRiskScoreCalculationComplete = (result: RiskScoresCalculationResp
 
 export const max10DecimalPlaces = (num: number) => Math.round(num * 1e10) / 1e10;
 
+export const serializeIdentitySourceFields = (
+  identitySourceFields: IdentitySourceFieldsMap
+): string =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(identitySourceFields).sort(([left], [right]) => left.localeCompare(right))
+    )
+  );
+
+export const parseIdentitySourceFields = (
+  rawIdentityFields: unknown
+): IdentitySourceFieldsMap | undefined => {
+  if (typeof rawIdentityFields !== 'string' || rawIdentityFields === '') {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(rawIdentityFields) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return parsed as IdentitySourceFieldsMap;
+    }
+  } catch {
+    // Malformed identity payloads should not fail score processing.
+  }
+
+  return undefined;
+};
+
 export const filterFromRange = (range: CalculateScoresParams['range']): QueryDslQueryContainer => ({
   range: { '@timestamp': { lt: range.end, gte: range.start } },
 });
@@ -203,18 +231,17 @@ export const processScores = async ({
       (c) => c.id_field === identifierField && c.id_value === bucket.key[identifierField]
     );
 
-    const record: EntityRiskScoreRecord & { euid_fields?: IdentitySourceFieldsMap } =
-      formatForResponse({
-        bucket,
-        criticality,
-        identifierField,
-        now,
-        includeNewFields: true,
-        globalWeight,
-      });
+    const record: EntityRiskScoreRecord = formatForResponse({
+      bucket,
+      criticality,
+      identifierField,
+      now,
+      includeNewFields: true,
+      globalWeight,
+    });
 
     if (bucket.euid_fields !== undefined) {
-      record.euid_fields = bucket.euid_fields;
+      record.euid_fields_raw = serializeIdentitySourceFields(bucket.euid_fields);
     }
 
     return record;

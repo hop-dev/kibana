@@ -42,26 +42,48 @@ import {
   routeWithNamespace,
 } from '@kbn/detections-response-ftr-services';
 
-const sanitizeScore = (score: Partial<EntityRiskScoreRecord>): Partial<EntityRiskScoreRecord> => {
+type SanitizedRiskScore = Partial<EntityRiskScoreRecord> & {
+  euid_fields?: Record<string, string | null>;
+};
+
+const parseEuidFields = (
+  euidFieldsRaw: string | undefined
+): Record<string, string | null> | undefined => {
+  if (!euidFieldsRaw) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(euidFieldsRaw) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, string | null>;
+    }
+  } catch {
+    // Ignore malformed identity payloads in test normalization.
+  }
+
+  return undefined;
+};
+
+const sanitizeScore = (score: Partial<EntityRiskScoreRecord>): SanitizedRiskScore => {
   const {
     '@timestamp': timestamp,
     inputs,
     notes,
     category_2_count: cat2Count,
     category_2_score: cat2Score,
-    euid_fields: euidFields,
+    euid_fields_raw: euidFieldsRaw,
     ...rest
   } = score;
-  return rest;
+  const euidFields = parseEuidFields(euidFieldsRaw);
+  return euidFields ? { ...rest, euid_fields: euidFields } : rest;
 };
 
 export const sanitizeScores = (
   scores: Array<Partial<EntityRiskScoreRecord>>
-): Array<Partial<EntityRiskScoreRecord>> => scores.map(sanitizeScore);
+): SanitizedRiskScore[] => scores.map(sanitizeScore);
 
-export const normalizeScores = (
-  scores: Array<Partial<EcsRiskScore>>
-): Array<Partial<EntityRiskScoreRecord>> =>
+export const normalizeScores = (scores: Array<Partial<EcsRiskScore>>): SanitizedRiskScore[] =>
   scores.map((score) => sanitizeScore(score.host?.risk ?? score.user?.risk ?? {}));
 
 export const buildDocument = (body: object, id?: string) => {
