@@ -28,7 +28,6 @@ import type { ResetToZeroDependencies } from './reset_to_zero';
 import { resetToZero } from './reset_to_zero';
 import { createPrivilegedUsersCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 import { getIsIdBasedRiskScoringEnabled } from './is_id_based_risk_scoring_enabled';
-import { stripEuidFields } from './helpers';
 
 export type RiskEngineConfigurationWithDefaults = RiskEngineConfiguration & {
   alertSampleSizePerShard: number;
@@ -91,7 +90,6 @@ export const riskScoreServiceFactory = ({
         experimentalFeatures,
         filters: params.filters || [],
       });
-      stripEuidFields(result.scores);
       return result;
     },
     calculateAndPersistScores: async (params) => {

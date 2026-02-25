@@ -31,7 +31,9 @@ describe('resetToZero', () => {
     writerBulkMock = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
     (dataClient.getWriter as jest.Mock).mockResolvedValue({ bulk: writerBulkMock });
     (persistRiskScoresToEntityStore as jest.Mock).mockResolvedValue([]);
-    mockEntityStoreCRUDClient = { upsertEntitiesBulk: jest.fn().mockResolvedValue([]) };
+    mockEntityStoreCRUDClient = {
+      upsertEntitiesBulk: jest.fn().mockResolvedValue([]),
+    } as unknown as EntityStoreCRUDClient;
   });
 
   afterEach(() => {

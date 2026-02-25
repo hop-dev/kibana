@@ -2216,6 +2216,14 @@ components:
             `id_field`, uniquely identifies the entity being scored.
           example: example.host
           type: string
+        euid_fields:
+          description: >-
+            Identity source field values keyed by ECS field path. Used to
+            reconstruct stable entity identities for entity store synchronization.
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
         inputs:
           description: >-
             A list of the highest-risk documents contributing to this risk

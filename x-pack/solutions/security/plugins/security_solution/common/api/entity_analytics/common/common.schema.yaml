@@ -183,6 +183,12 @@ components:
           type: string
           example: "example.host"
           description: The identifier value defining this risk score. Coupled with `id_field`, uniquely identifies the entity being scored.
+        euid_fields:
+          type: object
+          description: Identity source field values keyed by ECS field path. Used to reconstruct stable entity identities for entity store synchronization.
+          additionalProperties:
+            type: string
+            nullable: true
         calculated_level:
           $ref: "#/components/schemas/EntityRiskLevels"
           example: "Critical"

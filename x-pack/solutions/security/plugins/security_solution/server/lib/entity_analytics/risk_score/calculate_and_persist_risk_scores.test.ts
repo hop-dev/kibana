@@ -69,7 +69,9 @@ describe('calculateAndPersistRiskScores', () => {
     logger = loggingSystemMock.createLogger();
     riskScoreDataClient = riskScoreDataClientMock.create();
     mockUpsertEntitiesBulk = jest.fn().mockResolvedValue([]);
-    mockEntityStoreCRUDClient = { upsertEntitiesBulk: mockUpsertEntitiesBulk };
+    mockEntityStoreCRUDClient = {
+      upsertEntitiesBulk: mockUpsertEntitiesBulk,
+    } as unknown as EntityStoreCRUDClient;
   });
 
   describe('with no risk scores to persist', () => {
