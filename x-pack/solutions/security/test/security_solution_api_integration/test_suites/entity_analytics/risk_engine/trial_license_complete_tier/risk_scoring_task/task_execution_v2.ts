@@ -25,6 +25,12 @@ import {
   assetCriticalityRouteHelpersFactory,
   cleanAssetCriticality,
   waitForAssetCriticalityToBePresent,
+  entityStoreV2RouteHelpersFactory,
+  getEntitiesById,
+  getEntityId,
+  getEntityRisk,
+  deleteAllEntityStoreEntities,
+  waitForEntityStoreFieldValues,
 } from '../../../utils';
 import type { FtrProviderContext } from '../../../../../ftr_provider_context';
 
@@ -37,13 +43,17 @@ export default ({ getService }: FtrProviderContext): void => {
 
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
   const riskEngineRoutes = riskEngineRouteHelpersFactory(supertest);
+  const entityStoreRoutes = entityStoreV2RouteHelpersFactory(supertest, es);
 
   describe('@ess @serverless @serverlessQA Risk Scoring Task Execution - V2 (id-based)', () => {
     before(async () => {
       await enableEntityStoreV2(kibanaServer);
+      await entityStoreRoutes.uninstall({ cleanIndices: true });
+      await entityStoreRoutes.install();
     });
 
     after(async () => {
+      await entityStoreRoutes.uninstall();
       await disableEntityStoreV2(kibanaServer);
     });
 
@@ -57,6 +67,7 @@ export default ({ getService }: FtrProviderContext): void => {
       before(async () => {
         await riskEngineRoutes.cleanUp();
         await deleteAllRiskScores(log, es, undefined, true);
+        await deleteAllEntityStoreEntities(log, es);
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -76,6 +87,7 @@ export default ({ getService }: FtrProviderContext): void => {
       afterEach(async () => {
         await riskEngineRoutes.cleanUp();
         await deleteAllRiskScores(log, es, undefined, true);
+        await deleteAllEntityStoreEntities(log, es);
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });
@@ -103,39 +115,49 @@ export default ({ getService }: FtrProviderContext): void => {
             await riskEngineRoutes.init();
           });
 
-          it('@skipInServerlessMKI calculates and persists risk scores for alert documents', async () => {
+          it('@skipInServerlessMKI calculates and persists risk scores for alert documents and propagates to entity store', async () => {
             await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
 
             const scores = await readRiskScores(es);
+            const expectedIds = Array(10)
+              .fill(0)
+              .map((_, index) => `host:host-${index}`)
+              .sort();
+
             expect(
               normalizeScores(scores)
                 .map(({ id_value: idValue }) => idValue)
                 .sort()
-            ).to.eql(
-              Array(10)
-                .fill(0)
-                .map((_, index) => `host:host-${index}`)
-                .sort()
-            );
-          });
+            ).to.eql(expectedIds);
 
-          it('@skipInServerlessMKI starts the latest transform', async () => {
-            const TRANSFORM_STARTED_STATES = ['started', 'indexing'];
-
-            await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
-
-            const transformStats = await es.transform.getTransformStats({
-              transform_id: 'risk_score_latest_transform_default',
+            // Verify scores propagated to the entity store
+            await entityStoreRoutes.forceLogExtraction();
+            await waitForEntityStoreFieldValues({
+              es,
+              log,
+              entityIds: expectedIds,
+              fieldName: 'entity.risk.calculated_score_norm',
+              expectedValuesByEntityId: normalizeScores(scores).reduce<Record<string, number>>(
+                (acc, s) => {
+                  if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
+                    acc[s.id_value] = s.calculated_score_norm;
+                  }
+                  return acc;
+                },
+                {}
+              ),
             });
 
-            expect(transformStats.transforms.length).to.eql(1);
-            const latestTransform = transformStats.transforms[0];
-            if (!TRANSFORM_STARTED_STATES.includes(latestTransform.state)) {
-              log.error('Transform state is not in the started states, logging the transform');
-              log.info(`latestTransform: ${JSON.stringify(latestTransform)}`);
-            }
+            const entities = await getEntitiesById({ es, entityIds: expectedIds });
+            expect(entities.length).to.eql(10);
+            expect(entities.map((entity) => getEntityId(entity)).sort()).to.eql(expectedIds);
 
-            expect(TRANSFORM_STARTED_STATES).to.contain(latestTransform.state);
+            entities.forEach((entity) => {
+              const risk = getEntityRisk(entity);
+              expect(risk).to.be.ok();
+              expect(risk!.calculated_score_norm).to.be.greaterThan(0);
+              expect(risk!.calculated_level).to.be.ok();
+            });
           });
 
           describe('@skipInServerlessMKI disabling and re-enabling the risk engine', () => {
@@ -255,7 +277,8 @@ export default ({ getService }: FtrProviderContext): void => {
           });
         });
 
-        it('@skipInServerlessMKI calculates and persists risk scores for both types of entities', async () => {
+        it('@skipInServerlessMKI calculates and persists risk scores for both types of entities and propagates to entity store', async () => {
+          await deleteAllRiskScores(log, es, undefined, true);
           await riskEngineRoutes.init();
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
           const riskScores = await readRiskScores(es);
@@ -265,10 +288,50 @@ export default ({ getService }: FtrProviderContext): void => {
             ({ id_field: idField }) => idField
           );
           expect(scoredIdentifiers).to.contain('entity.id');
+
+          // Verify scores propagated to the entity store for both entity types
+          const expectedHostIds = Array(10)
+            .fill(0)
+            .map((_, index) => `host:host-${index}`);
+          const expectedUserIds = Array(10)
+            .fill(0)
+            .map((_, index) => `user:user-${index}`);
+          const allExpectedIds = [...expectedHostIds, ...expectedUserIds];
+
+          const expectedValues = normalizeScores(riskScores).reduce<Record<string, number>>(
+            (acc, s) => {
+              if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
+                acc[s.id_value] = s.calculated_score_norm;
+              }
+              return acc;
+            },
+            {}
+          );
+
+          await entityStoreRoutes.forceLogExtraction();
+          await waitForEntityStoreFieldValues({
+            es,
+            log,
+            entityIds: allExpectedIds,
+            fieldName: 'entity.risk.calculated_score_norm',
+            expectedValuesByEntityId: expectedValues,
+          });
+
+          const hostEntities = await getEntitiesById({ es, entityIds: expectedHostIds });
+          const userEntities = await getEntitiesById({ es, entityIds: expectedUserIds });
+
+          expect(hostEntities.length).to.eql(10);
+          expect(userEntities.length).to.eql(10);
+
+          [...hostEntities, ...userEntities].forEach((entity) => {
+            const risk = getEntityRisk(entity);
+            expect(risk).to.be.ok();
+            expect(risk!.calculated_score_norm).to.be.greaterThan(0);
+          });
         });
 
         // TODO: asset criticality currently does not work with entity store v2 unskip as part of https://github.com/elastic/security-team/issues/15904
-        context.skip('@skipInServerless with asset criticality data', () => {
+        it.skip('@skipInServerless with asset criticality data', () => {
           const assetCriticalityRoutes = assetCriticalityRouteHelpersFactory(supertest);
 
           beforeEach(async () => {
