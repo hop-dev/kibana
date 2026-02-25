@@ -10,7 +10,7 @@ import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../common/entity_analytics/types';
 import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
-import type { RiskScoreBucket } from '../types';
+import type { IdentitySourceFieldsMap, RiskScoreBucket } from '../types';
 import { getOutputIdentifierField, processScores } from './helpers';
 import { getIndexPatternDataStream } from './configurations';
 import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
@@ -30,6 +30,10 @@ export interface ResetToZeroDependencies {
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
 const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
+interface EntityWithIdentity {
+  idValue: string;
+  euidFields?: IdentitySourceFieldsMap;
+}
 
 export const resetToZero = async ({
   esClient,
@@ -52,6 +56,7 @@ export const resetToZero = async ({
     alias,
     entityType,
     excludedEntities,
+    idBasedRiskScoringEnabled,
   });
 
   if (entities.length === 0) {
@@ -107,14 +112,22 @@ const fetchEntitiesWithNonZeroScores = async ({
   alias,
   entityType,
   excludedEntities,
+  idBasedRiskScoringEnabled,
 }: {
   esClient: ElasticsearchClient;
   logger: Logger;
   alias: string;
   entityType: EntityType;
   excludedEntities: string[];
-}): Promise<string[]> => {
+  idBasedRiskScoringEnabled: boolean;
+}): Promise<EntityWithIdentity[]> => {
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
+  const euidFieldsPresenceClause = idBasedRiskScoringEnabled
+    ? // NOTE: When V2 is enabled, only reset docs that have euid_fields persisted.
+      // This intentionally excludes legacy/V1 scores (without euid_fields), which
+      // therefore will no longer be reset to zero by this V2 path.
+      `AND ${entityType}.risk.euid_fields IS NOT NULL`
+    : '';
   const excludedEntitiesClause =
     excludedEntities.length > 0
       ? `AND id_value NOT IN (${excludedEntities.map((e) => `"${e}"`).join(',')})`
@@ -124,9 +137,10 @@ const fetchEntitiesWithNonZeroScores = async ({
     FROM ${alias}
     | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
     | EVAL id_value = TO_STRING(${entityField})
-    | WHERE id_value IS NOT NULL AND id_value != "" ${excludedEntitiesClause}
-    | STATS count = count(id_value) BY id_value
-    | KEEP id_value
+    | WHERE id_value IS NOT NULL AND id_value != "" ${euidFieldsPresenceClause} ${excludedEntitiesClause}
+    | EVAL euid_fields = ${entityType}.risk.euid_fields
+    | SORT @timestamp DESC
+    | KEEP id_value, euid_fields
     `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
@@ -141,18 +155,29 @@ const fetchEntitiesWithNonZeroScores = async ({
     throw e;
   });
 
-  return response.values.reduce<string[]>((acc, row) => {
-    const [entity] = row;
-    if (typeof entity === 'string' && entity !== '') {
-      acc.push(entity);
+  const seenEntities = new Set<string>();
+  return response.values.reduce<EntityWithIdentity[]>((acc, row) => {
+    const [idValue, euidFields] = row;
+    if (typeof idValue === 'string' && idValue !== '' && !seenEntities.has(idValue)) {
+      seenEntities.add(idValue);
+      acc.push({
+        idValue,
+        euidFields:
+          euidFields && typeof euidFields === 'object'
+            ? (euidFields as IdentitySourceFieldsMap)
+            : undefined,
+      });
     }
     return acc;
   }, []);
 };
 
-const buildZeroScoreBuckets = (entities: string[], identifierField: string): RiskScoreBucket[] =>
-  entities.map((entity) => ({
-    key: { [identifierField]: entity },
+const buildZeroScoreBuckets = (
+  entities: EntityWithIdentity[],
+  identifierField: string
+): RiskScoreBucket[] =>
+  entities.map(({ idValue, euidFields }) => ({
+    key: { [identifierField]: idValue },
     doc_count: 0,
     top_inputs: {
       doc_count: 0,
@@ -167,4 +192,5 @@ const buildZeroScoreBuckets = (entities: string[], identifierField: string): Ris
         },
       },
     },
+    ...(euidFields ? { euid_fields: euidFields } : {}),
   }));

@@ -76,7 +76,7 @@ describe('resetToZero', () => {
 
   it('uses entity.id and writes zero scores to entity store when V2 is enabled', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:abc123']],
+      values: [['host:abc123', { 'host.name': 'abc123' }]],
     });
 
     await resetToZero({
@@ -95,6 +95,7 @@ describe('resetToZero', () => {
     const esqlQuery = (esClient.esql.query as jest.Mock).mock.calls[0][0].query;
     expect(esqlQuery).toContain('host.risk.id_value');
     expect(esqlQuery).toContain('NOT IN ("host:do-not-reset")');
+    expect(esqlQuery).toContain('host.risk.euid_fields IS NOT NULL');
 
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
@@ -103,6 +104,7 @@ describe('resetToZero', () => {
           id_value: 'host:abc123',
           calculated_score: 0,
           calculated_score_norm: 0,
+          euid_fields: { 'host.name': 'abc123' },
         }),
       ],
       refresh: 'wait_for',
@@ -117,6 +119,7 @@ describe('resetToZero', () => {
             id_value: 'host:abc123',
             calculated_score: 0,
             calculated_score_norm: 0,
+            euid_fields: { 'host.name': 'abc123' },
           }),
         ],
       },

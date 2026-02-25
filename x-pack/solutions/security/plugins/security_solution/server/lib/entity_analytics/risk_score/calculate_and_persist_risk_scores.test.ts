@@ -158,7 +158,6 @@ describe('calculateAndPersistRiskScores', () => {
         doc: {
           '@timestamp': hostScore['@timestamp'],
           entity: {
-            id: hostScore.id_value,
             risk: {
               calculated_score: hostScore.calculated_score,
               calculated_score_norm: hostScore.calculated_score_norm,
@@ -209,7 +208,6 @@ describe('calculateAndPersistRiskScores', () => {
         })
       );
       expect(doc.entity).toEqual({
-        id: 'host:server1.example.com',
         risk: {
           calculated_score: 75,
           calculated_score_norm: 42,

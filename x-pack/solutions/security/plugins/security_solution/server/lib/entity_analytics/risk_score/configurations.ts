@@ -22,6 +22,13 @@ const commonRiskFields: FieldMap = {
     array: false,
     required: false,
   },
+  // Preserve identity source fields used to build EUID so reset-to-zero can
+  // republish stable entity-store updates without reconstructing identifiers.
+  euid_fields: {
+    type: 'flattened',
+    array: false,
+    required: false,
+  },
   calculated_level: {
     type: 'keyword',
     array: false,

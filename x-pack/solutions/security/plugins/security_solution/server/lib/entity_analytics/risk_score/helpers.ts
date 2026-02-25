@@ -30,7 +30,7 @@ import {
 } from '../../../../common/entity_analytics/risk_engine';
 import type { AssetCriticalityService } from '../asset_criticality/asset_criticality_service';
 import { applyCriticalityToScore, getCriticalityModifier } from '../asset_criticality/helpers';
-import type { CalculateScoresParams, RiskScoreBucket } from '../types';
+import type { CalculateScoresParams, IdentitySourceFieldsMap, RiskScoreBucket } from '../types';
 import { RIEMANN_ZETA_VALUE } from './constants';
 
 export const getFieldForIdentifier = (identifierType: EntityType): string =>
@@ -160,8 +160,9 @@ const formatForResponse = ({
 };
 
 /**
- * Removes the internal `euid_fields` property from score records so it is not
- * persisted to the risk score index or returned in API responses.
+ * Removes the internal `euid_fields` property from score records before sending
+ * API responses. We now persist `euid_fields` in risk score indices for reset-to-zero
+ * and entity-store synchronization, but keep it out of external API payloads.
  */
 export const stripEuidFields = (scores: Partial<Record<string, EntityRiskScoreRecord[]>>): void => {
   for (const entityScores of Object.values(scores)) {
@@ -217,13 +218,20 @@ export const processScores = async ({
       (c) => c.id_field === identifierField && c.id_value === bucket.key[identifierField]
     );
 
-    return formatForResponse({
-      bucket,
-      criticality,
-      identifierField,
-      now,
-      includeNewFields: true,
-      globalWeight,
-    });
+    const record: EntityRiskScoreRecord & { euid_fields?: IdentitySourceFieldsMap } =
+      formatForResponse({
+        bucket,
+        criticality,
+        identifierField,
+        now,
+        includeNewFields: true,
+        globalWeight,
+      });
+
+    if (bucket.euid_fields !== undefined) {
+      record.euid_fields = bucket.euid_fields;
+    }
+
+    return record;
   });
 };
