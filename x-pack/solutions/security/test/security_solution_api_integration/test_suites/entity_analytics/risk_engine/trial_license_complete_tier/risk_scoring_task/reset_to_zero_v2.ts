@@ -73,11 +73,14 @@ export default ({ getService }: FtrProviderContext): void => {
       await enableEntityStoreV2(kibanaServer);
       await entityStoreRoutes.uninstall({ cleanIndices: true });
       await entityStoreRoutes.install();
-      await riskEngineRoutes.cleanUp();
-      await deleteAllRiskScores(log, es, undefined, true);
-      await deleteAllEntityStoreEntities(log, es);
-      await deleteAllAlerts(supertest, log, es);
-      await deleteAllRules(supertest, log);
+
+      await Promise.all([
+        riskEngineRoutes.cleanUp(),
+        deleteAllRiskScores(log, es, undefined, true),
+        deleteAllEntityStoreEntities(log, es),
+        deleteAllAlerts(supertest, log, es),
+        deleteAllRules(supertest, log),
+      ]);
 
       const documentId = uuidv4();
       await indexListOfDocuments(
@@ -97,12 +100,14 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     afterEach(async () => {
-      await riskEngineRoutes.cleanUp();
-      await deleteAllRiskScores(log, es, undefined, true);
-      await entityStoreRoutes.uninstall();
-      await deleteAllEntityStoreEntities(log, es);
-      await deleteAllAlerts(supertest, log, es);
-      await deleteAllRules(supertest, log);
+      await Promise.all([
+        riskEngineRoutes.cleanUp(),
+        deleteAllRiskScores(log, es, undefined, true),
+        entityStoreRoutes.uninstall(),
+        deleteAllEntityStoreEntities(log, es),
+        deleteAllAlerts(supertest, log, es),
+        deleteAllRules(supertest, log),
+      ]);
       await disableEntityStoreV2(kibanaServer);
     });
 
@@ -145,7 +150,7 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       // Verify the zero scores propagated to the entity store
-      await entityStoreRoutes.forceLogExtraction();
+      await entityStoreRoutes.forceLogExtraction(['host']);
 
       const allEntityIds = Array(10)
         .fill(0)

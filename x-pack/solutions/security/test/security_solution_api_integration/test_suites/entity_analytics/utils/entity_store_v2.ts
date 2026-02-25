@@ -264,19 +264,19 @@ export const entityStoreV2RouteHelpersFactory = (
   },
 
   forceLogExtraction: async (entityTypes: string[] = ['host', 'user']) => {
-    const responses = [];
-    for (const entityType of entityTypes) {
-      const response = await supertest
-        .post(forceLogExtractionUrl(entityType))
-        .set('kbn-xsrf', 'true')
-        .set('elastic-api-version', '2')
-        .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-        .send({
-          fromDateISO: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          toDateISO: new Date().toISOString(),
-        });
-      responses.push(response);
-    }
+    const now = new Date();
+    const fromDateISO = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+    const toDateISO = now.toISOString();
+    const responses = await Promise.all(
+      entityTypes.map((entityType) =>
+        supertest
+          .post(forceLogExtractionUrl(entityType))
+          .set('kbn-xsrf', 'true')
+          .set('elastic-api-version', '2')
+          .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+          .send({ fromDateISO, toDateISO })
+      )
+    );
     return responses;
   },
 });
