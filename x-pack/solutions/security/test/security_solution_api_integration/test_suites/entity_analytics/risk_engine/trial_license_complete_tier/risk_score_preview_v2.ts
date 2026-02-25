@@ -31,6 +31,26 @@ import {
 
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
+const SINGLE_ALERT_RISK21_HOST1 = {
+  calculated_level: 'Unknown',
+  calculated_score: 21,
+  calculated_score_norm: 8.100601759,
+  category_1_count: 1,
+  category_1_score: 8.100601759,
+  euid_fields: { 'host.name': 'host-1' },
+  id_field: 'entity.id',
+  id_value: 'host:host-1',
+  modifiers: [],
+} as const;
+
+const buildExpectedScore = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  ...SINGLE_ALERT_RISK21_HOST1,
+  ...overrides,
+});
+
+const sortByIdValue = <T extends { id_value?: string }>(scores: T[]): T[] =>
+  [...scores].sort((a, b) => String(a.id_value).localeCompare(String(b.id_value)));
+
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
   const esArchiver = getService('esArchiver');
@@ -39,6 +59,28 @@ export default ({ getService }: FtrProviderContext): void => {
   const kibanaServer = getService('kibanaServer');
 
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
+
+  /**
+   * Raw preview helper used in tests that need the full response body
+   * (e.g. asset criticality tests that index multiple distinct hosts).
+   */
+  async function previewHostRiskScoresRaw(
+    documentId: string,
+    {
+      alerts = 1,
+      riskScore = 21,
+      maxSignals = 100,
+    }: { alerts?: number; riskScore?: number; maxSignals?: number } = {}
+  ) {
+    await createAndSyncRuleAndAlerts({
+      query: `id: ${documentId}`,
+      alerts,
+      riskScore,
+      maxSignals,
+    });
+    return await previewRiskScores({ body: {} });
+  }
+
   const previewRiskScores = async ({
     body,
   }: {
@@ -46,29 +88,53 @@ export default ({ getService }: FtrProviderContext): void => {
   }): Promise<{
     scores: { host?: EntityRiskScoreRecord[]; user?: EntityRiskScoreRecord[] };
   }> => {
-    const defaultBody = { data_view_id: '.alerts-security.alerts-default' };
     const { body: result } = await supertest
       .post(RISK_SCORE_PREVIEW_URL)
       .set('elastic-api-version', '1')
       .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
       .set('kbn-xsrf', 'true')
-      .send({ ...defaultBody, ...body })
+      .send({ data_view_id: '.alerts-security.alerts-default', ...body })
       .expect(200);
     return result;
   };
 
-  const getRiskScoreAfterRuleCreationAndExecution = async (
-    documentId: string,
-    {
-      alerts = 1,
-      riskScore = 21,
-      maxSignals = 100,
-    }: { alerts?: number; riskScore?: number; maxSignals?: number } = {}
-  ) => {
-    await createAndSyncRuleAndAlerts({ query: `id: ${documentId}`, alerts, riskScore, maxSignals });
+  /**
+   * Indexes documents for a single host, creates a rule that generates alerts,
+   * and returns sanitized host risk scores from the preview API.
+   */
+  const previewHostRiskScores = async ({
+    hostName = 'host-1',
+    docCount = 1,
+    alerts,
+    riskScore = 21,
+    maxSignals = 100,
+    docOverrides = {},
+    previewBody = {},
+  }: {
+    hostName?: string;
+    docCount?: number;
+    alerts?: number;
+    riskScore?: number;
+    maxSignals?: number;
+    docOverrides?: Record<string, unknown>;
+    previewBody?: object;
+  } = {}) => {
+    const documentId = uuidv4();
+    const doc = buildDocument({ host: { name: hostName }, ...docOverrides }, documentId);
+    await indexListOfDocuments(docCount === 1 ? [doc] : Array(docCount).fill(doc));
 
-    return await previewRiskScores({ body: {} });
+    await createAndSyncRuleAndAlerts({
+      query: `id: ${documentId}`,
+      alerts: alerts ?? docCount,
+      riskScore,
+      maxSignals,
+    });
+
+    const body = await previewRiskScores({ body: previewBody });
+    return { body, documentId, sanitized: sanitizeScores(body.scores.host!) };
   };
+
+  let indexListOfDocuments: ReturnType<typeof dataGeneratorFactory>['indexListOfDocuments'];
 
   describe('@ess @serverless Risk Scoring Preview API - V2 (id-based)', () => {
     before(async () => {
@@ -80,13 +146,12 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     context('with auditbeat data', () => {
-      const { indexListOfDocuments } = dataGeneratorFactory({
-        es,
-        index: 'ecs_compliant',
-        log,
-      });
-
       before(async () => {
+        ({ indexListOfDocuments } = dataGeneratorFactory({
+          es,
+          index: 'ecs_compliant',
+          log,
+        }));
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -100,7 +165,6 @@ export default ({ getService }: FtrProviderContext): void => {
 
       beforeEach(async () => {
         await deleteAllAlerts(supertest, log, es);
-
         await deleteAllRules(supertest, log);
         await createAlertsIndex(supertest, log);
       });
@@ -113,24 +177,11 @@ export default ({ getService }: FtrProviderContext): void => {
 
       context('with a rule generating alerts with risk_score of 21', () => {
         it('calculates risk from a single alert', async () => {
-          const documentId = uuidv4();
-          await indexListOfDocuments([buildDocument({ host: { name: 'host-1' } }, documentId)]);
-
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId);
-          const [score] = sanitizeScores(body.scores.host!);
+          const { body, sanitized } = await previewHostRiskScores();
+          const [score] = sanitized;
           const [rawScore] = body.scores.host!;
 
-          expect(score).to.eql({
-            calculated_level: 'Unknown',
-            calculated_score: 21,
-            calculated_score_norm: 8.100601759,
-            category_1_count: 1,
-            category_1_score: 8.100601759,
-            euid_fields: { 'host.name': 'host-1' },
-            id_field: 'entity.id',
-            id_value: 'host:host-1',
-            modifiers: [],
-          });
+          expect(score).to.eql(SINGLE_ALERT_RISK21_HOST1);
 
           expect(rawScore.category_1_score! + rawScore.category_2_score!).to.be.within(
             score.calculated_score_norm! - 0.000000000000001,
@@ -145,87 +196,46 @@ export default ({ getService }: FtrProviderContext): void => {
             buildDocument({ host: { name: 'host-2' } }, documentId),
           ]);
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
             alerts: 2,
+            riskScore: 21,
           });
 
-          const sortedScores = sanitizeScores(body.scores.host!).sort((a, b) =>
-            String(a.id_value).localeCompare(String(b.id_value))
-          );
+          const { scores } = await previewRiskScores({ body: {} });
 
-          expect(sortedScores).to.eql([
-            {
-              calculated_level: 'Unknown',
-              calculated_score: 21,
-              calculated_score_norm: 8.100601759,
-              category_1_count: 1,
-              category_1_score: 8.100601759,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
-            {
-              calculated_level: 'Unknown',
-              calculated_score: 21,
-              calculated_score_norm: 8.100601759,
-              category_1_count: 1,
-              category_1_score: 8.100601759,
+          expect(sortByIdValue(sanitizeScores(scores.host!))).to.eql([
+            SINGLE_ALERT_RISK21_HOST1,
+            buildExpectedScore({
               euid_fields: { 'host.name': 'host-2' },
-              id_field: 'entity.id',
               id_value: 'host:host-2',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
         it('calculates risk from two alerts, both for the same host', async () => {
-          const documentId = uuidv4();
-          await indexListOfDocuments([
-            buildDocument({ host: { name: 'host-1' } }, documentId),
-            buildDocument({ host: { name: 'host-1' } }, documentId),
-          ]);
+          const { sanitized } = await previewHostRiskScores({ docCount: 2 });
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
-            alerts: 2,
-          });
-
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_score: 28.4246212025,
               calculated_score_norm: 10.9645969767,
               category_1_count: 2,
               category_1_score: 10.9645969767,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
         it('calculates risk from 30 alerts, all for the same host', async () => {
-          const documentId = uuidv4();
-          const doc = buildDocument({ host: { name: 'host-1' } }, documentId);
-          await indexListOfDocuments(Array(30).fill(doc));
+          const { sanitized } = await previewHostRiskScores({ docCount: 30 });
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
-            alerts: 30,
-          });
-
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_score: 47.2551350606,
               calculated_score_norm: 18.2283347711,
               category_1_count: 30,
               category_1_score: 18.2283347711,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
@@ -237,142 +247,105 @@ export default ({ getService }: FtrProviderContext): void => {
             buildDocument({ host: { name: 'host-2' } }, documentId),
           ]);
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
             alerts: 31,
+            riskScore: 21,
           });
 
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          const { scores } = await previewRiskScores({ body: {} });
+
+          expect(sanitizeScores(scores.host!)).to.eql([
+            buildExpectedScore({
               calculated_score: 47.2551350606,
               calculated_score_norm: 18.2283347711,
               category_1_count: 30,
               category_1_score: 18.2283347711,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
-            {
-              calculated_level: 'Unknown',
-              calculated_score: 21,
-              calculated_score_norm: 8.100601759,
-              category_1_count: 1,
-              category_1_score: 8.100601759,
+            }),
+            buildExpectedScore({
               euid_fields: { 'host.name': 'host-2' },
-              id_field: 'entity.id',
               id_value: 'host:host-2',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
         it('calculates risk from 100 alerts, all for the same host', async () => {
-          const documentId = uuidv4();
-          const doc = buildDocument({ host: { name: 'host-1' } }, documentId);
-          await indexListOfDocuments(Array(100).fill(doc));
+          const { sanitized } = await previewHostRiskScores({ docCount: 100 });
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
-            alerts: 100,
-          });
-
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_score: 50.6703560728,
               calculated_score_norm: 19.5457321682,
               category_1_count: 100,
               category_1_score: 19.5457321682,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
-        it('calculates risk from 5 alerts, all in closed state, all for the same host', async () => {
-          const documentId = uuidv4();
-          const doc = buildDocument(
-            { host: { name: 'host-1' }, kibana: { alert: { workflow_status: 'closed' } } },
-            documentId
-          );
-          await indexListOfDocuments(Array(10).fill(doc));
-
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
+        it('calculates risk from closed alerts for the same host', async () => {
+          const { sanitized } = await previewHostRiskScores({
+            docCount: 10,
             alerts: 5,
+            docOverrides: { kibana: { alert: { workflow_status: 'closed' } } },
           });
 
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_score: 41.9020663603,
               calculated_score_norm: 16.1634263078,
               category_1_count: 10,
               category_1_score: 16.1634263078,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
-        it('calculates risk from 10 alerts, some in closed state, some in open state, all for the same host', async () => {
+
+        it('calculates risk from mixed open and closed alerts for the same host', async () => {
           const documentId = uuidv4();
-          const docStatusClosed = buildDocument(
+          const closedDoc = buildDocument(
             { host: { name: 'host-1' }, kibana: { alert: { workflow_status: 'closed' } } },
             documentId
           );
-          const docStatusOpen = buildDocument(
+          const openDoc = buildDocument(
             { host: { name: 'host-1' }, kibana: { alert: { workflow_status: 'open' } } },
             documentId
           );
-          await indexListOfDocuments(Array(5).fill(docStatusClosed));
-          await indexListOfDocuments(Array(5).fill(docStatusOpen));
+          await indexListOfDocuments(Array(5).fill(closedDoc));
+          await indexListOfDocuments(Array(5).fill(openDoc));
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
             alerts: 10,
+            riskScore: 21,
           });
 
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
-              calculated_level: 'Unknown',
+          const { scores } = await previewRiskScores({ body: {} });
+
+          expect(sanitizeScores(scores.host!)).to.eql([
+            buildExpectedScore({
               calculated_score: 41.9020663603,
               calculated_score_norm: 16.1634263078,
               category_1_count: 10,
               category_1_score: 16.1634263078,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
       });
 
       context('with a rule generating alerts with risk_score of 100', () => {
         it('calculates risk from 100 alerts, all for the same host', async () => {
-          const documentId = uuidv4();
-          const doc = buildDocument({ host: { name: 'host-1' } }, documentId);
-          await indexListOfDocuments(Array(100).fill(doc));
-
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
+          const { sanitized } = await previewHostRiskScores({
+            docCount: 100,
             riskScore: 100,
-            alerts: 100,
           });
 
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_level: 'Critical',
               calculated_score: 241.2874098704,
               calculated_score_norm: 93.0749150865,
               category_1_count: 100,
               category_1_score: 93.0749150865,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
@@ -388,24 +361,23 @@ export default ({ getService }: FtrProviderContext): void => {
               }))
           );
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
-            riskScore: 100,
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
             alerts: 1000,
+            riskScore: 100,
             maxSignals: 1000,
           });
 
-          expect(sanitizeScores(body.scores.host!)).to.eql([
-            {
+          const { scores } = await previewRiskScores({ body: {} });
+
+          expect(sanitizeScores(scores.host!)).to.eql([
+            buildExpectedScore({
               calculated_level: 'Critical',
               calculated_score: 254.9145602918,
               calculated_score_norm: 98.3314921662,
               category_1_count: 1000,
               category_1_score: 98.3314921662,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
       });
@@ -429,7 +401,7 @@ export default ({ getService }: FtrProviderContext): void => {
               after_keys: { user: { user_id: 'user:aaa' } },
             },
           });
-          // if after_key was not respected, 'aaa' would be included here
+
           expect(scores.user).to.have.length(1);
           expect(scores.user?.[0].id_value).to.equal('user:zzz');
         });
@@ -451,19 +423,12 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 100,
             riskScoreOverride: 'event.risk_score',
           });
+
           const { scores } = await previewRiskScores({
             body: {
               filter: {
                 bool: {
-                  filter: [
-                    {
-                      range: {
-                        [ALERT_RISK_SCORE]: {
-                          lte: 1,
-                        },
-                      },
-                    },
-                  ],
+                  filter: [{ range: { [ALERT_RISK_SCORE]: { lte: 1 } } }],
                 },
               },
             },
@@ -490,51 +455,37 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 100,
             riskScoreOverride: 'event.risk_score',
           });
+
           const { scores } = await previewRiskScores({ body: {} });
 
           expect(sanitizeScores(scores.host!)).to.eql([
-            {
+            buildExpectedScore({
               calculated_level: 'High',
               calculated_score: 225.1106801443,
               calculated_score_norm: 86.8348557878,
               category_1_count: 100,
               category_1_score: 86.8348557878,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
       });
 
       context('with global risk weights', () => {
         it('weights host scores differently when host risk weight is configured', async () => {
-          const documentId = uuidv4();
-          const doc = buildDocument({ host: { name: 'host-1' } }, documentId);
-          await indexListOfDocuments(Array(100).fill(doc));
-
-          await createAndSyncRuleAndAlerts({
-            query: `id: ${documentId}`,
-            alerts: 100,
+          const { sanitized } = await previewHostRiskScores({
+            docCount: 100,
             riskScore: 100,
-          });
-          const { scores } = await previewRiskScores({
-            body: { weights: [{ type: 'global_identifier', host: 0.5 }] },
+            previewBody: { weights: [{ type: 'global_identifier', host: 0.5 }] },
           });
 
-          expect(sanitizeScores(scores.host!)).to.eql([
-            {
+          expect(sanitized).to.eql([
+            buildExpectedScore({
               calculated_level: 'Moderate',
               calculated_score: 120.6437049352,
               calculated_score_norm: 46.5374575433,
               category_1_count: 100,
               category_1_score: 93.0749150865,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
         });
 
@@ -548,6 +499,7 @@ export default ({ getService }: FtrProviderContext): void => {
             alerts: 100,
             riskScore: 100,
           });
+
           const { scores } = await previewRiskScores({
             body: { weights: [{ type: 'global_identifier', user: 0.7 }] },
           });
@@ -579,22 +531,19 @@ export default ({ getService }: FtrProviderContext): void => {
             alerts: 100,
             riskScore: 100,
           });
+
           const { scores } = await previewRiskScores({
             body: { weights: [{ type: 'global_identifier', host: 0.4, user: 0.8 }] },
           });
 
           expect(sanitizeScores(scores.host!)).to.eql([
-            {
+            buildExpectedScore({
               calculated_level: 'Low',
               calculated_score: 93.2375911647,
               calculated_score_norm: 35.9657426187,
               category_1_count: 50,
               category_1_score: 89.9143565467,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
-              modifiers: [],
-            },
+            }),
           ]);
 
           expect(sanitizeScores(scores.user!)).to.eql([
@@ -637,48 +586,26 @@ export default ({ getService }: FtrProviderContext): void => {
           ]);
           await waitForAssetCriticalityToBePresent({ es, log });
 
-          const body = await getRiskScoreAfterRuleCreationAndExecution(documentId, {
-            alerts: 2,
-          });
+          const documentBody = await previewHostRiskScoresRaw(documentId, { alerts: 2 });
 
-          const sortedScores = sanitizeScores(body.scores.host!).sort((a, b) =>
-            String(a.id_value).localeCompare(String(b.id_value))
-          );
-
-          expect(sortedScores).to.eql([
-            {
+          expect(sortByIdValue(sanitizeScores(documentBody.scores.host!))).to.eql([
+            buildExpectedScore({
               criticality_level: 'extreme_impact',
               criticality_modifier: 2.0,
-              calculated_level: 'Unknown',
-              calculated_score: 21,
               calculated_score_norm: 14.9871538681,
-              category_1_count: 1,
-              category_1_score: 8.100601759,
-              euid_fields: { 'host.name': 'host-1' },
-              id_field: 'entity.id',
-              id_value: 'host:host-1',
               modifiers: [
                 {
                   contribution: 6.8865521091,
-                  metadata: {
-                    criticality_level: 'extreme_impact',
-                  },
+                  metadata: { criticality_level: 'extreme_impact' },
                   modifier_value: 2,
                   type: 'asset_criticality',
                 },
               ],
-            },
-            {
-              calculated_level: 'Unknown',
-              calculated_score: 21,
-              calculated_score_norm: 8.100601759,
-              category_1_count: 1,
-              category_1_score: 8.100601759,
+            }),
+            buildExpectedScore({
               euid_fields: { 'host.name': 'host-2' },
-              id_field: 'entity.id',
               id_value: 'host:host-2',
-              modifiers: [],
-            },
+            }),
           ]);
         });
       });
