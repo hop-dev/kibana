@@ -164,15 +164,16 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       beforeEach(async () => {
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
+        await Promise.all([deleteAllAlerts(supertest, log, es), deleteAllRules(supertest, log)]);
         await createAlertsIndex(supertest, log);
       });
 
       afterEach(async () => {
-        await deleteAllRiskScores(log, es);
-        await deleteAllAlerts(supertest, log, es);
-        await deleteAllRules(supertest, log);
+        await Promise.all([
+          deleteAllRiskScores(log, es),
+          deleteAllAlerts(supertest, log, es),
+          deleteAllRules(supertest, log),
+        ]);
       });
 
       context('with a rule generating alerts with risk_score of 21', () => {
@@ -309,8 +310,7 @@ export default ({ getService }: FtrProviderContext): void => {
             { host: { name: 'host-1' }, kibana: { alert: { workflow_status: 'open' } } },
             documentId
           );
-          await indexListOfDocuments(Array(5).fill(closedDoc));
-          await indexListOfDocuments(Array(5).fill(openDoc));
+          await indexListOfDocuments([...Array(5).fill(closedDoc), ...Array(5).fill(openDoc)]);
 
           await createAndSyncRuleAndAlerts({
             query: `id: ${documentId}`,
