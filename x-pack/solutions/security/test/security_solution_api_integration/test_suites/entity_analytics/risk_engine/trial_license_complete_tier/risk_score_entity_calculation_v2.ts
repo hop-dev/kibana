@@ -146,6 +146,9 @@ export default ({ getService }: FtrProviderContext): void => {
           calculated_score_norm: 8.100601759,
           category_1_score: 8.100601759,
           category_1_count: 1,
+          euid_fields: {
+            'host.name': 'host-1',
+          },
           id_field: 'entity.id',
           id_value: 'host:host-1',
           modifiers: [],
@@ -180,7 +183,10 @@ export default ({ getService }: FtrProviderContext): void => {
         expect(getEntityId(entities[0])).to.eql('host:host-1');
         const risk = getEntityRisk(entities[0]);
         expect(risk).to.be.ok();
-        expect(risk!.calculated_score_norm).to.eql(expectedScore.calculated_score_norm);
+        // Entity store has more precision than the API, so we need to round the values to 10 decimal places
+        expect(Math.fround(risk!.calculated_score_norm!)).to.eql(
+          Math.fround(expectedScore.calculated_score_norm)
+        );
         expect(risk!.calculated_level).to.eql(expectedScore.calculated_level);
       });
 
@@ -220,6 +226,9 @@ export default ({ getService }: FtrProviderContext): void => {
             category_1_count: 1,
             id_field: 'entity.id',
             id_value: 'host:host-1',
+            euid_fields: {
+              'host.name': 'host-1',
+            },
             modifiers: [
               {
                 type: 'asset_criticality',
@@ -273,6 +282,9 @@ export default ({ getService }: FtrProviderContext): void => {
             category_1_count: 1,
             id_field: 'entity.id',
             id_value: 'host:host-1',
+            euid_fields: {
+              'host.name': 'host-1',
+            },
             modifiers: [],
           };
 
