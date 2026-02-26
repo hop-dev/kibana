@@ -10,6 +10,7 @@ import type { Client } from '@elastic/elasticsearch';
 import type { ToolingLog } from '@kbn/tooling-log';
 import type SuperTest from 'supertest';
 import { waitFor, routeWithNamespace } from '@kbn/detections-response-ftr-services';
+import { ENTITY_STORE_ROUTES } from '@kbn/entity-store/common';
 
 const ENTITY_STORE_V2_LATEST_INDEX_PREFIX = '.entities.v2.latest.security_';
 const ENTITY_STORE_V2_UPDATES_INDEX_PREFIX = '.entities.v2.updates.security_';
@@ -219,11 +220,8 @@ const cleanupEntityStoreV2Indices = async (es: Client, namespace = 'default'): P
   }
 };
 
-const ENTITY_STORE_V2_INSTALL_URL = '/internal/security/entity-store/install';
-const ENTITY_STORE_V2_UNINSTALL_URL = '/internal/security/entity-store/uninstall';
-
 const forceLogExtractionUrl = (entityType: string) =>
-  `/internal/security/entity-store/${entityType}/force-log-extraction`;
+  ENTITY_STORE_ROUTES.FORCE_LOG_EXTRACTION.replace('{entityType}', entityType);
 
 export const entityStoreV2RouteHelpersFactory = (
   supertest: SuperTest.Agent,
@@ -234,7 +232,7 @@ export const entityStoreV2RouteHelpersFactory = (
   return {
     install: async (expectStatusCode: number = 201) => {
       const response = await supertest
-        .post(routeWithNamespace(ENTITY_STORE_V2_INSTALL_URL, ns))
+        .post(routeWithNamespace(ENTITY_STORE_ROUTES.INSTALL, ns))
         .set('kbn-xsrf', 'true')
         .set('elastic-api-version', '2')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
@@ -254,7 +252,7 @@ export const entityStoreV2RouteHelpersFactory = (
      */
     uninstall: async ({ cleanIndices = false }: { cleanIndices?: boolean } = {}) => {
       const response = await supertest
-        .post(routeWithNamespace(ENTITY_STORE_V2_UNINSTALL_URL, ns))
+        .post(routeWithNamespace(ENTITY_STORE_ROUTES.UNINSTALL, ns))
         .set('kbn-xsrf', 'true')
         .set('elastic-api-version', '2')
         .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
