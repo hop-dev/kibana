@@ -275,7 +275,9 @@ export default ({ getService }: FtrProviderContext): void => {
           await indexListOfDocuments(
             Array(10)
               .fill(0)
-              .map((_, index) => buildDocument({ service: { name: `service-${index}` } }, serviceId))
+              .map((_, index) =>
+                buildDocument({ service: { name: `service-${index}` } }, serviceId)
+              )
           );
 
           await createAndSyncRuleAndAlerts({
@@ -298,17 +300,6 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(scoredIdentifiers).to.contain('entity.id');
 
           // Verify scores propagated to the entity store for both entity types
-          const expectedHostIds = Array(10)
-            .fill(0)
-            .map((_, index) => `host:host-${index}`);
-          const expectedUserIds = Array(10)
-            .fill(0)
-            .map((_, index) => `user:user-${index}`);
-          const expectedServiceIds = Array(10)
-            .fill(0)
-            .map((_, index) => `service:service-${index}`);
-          const allExpectedIds = [...expectedHostIds, ...expectedUserIds, ...expectedServiceIds];
-
           const expectedValues = normalizeScores(riskScores).reduce<Record<string, number>>(
             (acc, s) => {
               if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
@@ -328,8 +319,12 @@ export default ({ getService }: FtrProviderContext): void => {
             expectedEntityCount: 30,
           });
 
-          const hostEntities = entities.filter((entity) => getEntityId(entity)?.startsWith('host:'));
-          const userEntities = entities.filter((entity) => getEntityId(entity)?.startsWith('user:'));
+          const hostEntities = entities.filter((entity) =>
+            getEntityId(entity)?.startsWith('host:')
+          );
+          const userEntities = entities.filter((entity) =>
+            getEntityId(entity)?.startsWith('user:')
+          );
           const serviceEntities = entities.filter((entity) =>
             getEntityId(entity)?.startsWith('service:')
           );
