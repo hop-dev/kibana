@@ -77,12 +77,6 @@ export const resetToZero = async ({
     now: new Date().toISOString(),
   });
 
-  const writer = await dataClient.getWriter({ namespace: spaceId });
-  await writer.bulk({ [entityType]: scores, refresh }).catch((e) => {
-    logger.error(`Error resetting ${entityType} risk scores to zero: ${e.message}`);
-    throw e;
-  });
-
   if (idBasedRiskScoringEnabled && entityStoreCRUDClient) {
     logger.debug(
       `Reset to zero persisting ${entityType} risk scores to entity store: ${JSON.stringify(
@@ -103,6 +97,12 @@ export const resetToZero = async ({
       );
     }
   }
+
+  const writer = await dataClient.getWriter({ namespace: spaceId });
+  await writer.bulk({ [entityType]: scores, refresh }).catch((e) => {
+    logger.error(`Error resetting ${entityType} risk scores to zero: ${e.message}`);
+    throw e;
+  });
 
   return { scoresWritten: scores.length };
 };
