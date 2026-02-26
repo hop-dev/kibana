@@ -14,10 +14,10 @@ import type { EntityRiskScoreRecord } from '@kbn/security-solution-plugin/common
 import { deleteAllAlerts, deleteAllRules } from '@kbn/detections-response-ftr-services';
 import { dataGeneratorFactory } from '../../../detections_response/utils';
 import {
+  assertRiskScoresPropagatedToEntityStore,
   buildDocument,
+  cleanupRiskEngineV2,
   createAndSyncRuleAndAlertsFactory,
-  deleteAllRiskScores,
-  deleteAllEntityStoreEntities,
   readRiskScores,
   normalizeScores,
   waitForRiskScoresToBePresent,
@@ -29,10 +29,9 @@ import {
   disableEntityStoreV2,
   sanitizeScores,
   entityStoreV2RouteHelpersFactory,
-  getEntitiesById,
-  getEntityId,
   getEntityRisk,
-  waitForEntityStoreFieldValues,
+  setupEntityStoreV2,
+  teardownEntityStoreV2,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -75,10 +74,10 @@ export default ({ getService }: FtrProviderContext): void => {
     await createAndSyncRuleAndAlerts({ query: `id: ${documentId}`, alerts, riskScore, maxSignals });
   };
 
-  const calculateEntityRiskScore = async (identifier: string) => {
+  const calculateEntityRiskScore = async (identifier: string, identifierType: 'host' | 'service') => {
     return await calculateEntityRiskScores({
       body: {
-        identifier_type: 'host',
+        identifier_type: identifierType,
         identifier,
       },
     });
@@ -88,14 +87,17 @@ export default ({ getService }: FtrProviderContext): void => {
     this.tags(['esGate']);
 
     before(async () => {
-      await enableEntityStoreV2(kibanaServer);
-      await entityStoreRoutes.uninstall({ cleanIndices: true });
-      await entityStoreRoutes.install();
+      await setupEntityStoreV2({
+        entityStoreRoutes,
+        enableEntityStore: async () => enableEntityStoreV2(kibanaServer),
+      });
     });
 
     after(async () => {
-      await entityStoreRoutes.uninstall();
-      await disableEntityStoreV2(kibanaServer);
+      await teardownEntityStoreV2({
+        entityStoreRoutes,
+        disableEntityStore: async () => disableEntityStoreV2(kibanaServer),
+      });
     });
 
     context('with auditbeat data', () => {
@@ -106,7 +108,7 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       before(async () => {
-        await riskEngineRoutes.cleanUp();
+        await cleanupRiskEngineV2({ riskEngineRoutes, log, es });
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -126,9 +128,7 @@ export default ({ getService }: FtrProviderContext): void => {
       afterEach(async () => {
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
-        await riskEngineRoutes.cleanUp();
-        await deleteAllRiskScores(log, es, undefined, true);
-        await deleteAllEntityStoreEntities(log, es);
+        await cleanupRiskEngineV2({ riskEngineRoutes, log, es });
       });
 
       it('calculates and persists risk score for entity and propagates to entity store', async () => {
@@ -138,7 +138,7 @@ export default ({ getService }: FtrProviderContext): void => {
         await riskEngineRoutes.init();
         await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
-        const results = await calculateEntityRiskScore('host-1');
+        const results = await calculateEntityRiskScore('host-1', 'host');
 
         const expectedScore = {
           calculated_level: 'Unknown',
@@ -168,22 +168,72 @@ export default ({ getService }: FtrProviderContext): void => {
         expect(persistedScoreByApi).to.eql(expectedScore);
         expect(persistedScoreByApi).to.eql(persistedScoreByEngine);
 
-        // Verify the score propagated to the entity store
-        await entityStoreRoutes.forceLogExtraction();
-        await waitForEntityStoreFieldValues({
+        const entities = await assertRiskScoresPropagatedToEntityStore({
           es,
           log,
-          entityIds: ['host:host-1'],
-          fieldName: 'entity.risk.calculated_score_norm',
           expectedValuesByEntityId: { 'host:host-1': expectedScore.calculated_score_norm },
+          entityStoreRoutes,
+          entityTypes: ['host'],
+          expectedEntityCount: 1,
         });
-
-        const entities = await getEntitiesById({ es, entityIds: ['host:host-1'] });
-        expect(entities.length).to.eql(1);
-        expect(getEntityId(entities[0])).to.eql('host:host-1');
         const risk = getEntityRisk(entities[0]);
         expect(risk).to.be.ok();
         // Entity store has more precision than the API, so we need to round the values to 10 decimal places
+        expect(Math.fround(risk!.calculated_score_norm!)).to.eql(
+          Math.fround(expectedScore.calculated_score_norm)
+        );
+        expect(risk!.calculated_level).to.eql(expectedScore.calculated_level);
+      });
+
+      it('calculates and persists risk score for service entity and propagates to entity store', async () => {
+        const documentId = uuidv4();
+        await indexListOfDocuments([buildDocument({ service: { name: 'service-1' } }, documentId)]);
+        await createRuleAndWaitExecution(documentId);
+        await riskEngineRoutes.init();
+        await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
+
+        const results = await calculateEntityRiskScore('service-1', 'service');
+
+        const expectedScore = {
+          calculated_level: 'Unknown',
+          calculated_score: 21,
+          calculated_score_norm: 8.100601759,
+          category_1_score: 8.100601759,
+          category_1_count: 1,
+          euid_fields: {
+            'service.name': 'service-1',
+          },
+          id_field: 'entity.id',
+          id_value: 'service:service-1',
+          modifiers: [],
+        };
+
+        const [score] = sanitizeScores([results.score]);
+
+        expect(score).to.eql(expectedScore);
+        expect(results.success).to.be(true);
+
+        await waitForRiskScoresToBePresent({ es, log, scoreCount: 2 });
+        const persistedScores = await readRiskScores(es);
+        const persistedServiceScores = normalizeScores(persistedScores).filter(
+          (persistedScore) => persistedScore.id_value === 'service:service-1'
+        );
+
+        expect(persistedServiceScores.length).to.eql(2);
+        expect(persistedServiceScores[0]).to.eql(expectedScore);
+        expect(persistedServiceScores[1]).to.eql(expectedScore);
+
+        const entities = await assertRiskScoresPropagatedToEntityStore({
+          es,
+          log,
+          expectedValuesByEntityId: { 'service:service-1': expectedScore.calculated_score_norm },
+          entityStoreRoutes,
+          entityTypes: ['service'],
+          expectedEntityCount: 1,
+        });
+
+        const risk = getEntityRisk(entities[0]);
+        expect(risk).to.be.ok();
         expect(Math.fround(risk!.calculated_score_norm!)).to.eql(
           Math.fround(expectedScore.calculated_score_norm)
         );
@@ -214,7 +264,7 @@ export default ({ getService }: FtrProviderContext): void => {
           await riskEngineRoutes.init();
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
-          const results = await calculateEntityRiskScore('host-1');
+          const results = await calculateEntityRiskScore('host-1', 'host');
 
           const expectedScore = {
             criticality_level: 'high_impact',
@@ -272,7 +322,7 @@ export default ({ getService }: FtrProviderContext): void => {
           await riskEngineRoutes.init();
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
-          const results = await calculateEntityRiskScore('host-1');
+          const results = await calculateEntityRiskScore('host-1', 'host');
 
           const expectedScore = {
             calculated_level: 'Unknown',

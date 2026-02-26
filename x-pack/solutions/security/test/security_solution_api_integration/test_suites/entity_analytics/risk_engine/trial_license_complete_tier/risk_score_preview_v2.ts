@@ -7,10 +7,7 @@
 
 import expect from '@kbn/expect';
 import { ALERT_RISK_SCORE } from '@kbn/rule-data-utils';
-import { RISK_SCORE_PREVIEW_URL } from '@kbn/security-solution-plugin/common/constants';
 import { v4 as uuidv4 } from 'uuid';
-import { X_ELASTIC_INTERNAL_ORIGIN_REQUEST } from '@kbn/core-http-common';
-import type { EntityRiskScoreRecord } from '@kbn/security-solution-plugin/common/api/entity_analytics/common';
 import {
   createAlertsIndex,
   deleteAllAlerts,
@@ -25,6 +22,7 @@ import {
   deleteAllRiskScores,
   enableEntityStoreV2,
   disableEntityStoreV2,
+  riskScorePreviewFactory,
   sanitizeScores,
   waitForAssetCriticalityToBePresent,
 } from '../../utils';
@@ -59,6 +57,7 @@ export default ({ getService }: FtrProviderContext): void => {
   const kibanaServer = getService('kibanaServer');
 
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
+  const riskScorePreview = riskScorePreviewFactory(supertest);
 
   /**
    * Raw preview helper used in tests that need the full response body
@@ -78,25 +77,8 @@ export default ({ getService }: FtrProviderContext): void => {
       riskScore,
       maxSignals,
     });
-    return await previewRiskScores({ body: {} });
+    return await riskScorePreview.preview({ body: {} });
   }
-
-  const previewRiskScores = async ({
-    body,
-  }: {
-    body: object;
-  }): Promise<{
-    scores: { host?: EntityRiskScoreRecord[]; user?: EntityRiskScoreRecord[] };
-  }> => {
-    const { body: result } = await supertest
-      .post(RISK_SCORE_PREVIEW_URL)
-      .set('elastic-api-version', '1')
-      .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-      .set('kbn-xsrf', 'true')
-      .send({ data_view_id: '.alerts-security.alerts-default', ...body })
-      .expect(200);
-    return result;
-  };
 
   /**
    * Indexes documents for a single host, creates a rule that generates alerts,
@@ -130,7 +112,7 @@ export default ({ getService }: FtrProviderContext): void => {
       maxSignals,
     });
 
-    const body = await previewRiskScores({ body: previewBody });
+    const body = await riskScorePreview.preview({ body: previewBody });
     return { body, documentId, sanitized: sanitizeScores(body.scores.host!) };
   };
 
@@ -203,7 +185,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 21,
           });
 
-          const { scores } = await previewRiskScores({ body: {} });
+          const { scores } = await riskScorePreview.preview({ body: {} });
 
           expect(sortByIdValue(sanitizeScores(scores.host!))).to.eql([
             SINGLE_ALERT_RISK21_HOST1,
@@ -254,7 +236,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 21,
           });
 
-          const { scores } = await previewRiskScores({ body: {} });
+          const { scores } = await riskScorePreview.preview({ body: {} });
 
           expect(sanitizeScores(scores.host!)).to.eql([
             buildExpectedScore({
@@ -318,7 +300,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 21,
           });
 
-          const { scores } = await previewRiskScores({ body: {} });
+          const { scores } = await riskScorePreview.preview({ body: {} });
 
           expect(sanitizeScores(scores.host!)).to.eql([
             buildExpectedScore({
@@ -368,7 +350,7 @@ export default ({ getService }: FtrProviderContext): void => {
             maxSignals: 1000,
           });
 
-          const { scores } = await previewRiskScores({ body: {} });
+          const { scores } = await riskScorePreview.preview({ body: {} });
 
           expect(sanitizeScores(scores.host!)).to.eql([
             buildExpectedScore({
@@ -378,6 +360,33 @@ export default ({ getService }: FtrProviderContext): void => {
               category_1_count: 1000,
               category_1_score: 98.3314921662,
             }),
+          ]);
+        });
+
+        it('calculates risk from a single service alert', async () => {
+          const documentId = uuidv4();
+          await indexListOfDocuments([buildDocument({ service: { name: 'service-1' } }, documentId)]);
+
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
+            alerts: 1,
+            riskScore: 21,
+          });
+
+          const { scores } = await riskScorePreview.preview({ body: {} });
+
+          expect(sanitizeScores(scores.service!)).to.eql([
+            {
+              calculated_level: 'Unknown',
+              calculated_score: 21,
+              calculated_score_norm: 8.100601759,
+              category_1_count: 1,
+              category_1_score: 8.100601759,
+              euid_fields: { 'service.name': 'service-1' },
+              id_field: 'entity.id',
+              id_value: 'service:service-1',
+              modifiers: [],
+            },
           ]);
         });
       });
@@ -396,7 +405,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 100,
           });
 
-          const { scores } = await previewRiskScores({
+          const { scores } = await riskScorePreview.preview({
             body: {
               after_keys: { user: { user_id: 'user:aaa' } },
             },
@@ -424,7 +433,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScoreOverride: 'event.risk_score',
           });
 
-          const { scores } = await previewRiskScores({
+          const { scores } = await riskScorePreview.preview({
             body: {
               filter: {
                 bool: {
@@ -456,7 +465,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScoreOverride: 'event.risk_score',
           });
 
-          const { scores } = await previewRiskScores({ body: {} });
+          const { scores } = await riskScorePreview.preview({ body: {} });
 
           expect(sanitizeScores(scores.host!)).to.eql([
             buildExpectedScore({
@@ -500,7 +509,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 100,
           });
 
-          const { scores } = await previewRiskScores({
+          const { scores } = await riskScorePreview.preview({
             body: { weights: [{ type: 'global_identifier', user: 0.7 }] },
           });
 
@@ -532,7 +541,7 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 100,
           });
 
-          const { scores } = await previewRiskScores({
+          const { scores } = await riskScorePreview.preview({
             body: { weights: [{ type: 'global_identifier', host: 0.4, user: 0.8 }] },
           });
 
@@ -612,7 +621,7 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     it('does not return an 404 when the data_view_id is an non existent index', async () => {
-      const { scores } = await previewRiskScores({
+      const { scores } = await riskScorePreview.preview({
         body: { data_view_id: 'invalid-index' },
       });
 

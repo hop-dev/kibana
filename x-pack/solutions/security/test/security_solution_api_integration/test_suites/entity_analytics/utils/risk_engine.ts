@@ -22,6 +22,7 @@ import {
   RISK_ENGINE_CLEANUP_URL,
   RISK_ENGINE_SCHEDULE_NOW_URL,
   RISK_ENGINE_CONFIGURE_SO_URL,
+  RISK_SCORE_PREVIEW_URL,
 } from '@kbn/security-solution-plugin/common/constants';
 import type {
   IndicesIndexSettings,
@@ -41,6 +42,7 @@ import {
   waitFor,
   routeWithNamespace,
 } from '@kbn/detections-response-ftr-services';
+import { deleteAllEntityStoreEntities } from './entity_store_v2';
 
 type SanitizedRiskScore = Partial<EntityRiskScoreRecord> & {
   euid_fields?: Record<string, string | null>;
@@ -84,7 +86,9 @@ export const sanitizeScores = (
 ): SanitizedRiskScore[] => scores.map(sanitizeScore);
 
 export const normalizeScores = (scores: Array<Partial<EcsRiskScore>>): SanitizedRiskScore[] =>
-  scores.map((score) => sanitizeScore(score.host?.risk ?? score.user?.risk ?? {}));
+  scores.map((score) =>
+    sanitizeScore(score.host?.risk ?? score.user?.risk ?? score.service?.risk ?? {})
+  );
 
 export const buildDocument = (body: object, id?: string) => {
   const firstTimestamp = Date.now();
@@ -239,6 +243,27 @@ export const deleteAllRiskScores = async (
       await es.indices.delete({ index: idx, allow_no_indices: true }).catch(() => {});
     }
   }
+};
+
+const getRiskScoreIndices = (namespace = 'default'): string[] => [
+  `risk-score.risk-score-${namespace}`,
+  `risk-score.risk-score-latest-${namespace}`,
+];
+
+export const cleanupRiskEngineV2 = async ({
+  riskEngineRoutes,
+  log,
+  es,
+  namespace = 'default',
+}: {
+  riskEngineRoutes: ReturnType<typeof riskEngineRouteHelpersFactory>;
+  log: ToolingLog;
+  es: Client;
+  namespace?: string;
+}): Promise<void> => {
+  await riskEngineRoutes.cleanUp();
+  await deleteAllRiskScores(log, es, getRiskScoreIndices(namespace), true);
+  await deleteAllEntityStoreEntities(log, es, namespace);
 };
 
 /**
@@ -544,6 +569,32 @@ export const riskEngineRouteHelpersFactory = (supertest: SuperTest.Agent, namesp
     },
   };
 };
+
+export const riskScorePreviewFactory = (supertest: SuperTest.Agent) => ({
+  preview: async ({
+    body,
+    dataViewId = '.alerts-security.alerts-default',
+  }: {
+    body: object;
+    dataViewId?: string;
+  }): Promise<{
+    scores: {
+      host?: EntityRiskScoreRecord[];
+      service?: EntityRiskScoreRecord[];
+      user?: EntityRiskScoreRecord[];
+    };
+  }> => {
+    const { body: result } = await supertest
+      .post(RISK_SCORE_PREVIEW_URL)
+      .set('elastic-api-version', '1')
+      .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
+      .set('kbn-xsrf', 'true')
+      .send({ data_view_id: dataViewId, ...body })
+      .expect(200);
+
+    return result;
+  },
+});
 
 interface Credentials {
   username: string;

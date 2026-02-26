@@ -9,6 +9,7 @@ import { X_ELASTIC_INTERNAL_ORIGIN_REQUEST } from '@kbn/core-http-common';
 import type { Client } from '@elastic/elasticsearch';
 import type { ToolingLog } from '@kbn/tooling-log';
 import type SuperTest from 'supertest';
+import expect from '@kbn/expect';
 import { waitFor, routeWithNamespace } from '@kbn/detections-response-ftr-services';
 import { ENTITY_STORE_ROUTES } from '@kbn/entity-store/common';
 
@@ -280,4 +281,66 @@ export const entityStoreV2RouteHelpersFactory = (
       return responses;
     },
   };
+};
+
+type EntityStoreV2RouteHelpers = ReturnType<typeof entityStoreV2RouteHelpersFactory>;
+
+export const setupEntityStoreV2 = async ({
+  entityStoreRoutes,
+  enableEntityStore,
+}: {
+  entityStoreRoutes: EntityStoreV2RouteHelpers;
+  enableEntityStore: () => Promise<void>;
+}): Promise<void> => {
+  await enableEntityStore();
+  await entityStoreRoutes.uninstall({ cleanIndices: true });
+  await entityStoreRoutes.install();
+};
+
+export const teardownEntityStoreV2 = async ({
+  entityStoreRoutes,
+  disableEntityStore,
+}: {
+  entityStoreRoutes: EntityStoreV2RouteHelpers;
+  disableEntityStore: () => Promise<void>;
+}): Promise<void> => {
+  await entityStoreRoutes.uninstall();
+  await disableEntityStore();
+};
+
+export const assertRiskScoresPropagatedToEntityStore = async ({
+  es,
+  log,
+  entityStoreRoutes,
+  expectedValuesByEntityId,
+  entityTypes = ['host', 'user', 'service'],
+  expectedEntityCount,
+  namespace = 'default',
+}: {
+  es: Client;
+  log: ToolingLog;
+  entityStoreRoutes: EntityStoreV2RouteHelpers;
+  expectedValuesByEntityId: Record<string, number>;
+  entityTypes?: string[];
+  expectedEntityCount?: number;
+  namespace?: string;
+}): Promise<EntityStoreEntity[]> => {
+  const entityIds = Object.keys(expectedValuesByEntityId);
+
+  await entityStoreRoutes.forceLogExtraction(entityTypes);
+  await waitForEntityStoreFieldValues({
+    es,
+    log,
+    entityIds,
+    namespace,
+    fieldName: 'entity.risk.calculated_score_norm',
+    expectedValuesByEntityId,
+  });
+
+  const entities = await getEntitiesById({ es, entityIds, namespace });
+  if (expectedEntityCount != null) {
+    expect(entities.length).to.eql(expectedEntityCount);
+  }
+
+  return entities;
 };

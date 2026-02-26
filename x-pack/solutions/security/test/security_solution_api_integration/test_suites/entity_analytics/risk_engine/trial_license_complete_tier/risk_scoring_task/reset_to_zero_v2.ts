@@ -10,10 +10,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { deleteAllRules, deleteAllAlerts } from '@kbn/detections-response-ftr-services';
 import { dataGeneratorFactory } from '../../../../detections_response/utils';
 import {
+  assertRiskScoresPropagatedToEntityStore,
   buildDocument,
+  cleanupRiskEngineV2,
   createAndSyncRuleAndAlertsFactory,
-  deleteAllRiskScores,
-  deleteAllEntityStoreEntities,
   normalizeScores,
   readRiskScores,
   riskEngineRouteHelpersFactory,
@@ -23,7 +23,8 @@ import {
   entityStoreV2RouteHelpersFactory,
   getEntitiesById,
   getEntityRisk,
-  waitForEntityStoreFieldValues,
+  setupEntityStoreV2,
+  teardownEntityStoreV2,
 } from '../../../utils';
 import type { FtrProviderContext } from '../../../../../ftr_provider_context';
 
@@ -43,20 +44,16 @@ export default ({ getService }: FtrProviderContext): void => {
     log,
   });
 
-  const deleteAlertsForHosts = async (hosts: string[]) => {
+  const deleteAlertsByField = async (field: string, values: string[]) => {
     await es.deleteByQuery({
       index: '.alerts-security.alerts-*',
       query: {
-        bool: { filter: [{ terms: { 'host.name': hosts } }] },
+        bool: { filter: [{ terms: { [field]: values } }] },
       },
     });
   };
 
   describe('@ess @serverless @serverlessQA Risk Scoring Task Reset To Zero - V2 (id-based)', () => {
-    const hostsWithDeletedAlerts = Array(5)
-      .fill(0)
-      .map((_, index) => `host-${index + 5}`);
-
     before(async () => {
       await esArchiver.load(
         'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
@@ -70,23 +67,43 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     beforeEach(async () => {
-      await enableEntityStoreV2(kibanaServer);
-      await entityStoreRoutes.uninstall({ cleanIndices: true });
-      await entityStoreRoutes.install();
+      await setupEntityStoreV2({
+        entityStoreRoutes,
+        enableEntityStore: async () => enableEntityStoreV2(kibanaServer),
+      });
+      await cleanupRiskEngineV2({ riskEngineRoutes, log, es });
+      await deleteAllAlerts(supertest, log, es);
+      await deleteAllRules(supertest, log);
+    });
 
-      await Promise.all([
-        riskEngineRoutes.cleanUp(),
-        deleteAllRiskScores(log, es, undefined, true),
-        deleteAllEntityStoreEntities(log, es),
-        deleteAllAlerts(supertest, log, es),
-        deleteAllRules(supertest, log),
-      ]);
+    afterEach(async () => {
+      await cleanupRiskEngineV2({ riskEngineRoutes, log, es });
+      await deleteAllAlerts(supertest, log, es);
+      await deleteAllRules(supertest, log);
+      await teardownEntityStoreV2({
+        entityStoreRoutes,
+        disableEntityStore: async () => disableEntityStoreV2(kibanaServer),
+      });
+    });
+
+    const runResetToZeroScenario = async ({
+      entityType,
+      field,
+    }: {
+      entityType: 'host' | 'user' | 'service';
+      field: string;
+    }) => {
+      const deletedEntities = Array(5)
+        .fill(0)
+        .map((_, index) => `${entityType}-${index + 5}`);
+
+      const allEntityNames = Array(10)
+        .fill(0)
+        .map((_, index) => `${entityType}-${index}`);
 
       const documentId = uuidv4();
       await indexListOfDocuments(
-        Array(10)
-          .fill(0)
-          .map((_, index) => buildDocument({ host: { name: `host-${index}` } }, documentId))
+        allEntityNames.map((name) => buildDocument({ [entityType]: { name } }, documentId))
       );
 
       await createAndSyncRuleAndAlerts({
@@ -97,26 +114,12 @@ export default ({ getService }: FtrProviderContext): void => {
 
       await riskEngineRoutes.init();
       await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
-    });
 
-    afterEach(async () => {
-      await Promise.all([
-        riskEngineRoutes.cleanUp(),
-        deleteAllRiskScores(log, es, undefined, true),
-        entityStoreRoutes.uninstall(),
-        deleteAllEntityStoreEntities(log, es),
-        deleteAllAlerts(supertest, log, es),
-        deleteAllRules(supertest, log),
-      ]);
-      await disableEntityStoreV2(kibanaServer);
-    });
-
-    it('@skipInServerlessMKI resets risk scores to zero for entities whose alerts were deleted and propagates to entity store', async () => {
       const initialScores = normalizeScores(await readRiskScores(es));
       expect(initialScores.length).to.eql(10);
       expect(initialScores.every((score) => (score.calculated_score_norm ?? 0) > 0)).to.eql(true);
 
-      await deleteAlertsForHosts(hostsWithDeletedAlerts);
+      await deleteAlertsByField(field, deletedEntities);
 
       await riskEngineRoutes.scheduleNow();
 
@@ -129,7 +132,7 @@ export default ({ getService }: FtrProviderContext): void => {
         .map((score) => score.id_value)
         .sort();
 
-      expect(zeroScoreIds).to.eql(hostsWithDeletedAlerts.map((host) => `host:${host}`).sort());
+      expect(zeroScoreIds).to.eql(deletedEntities.map((entity) => `${entityType}:${entity}`).sort());
 
       const nonZeroCountByEntity = allScores
         .filter((score) => (score.calculated_score_norm ?? 0) > 0)
@@ -143,33 +146,27 @@ export default ({ getService }: FtrProviderContext): void => {
 
       const expectedNonZeroIds = Array(5)
         .fill(0)
-        .map((_, index) => `host:host-${index}`);
+        .map((_, index) => `${entityType}:${entityType}-${index}`);
 
       expectedNonZeroIds.forEach((id) => {
         expect(nonZeroCountByEntity[id]).to.eql(2);
       });
 
-      // Verify the zero scores propagated to the entity store
-      await entityStoreRoutes.forceLogExtraction(['host']);
-
       const allEntityIds = Array(10)
         .fill(0)
-        .map((_, index) => `host:host-${index}`);
+        .map((_, index) => `${entityType}:${entityType}-${index}`);
 
-      const expectedZeroValues = hostsWithDeletedAlerts.reduce<Record<string, number>>(
-        (acc, host) => {
-          acc[`host:${host}`] = 0;
-          return acc;
-        },
-        {}
-      );
+      const expectedZeroValues = deletedEntities.reduce<Record<string, number>>((acc, entity) => {
+        acc[`${entityType}:${entity}`] = 0;
+        return acc;
+      }, {});
 
-      await waitForEntityStoreFieldValues({
+      await assertRiskScoresPropagatedToEntityStore({
         es,
         log,
-        entityIds: allEntityIds,
-        fieldName: 'entity.risk.calculated_score_norm',
+        entityStoreRoutes,
         expectedValuesByEntityId: expectedZeroValues,
+        entityTypes: [entityType],
       });
 
       const entities = await getEntitiesById({ es, entityIds: allEntityIds });
@@ -183,13 +180,25 @@ export default ({ getService }: FtrProviderContext): void => {
         return acc;
       }, {});
 
-      hostsWithDeletedAlerts.forEach((host) => {
-        expect(riskByEntityId[`host:${host}`]).to.eql(0);
+      deletedEntities.forEach((entity) => {
+        expect(riskByEntityId[`${entityType}:${entity}`]).to.eql(0);
       });
 
       expectedNonZeroIds.forEach((id) => {
         expect((riskByEntityId[id] ?? 0) > 0).to.eql(true);
       });
+    };
+
+    it('@skipInServerlessMKI resets host risk scores to zero for entities whose alerts were deleted and propagates to entity store', async () => {
+      await runResetToZeroScenario({ entityType: 'host', field: 'host.name' });
+    });
+
+    it('@skipInServerlessMKI resets user risk scores to zero for entities whose alerts were deleted and propagates to entity store', async () => {
+      await runResetToZeroScenario({ entityType: 'user', field: 'user.name' });
+    });
+
+    it('@skipInServerlessMKI resets service risk scores to zero for entities whose alerts were deleted and propagates to entity store', async () => {
+      await runResetToZeroScenario({ entityType: 'service', field: 'service.name' });
     });
   });
 };

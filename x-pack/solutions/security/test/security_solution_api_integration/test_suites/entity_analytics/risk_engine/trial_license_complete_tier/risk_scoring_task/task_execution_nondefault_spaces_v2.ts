@@ -10,10 +10,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { deleteAllRules, deleteAllAlerts } from '@kbn/detections-response-ftr-services';
 import { dataGeneratorFactory } from '../../../../detections_response/utils';
 import {
+  assertRiskScoresPropagatedToEntityStore,
   buildDocument,
+  cleanupRiskEngineV2,
   createAndSyncRuleAndAlertsFactory,
-  deleteAllRiskScores,
-  deleteAllEntityStoreEntities,
   readRiskScores,
   waitForRiskScoresToBePresent,
   normalizeScores,
@@ -21,10 +21,10 @@ import {
   enableEntityStoreV2,
   disableEntityStoreV2,
   entityStoreV2RouteHelpersFactory,
-  getEntitiesById,
   getEntityId,
   getEntityRisk,
-  waitForEntityStoreFieldValues,
+  setupEntityStoreV2,
+  teardownEntityStoreV2,
 } from '../../../utils';
 import type { FtrProviderContextWithSpaces } from '../../../../../ftr_provider_context_with_spaces';
 
@@ -58,7 +58,7 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       );
 
       before(async () => {
-        await riskEngineRoutesForNamespace.cleanUp();
+        await cleanupRiskEngineV2({ riskEngineRoutes: riskEngineRoutesForNamespace, log, es, namespace });
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -79,19 +79,17 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
           disabledFeatures: [],
         });
 
+        await setupEntityStoreV2({
+          entityStoreRoutes: entityStoreRoutesForNamespace,
+          enableEntityStore: async () => enableEntityStoreV2(kibanaServer, namespace),
+        });
+
         await Promise.all([
-          enableEntityStoreV2(kibanaServer, namespace),
           indexListOfDocuments(
             Array(10)
               .fill(0)
               .map((_, _index) => buildDocument({ host: { name: `host-${_index}` } }, documentId))
           ),
-        ]);
-
-        await entityStoreRoutesForNamespace.uninstall({ cleanIndices: true });
-
-        await Promise.all([
-          entityStoreRoutesForNamespace.install(),
           createAndSyncRuleAndAlertsForOtherSpace({
             query: `id: ${documentId}`,
             alerts: 10,
@@ -103,17 +101,13 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
 
       afterEach(async () => {
-        await Promise.all([
-          entityStoreRoutesForNamespace.uninstall(),
-          riskEngineRoutesForNamespace.cleanUp(),
-          deleteAllAlerts(supertest, log, es),
-          deleteAllRules(supertest, log),
-        ]);
-        await Promise.all([
-          deleteAllEntityStoreEntities(log, es, namespace),
-          disableEntityStoreV2(kibanaServer, namespace),
-          deleteAllRiskScores(log, es, index, true),
-        ]);
+        await cleanupRiskEngineV2({ riskEngineRoutes: riskEngineRoutesForNamespace, log, es, namespace });
+        await deleteAllAlerts(supertest, log, es);
+        await deleteAllRules(supertest, log);
+        await teardownEntityStoreV2({
+          entityStoreRoutes: entityStoreRoutesForNamespace,
+          disableEntityStore: async () => disableEntityStoreV2(kibanaServer, namespace),
+        });
         await getService('spaces').delete(namespace);
       });
 
@@ -137,14 +131,9 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
             .sort()
         ).to.eql(expectedIds);
 
-        // Verify scores propagated to the entity store in this namespace
-        await entityStoreRoutesForNamespace.forceLogExtraction();
-        await waitForEntityStoreFieldValues({
+        const entities = await assertRiskScoresPropagatedToEntityStore({
           es,
           log,
-          entityIds: expectedIds,
-          namespace,
-          fieldName: 'entity.risk.calculated_score_norm',
           expectedValuesByEntityId: normalizeScores(scores).reduce<Record<string, number>>(
             (acc, s) => {
               if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
@@ -154,10 +143,12 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
             },
             {}
           ),
+          entityStoreRoutes: entityStoreRoutesForNamespace,
+          entityTypes: ['host'],
+          expectedEntityCount: 10,
+          namespace,
         });
 
-        const entities = await getEntitiesById({ es, entityIds: expectedIds, namespace });
-        expect(entities.length).to.eql(10);
         expect(entities.map((entity) => getEntityId(entity)).sort()).to.eql(expectedIds);
 
         entities.forEach((entity) => {
