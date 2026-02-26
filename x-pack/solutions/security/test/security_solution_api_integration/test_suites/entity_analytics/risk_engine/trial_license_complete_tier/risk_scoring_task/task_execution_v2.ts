@@ -114,7 +114,7 @@ export default ({ getService }: FtrProviderContext): void => {
             await riskEngineRoutes.init();
           });
 
-          it.only('@skipInServerlessMKI calculates and persists risk scores for alert documents and propagates to entity store', async () => {
+          it('@skipInServerlessMKI calculates and persists risk scores for alert documents and propagates to entity store', async () => {
             await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
 
             const scores = await readRiskScores(es);
