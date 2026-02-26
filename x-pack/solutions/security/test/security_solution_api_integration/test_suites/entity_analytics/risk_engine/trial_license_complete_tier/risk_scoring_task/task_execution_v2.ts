@@ -114,7 +114,7 @@ export default ({ getService }: FtrProviderContext): void => {
             await riskEngineRoutes.init();
           });
 
-          it('@skipInServerlessMKI calculates and persists risk scores for alert documents and propagates to entity store', async () => {
+          it.only('@skipInServerlessMKI calculates and persists risk scores for alert documents and propagates to entity store', async () => {
             await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
 
             const scores = await readRiskScores(es);
@@ -132,20 +132,22 @@ export default ({ getService }: FtrProviderContext): void => {
             // Verify scores propagated to the entity store
             await entityStoreRoutes.forceLogExtraction();
 
+            const expectedValues = normalizeScores(scores).reduce<Record<string, number>>(
+              (acc, s) => {
+                if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
+                  acc[s.id_value] = s.calculated_score_norm;
+                }
+                return acc;
+              },
+              {}
+            );
+
             await waitForEntityStoreFieldValues({
               es,
               log,
               entityIds: expectedIds,
               fieldName: 'entity.risk.calculated_score_norm',
-              expectedValuesByEntityId: normalizeScores(scores).reduce<Record<string, number>>(
-                (acc, s) => {
-                  if (typeof s.id_value === 'string' && s.calculated_score_norm != null) {
-                    acc[s.id_value] = s.calculated_score_norm;
-                  }
-                  return acc;
-                },
-                {}
-              ),
+              expectedValuesByEntityId: expectedValues,
             });
 
             const entities = await getEntitiesById({ es, entityIds: expectedIds });

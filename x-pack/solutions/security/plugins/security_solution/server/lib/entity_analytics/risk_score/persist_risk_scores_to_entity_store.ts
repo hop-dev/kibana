@@ -14,16 +14,18 @@ import { EntityType } from '../../../../common/search_strategy';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
 import { parseIdentitySourceFields } from './helpers';
 
-const scoreToV2Document = (score: EntityRiskScoreRecord): Record<string, unknown> => {
+const scoreToV2Document = (
+  entityType: EntityType,
+  score: EntityRiskScoreRecord
+): Record<string, unknown> => {
+  const risk = {
+    calculated_score: score.calculated_score,
+    calculated_score_norm: score.calculated_score_norm,
+    calculated_level: score.calculated_level,
+  };
   const document: Record<string, unknown> = {
     '@timestamp': score['@timestamp'],
-    entity: {
-      risk: {
-        calculated_score: score.calculated_score,
-        calculated_score_norm: score.calculated_score_norm,
-        calculated_level: score.calculated_level,
-      },
-    },
+    ...(entityType === EntityType.generic ? { entity: { risk } } : { [entityType]: { risk } }),
   };
   // Identity source fields may contain null or empty values
   // apply them to the document if they are not null or empty
@@ -48,7 +50,7 @@ const buildV2BulkObjectsFromScores = (
       entityScores.forEach((score) => {
         result.push({
           type: entityType,
-          doc: scoreToV2Document(score) as Entity,
+          doc: scoreToV2Document(entityType, score) as Entity,
         });
       });
     }
