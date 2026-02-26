@@ -59,7 +59,7 @@ export const resetToZero = async ({
     idBasedRiskScoringEnabled,
   });
 
-  logger.debug(
+  logger.trace(
     `Reset to zero fetched ${entityType} entities with non-zero scores: ${JSON.stringify(entities)}`
   );
 
@@ -78,7 +78,7 @@ export const resetToZero = async ({
   });
 
   if (idBasedRiskScoringEnabled && entityStoreCRUDClient) {
-    logger.debug(
+    logger.trace(
       `Reset to zero persisting ${entityType} risk scores to entity store: ${JSON.stringify(
         scores
       )}`
@@ -164,7 +164,7 @@ const fetchEntitiesWithNonZeroScores = async ({
     throw e;
   });
 
-  logger.debug(`Reset to zero ESQL response:\n${JSON.stringify(response)}`);
+  logger.trace(`Reset to zero ESQL response:\n${JSON.stringify(response)}`);
 
   const seenEntities = new Set<string>();
   return response.values.reduce<EntityWithIdentity[]>((acc, row) => {
