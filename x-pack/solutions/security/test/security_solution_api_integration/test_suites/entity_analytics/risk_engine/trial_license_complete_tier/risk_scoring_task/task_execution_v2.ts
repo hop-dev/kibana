@@ -256,6 +256,9 @@ export default ({ getService }: FtrProviderContext): void => {
         let userId: string;
 
         before(async () => {
+          await deleteAllAlerts(supertest, log, es);
+          await deleteAllRules(supertest, log);
+
           hostId = uuidv4();
           await indexListOfDocuments(
             Array(10)
