@@ -153,13 +153,13 @@ describe('calculateAndPersistRiskScores', () => {
       await calculate(true);
 
       expect(mockUpsertEntitiesBulk).toHaveBeenCalledTimes(1);
-      const [bulkObjects, force] = mockUpsertEntitiesBulk.mock.calls[0];
+      const [{ objects: bulkObjects, force }] = mockUpsertEntitiesBulk.mock.calls[0];
       expect(bulkObjects).toHaveLength(1);
       expect(bulkObjects[0]).toEqual({
         type: EntityType.host,
         doc: {
           '@timestamp': hostScore['@timestamp'],
-          entity: {
+          host: {
             risk: {
               calculated_score: hostScore.calculated_score,
               calculated_score_norm: hostScore.calculated_score_norm,
@@ -194,7 +194,7 @@ describe('calculateAndPersistRiskScores', () => {
 
       await calculate(true);
 
-      const [bulkObjects] = mockUpsertEntitiesBulk.mock.calls[0];
+      const [{ objects: bulkObjects }] = mockUpsertEntitiesBulk.mock.calls[0];
       expect(bulkObjects).toHaveLength(1);
       const doc = bulkObjects[0].doc as Record<string, unknown>;
       expect(doc.host).toEqual(
@@ -204,13 +204,15 @@ describe('calculateAndPersistRiskScores', () => {
           hostname: 'server1.example.com',
         })
       );
-      expect(doc.entity).toEqual({
-        risk: {
-          calculated_score: 75,
-          calculated_score_norm: 42,
-          calculated_level: 'High',
-        },
-      });
+      expect(doc.host).toEqual(
+        expect.objectContaining({
+          risk: {
+            calculated_score: 75,
+            calculated_score_norm: 42,
+            calculated_level: 'High',
+          },
+        })
+      );
     });
   });
 });
