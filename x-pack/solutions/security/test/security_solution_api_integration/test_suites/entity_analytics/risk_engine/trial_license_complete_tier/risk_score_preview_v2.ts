@@ -365,7 +365,9 @@ export default ({ getService }: FtrProviderContext): void => {
 
         it('calculates risk from a single service alert', async () => {
           const documentId = uuidv4();
-          await indexListOfDocuments([buildDocument({ service: { name: 'service-1' } }, documentId)]);
+          await indexListOfDocuments([
+            buildDocument({ service: { name: 'service-1' } }, documentId),
+          ]);
 
           await createAndSyncRuleAndAlerts({
             query: `id: ${documentId}`,

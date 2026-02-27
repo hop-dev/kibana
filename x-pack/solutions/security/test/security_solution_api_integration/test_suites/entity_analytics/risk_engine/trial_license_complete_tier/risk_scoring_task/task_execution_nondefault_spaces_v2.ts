@@ -58,7 +58,12 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       );
 
       before(async () => {
-        await cleanupRiskEngineV2({ riskEngineRoutes: riskEngineRoutesForNamespace, log, es, namespace });
+        await cleanupRiskEngineV2({
+          riskEngineRoutes: riskEngineRoutesForNamespace,
+          log,
+          es,
+          namespace,
+        });
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
@@ -101,7 +106,12 @@ export default ({ getService }: FtrProviderContextWithSpaces): void => {
       });
 
       afterEach(async () => {
-        await cleanupRiskEngineV2({ riskEngineRoutes: riskEngineRoutesForNamespace, log, es, namespace });
+        await cleanupRiskEngineV2({
+          riskEngineRoutes: riskEngineRoutesForNamespace,
+          log,
+          es,
+          namespace,
+        });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
         await teardownEntityStoreV2({

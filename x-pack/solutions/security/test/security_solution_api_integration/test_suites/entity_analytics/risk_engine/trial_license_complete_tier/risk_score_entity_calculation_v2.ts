@@ -74,7 +74,10 @@ export default ({ getService }: FtrProviderContext): void => {
     await createAndSyncRuleAndAlerts({ query: `id: ${documentId}`, alerts, riskScore, maxSignals });
   };
 
-  const calculateEntityRiskScore = async (identifier: string, identifierType: 'host' | 'service') => {
+  const calculateEntityRiskScore = async (
+    identifier: string,
+    identifierType: 'host' | 'service'
+  ) => {
     return await calculateEntityRiskScores({
       body: {
         identifier_type: identifierType,
