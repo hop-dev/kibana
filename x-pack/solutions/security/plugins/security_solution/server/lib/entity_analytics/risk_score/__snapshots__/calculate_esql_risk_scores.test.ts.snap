@@ -27,7 +27,7 @@ exports[`Calculate risk scores with ESQL ESQL query V2 (entity store v2, idBased
 "
     FROM .alerts-security.alerts-default METADATA _index
       | WHERE kibana.alert.risk_score IS NOT NULL
-      | WHERE (host.entity.id IS NOT NULL AND TO_STRING(host.entity.id) != "") OR (host.id IS NOT NULL AND TO_STRING(host.id) != "") OR (host.name IS NOT NULL AND TO_STRING(host.name) != "") OR (host.hostname IS NOT NULL AND TO_STRING(host.hostname) != "")
+      | WHERE (host.entity.id IS NOT NULL AND host.entity.id != \\"\\") OR (host.id IS NOT NULL AND host.id != \\"\\") OR (host.name IS NOT NULL AND host.name != \\"\\") OR (host.hostname IS NOT NULL AND host.hostname != \\"\\")
       | RENAME kibana.alert.risk_score as risk_score,
                kibana.alert.rule.name as rule_name,
                kibana.alert.rule.uuid as rule_id,
