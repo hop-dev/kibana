@@ -262,6 +262,7 @@ export const cleanupRiskEngineV2 = async ({
   namespace?: string;
 }): Promise<void> => {
   await riskEngineRoutes.cleanUp();
+  await waitForRiskEngineTaskToBeGone({ es, log });
   await deleteAllRiskScores(log, es, getRiskScoreIndices(namespace), true);
   await deleteAllEntityStoreEntities(log, es, namespace);
 };

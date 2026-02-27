@@ -50,6 +50,7 @@ export default ({ getService }: FtrProviderContext): void => {
       query: {
         bool: { filter: [{ terms: { [field]: values } }] },
       },
+      refresh: true,
     });
   };
 
@@ -132,7 +133,9 @@ export default ({ getService }: FtrProviderContext): void => {
         .map((score) => score.id_value)
         .sort();
 
-      expect(zeroScoreIds).to.eql(deletedEntities.map((entity) => `${entityType}:${entity}`).sort());
+      expect(zeroScoreIds).to.eql(
+        deletedEntities.map((entity) => `${entityType}:${entity}`).sort()
+      );
 
       const nonZeroCountByEntity = allScores
         .filter((score) => (score.calculated_score_norm ?? 0) > 0)
