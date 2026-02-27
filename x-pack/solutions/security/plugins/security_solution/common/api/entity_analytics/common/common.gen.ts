@@ -133,7 +133,7 @@ export const EntityRiskScoreRecord = z.object({
    */
   id_value: z.string(),
   /**
-   * JSON-encoded identity source field values keyed by ECS field path. Used for entity store synchronization when ESQL cannot directly read structured identity maps.
+   * JSON-encoded source field values keyed by ECS field path which generated the entities ID.
    */
   euid_fields_raw: z.string().optional(),
   /**
