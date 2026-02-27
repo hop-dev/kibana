@@ -70,7 +70,10 @@ export const persistRiskScoresToEntityStore = async ({
   const errors: string[] = [];
   try {
     const bulkObjects = buildV2BulkObjectsFromScores(scores);
-    const errorResponses = await entityStoreCRUDClient.upsertEntitiesBulk(bulkObjects, true);
+    const errorResponses = await entityStoreCRUDClient.upsertEntitiesBulk({
+      objects: bulkObjects,
+      force: true,
+    });
     if (errorResponses.length > 0) {
       const reasons = errorResponses.map((r) => r.reason).filter(Boolean);
       logger.warn(
