@@ -620,7 +620,7 @@ export default ({ getService }: FtrProviderContext): void => {
       });
     });
 
-    it('does not return an 404 when the data_view_id is an non existent index', async () => {
+    it('does not return a 404 when the data_view_id is a non-existent index', async () => {
       const { scores } = await riskScorePreview.preview({
         body: { data_view_id: 'invalid-index' },
       });
