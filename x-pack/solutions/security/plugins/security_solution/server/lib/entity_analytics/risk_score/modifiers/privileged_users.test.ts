@@ -479,7 +479,9 @@ describe('applyPrivmonModifier', () => {
         },
       });
 
-      expect(privmonUserCrudService.list).toHaveBeenCalledWith('host.name > "a" and host.name <= "z"');
+      expect(privmonUserCrudService.list).toHaveBeenCalledWith(
+        'host.name > "a" and host.name <= "z"'
+      );
     });
   });
 });
