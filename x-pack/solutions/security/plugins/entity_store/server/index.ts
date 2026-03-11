@@ -7,7 +7,11 @@
 
 import type { PluginInitializerContext } from '@kbn/core-plugins-server';
 
-export type { EntityStoreStartContract, EntityStoreCRUDClient } from './types';
+export type {
+  EntityStoreSetupContract,
+  EntityStoreStartContract,
+  EntityStoreCRUDClient,
+} from './types';
 export type { BulkObject, BulkObjectResponse } from './domain/crud';
 
 export async function plugin(initializerContext: PluginInitializerContext) {
