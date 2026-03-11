@@ -12,6 +12,11 @@ export type {
   EntityStoreStartContract,
   EntityStoreCRUDClient,
 } from './types';
+export type {
+  EntityMaintainerStatus,
+  EntityMaintainerTaskMethod,
+  RegisterEntityMaintainerConfig,
+} from './tasks/entity_maintainers/types';
 export type { BulkObject, BulkObjectResponse } from './domain/crud';
 
 export async function plugin(initializerContext: PluginInitializerContext) {
