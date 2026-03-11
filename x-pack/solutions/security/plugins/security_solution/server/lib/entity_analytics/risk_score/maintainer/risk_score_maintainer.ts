@@ -7,7 +7,7 @@
 
 import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
-import type { EntityStoreSetupContract } from '@kbn/entity-store/server';
+import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { RiskScoreDataClient } from '../risk_score_data_client';
 import {
@@ -15,67 +15,59 @@ import {
   updateSavedObjectAttribute,
 } from '../../risk_engine/utils/saved_object_configuration';
 import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
-import { INTERVAL } from '../tasks/constants';
 
-export const registerRiskScoreMaintainer = ({
-  entityStore,
-  getStartServices,
-  kibanaVersion,
-  logger,
-  auditLogger,
-}: {
-  entityStore: EntityStoreSetupContract | undefined;
+export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
   kibanaVersion: string;
   logger: Logger;
   auditLogger: AuditLogger | undefined;
-}): void => {
-  if (!entityStore) {
-    logger.info('Entity Store is unavailable; skipping risk score maintainer registration.');
-    return;
-  }
+}
 
-  entityStore.registerEntityMaintainer({
-    id: 'risk-score',
-    description: 'Entity Analytics Risk Score Maintainer',
-    interval: INTERVAL,
-    initialState: {},
-    setup: async ({ status }) => {
-      const namespace = status.metadata.namespace;
-      const [coreStart] = await getStartServices();
-      const esClient = coreStart.elasticsearch.client.asInternalUser;
-      const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
+type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
 
-      const riskScoreDataClient = new RiskScoreDataClient({
-        logger,
-        kibanaVersion,
-        esClient,
-        namespace,
-        soClient,
-        auditLogger,
-      });
+export const createRiskScoreMaintainer = ({
+  getStartServices,
+  kibanaVersion,
+  logger,
+  auditLogger,
+}: RiskScoreMaintainerDeps): RiskScoreMaintainerConfig => ({
+  setup: async ({ status }) => {
+    const namespace = status.metadata.namespace;
+    const [coreStart] = await getStartServices();
+    const esClient = coreStart.elasticsearch.client.asInternalUser;
+    const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
 
-      await riskScoreDataClient.init();
-      await initSavedObjects({ savedObjectsClient: soClient, namespace });
-      await updateSavedObjectAttribute({
-        savedObjectsClient: soClient,
-        attributes: { enabled: true },
-      });
+    const riskScoreDataClient = new RiskScoreDataClient({
+      logger,
+      kibanaVersion,
+      esClient,
+      namespace,
+      soClient,
+      auditLogger,
+    });
 
-      return status.state;
-    },
-    run: async ({ status, crudClient }) => {
-      const namespace = status.metadata.namespace;
+    await riskScoreDataClient.init();
+    await initSavedObjects({ savedObjectsClient: soClient, namespace });
+    await updateSavedObjectAttribute({
+      savedObjectsClient: soClient,
+      attributes: { enabled: true },
+    });
 
-      const errors = await crudClient.upsertEntitiesBulk({
-        objects: [],
-      });
+    return status.state;
+  },
+  run: async ({ status, crudClient }) => {
+    const namespace = status.metadata.namespace;
 
-      logger.info(
-        `Risk score maintainer heartbeat for namespace "${namespace}": entity store CRUD bulk call succeeded with ${errors.length} errors`
-      );
+    const errors = await crudClient.upsertEntitiesBulk({
+      objects: [],
+    });
 
-      return status.state;
-    },
-  });
-};
+    logger.info(
+      `Risk score maintainer heartbeat for namespace "${namespace}": entity store CRUD bulk call succeeded with ${errors.length} errors`
+    );
+
+    return status.state;
+  },
+});
+
+export type RegisterRiskScoreMaintainerDeps = RiskScoreMaintainerDeps;
