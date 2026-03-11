@@ -46,18 +46,24 @@ export const createRiskScoreMaintainer = ({
       auditLogger,
     });
 
-    await riskScoreDataClient.init();
+    logger.debug(`Initializing risk score maintainer saved objects for namespace "${namespace}"`);
     await initSavedObjects({ savedObjectsClient: soClient, namespace });
+    logger.debug(`Initializing risk score maintainer data client for namespace "${namespace}"`);
+    await riskScoreDataClient.init();
+    logger.debug(
+      `Updating risk score maintainer saved object attribute for namespace "${namespace}"`
+    );
     await updateSavedObjectAttribute({
       savedObjectsClient: soClient,
       attributes: { enabled: true },
     });
 
+    logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
     return status.state;
   },
   run: async ({ status, crudClient }) => {
     const namespace = status.metadata.namespace;
-
+    // TODO: Implement risk score maintainer run logic
     const errors = await crudClient.upsertEntitiesBulk({
       objects: [],
     });
