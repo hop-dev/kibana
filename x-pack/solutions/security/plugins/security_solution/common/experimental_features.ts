@@ -211,6 +211,11 @@ export const allowedExperimentalValues = Object.freeze({
   entityAnalyticsWatchlistEnabled: false,
 
   /**
+   * Enables Entity Analytics 9.4 mode.
+   */
+  entityAnalytics94ModeEnabled: false,
+
+  /**
    * Enables the Trial Companion feature.
    */
   trialCompanionEnabled: false,
