@@ -19,6 +19,6 @@ export const ENTITY_ANALYTICS_V2_MODE_API_ERROR = i18n.translate(
   'xpack.securitySolution.api.riskEngine.entityAnalyticsV2ModeApiError',
   {
     defaultMessage:
-      'This API is not available when entity analytics 9.4 mode is enabled. Use the Entity Store APIs instead.',
+      'This API is not available when Entity Store V2 is enabled. Use the Entity Store APIs instead.',
   }
 );

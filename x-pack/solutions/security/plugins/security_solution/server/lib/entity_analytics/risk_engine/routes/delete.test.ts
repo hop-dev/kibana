@@ -182,7 +182,7 @@ describe('risk engine cleanup route', () => {
     });
   });
 
-  describe('when entity analytics 9.4 mode is enabled', () => {
+  describe('when Entity Store V2 is enabled', () => {
     beforeEach(() => {
       getStartServicesMock = jest.fn().mockResolvedValue([
         {},
@@ -201,7 +201,7 @@ describe('risk engine cleanup route', () => {
       expect(response.status).toEqual(400);
       expect(response.body).toEqual({
         message:
-          'This API is not available when entity analytics 9.4 mode is enabled. Use the Entity Store APIs instead.',
+          'This API is not available when Entity Store V2 is enabled. Use the Entity Store APIs instead.',
         status_code: 400,
       });
       expect(mockRiskEngineDataClient.tearDown).not.toHaveBeenCalled();
