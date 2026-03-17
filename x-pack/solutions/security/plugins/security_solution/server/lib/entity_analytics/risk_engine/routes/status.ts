@@ -11,10 +11,12 @@ import type { IKibanaResponse } from '@kbn/core-http-server';
 import type { RiskEngineStatusResponse } from '../../../../../common/api/entity_analytics';
 import { RISK_ENGINE_STATUS_URL, APP_ID } from '../../../../../common/constants';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
+import { ENTITY_ANALYTICS_V2_MODE_API_ERROR } from './translations';
 
 export const riskEngineStatusRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
-  getStartServices: EntityAnalyticsRoutesDeps['getStartServices']
+  getStartServices: EntityAnalyticsRoutesDeps['getStartServices'],
+  isEntityAnalyticsEntityStoreV2Enabled: boolean
 ) => {
   router.versioned
     .get({
@@ -30,6 +32,13 @@ export const riskEngineStatusRoute = (
       { version: '1', validate: {} },
       async (context, request, response): Promise<IKibanaResponse<RiskEngineStatusResponse>> => {
         const siemResponse = buildSiemResponse(response);
+
+        if (isEntityAnalyticsEntityStoreV2Enabled) {
+          return siemResponse.error({
+            statusCode: 400,
+            body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+          });
+        }
 
         const securitySolution = await context.securitySolution;
         const riskEngineClient = securitySolution.getRiskEngineDataClient();

@@ -58,7 +58,6 @@ export default ({ getService }: FtrProviderContext) => {
     });
 
     expect(soResponse.saved_objects.length).to.eql(1);
-    expect(soResponse.saved_objects[0].attributes.enabled).to.eql(true);
 
     const componentTemplateName = `.risk-score-mappings-${spaceId}`;
     const indexTemplateName = `.risk-score.risk-score-${spaceId}-index-template`;
@@ -115,6 +114,10 @@ export default ({ getService }: FtrProviderContext) => {
     describe('when entityAnalyticsEntityStoreV2Enabled is true', () => {
       it('should return 400 for legacy risk engine init api', async () => {
         await riskEngineRoutes.init(400);
+      });
+
+      it('should return 400 for legacy risk engine status api', async () => {
+        await riskEngineRoutes.getStatus(400);
       });
 
       it('should setup risk score assets and configuration when entity store is enabled', async () => {

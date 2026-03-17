@@ -10,10 +10,7 @@ import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { RiskScoreDataClient } from '../risk_score_data_client';
-import {
-  initSavedObjects,
-  updateSavedObjectAttribute,
-} from '../../risk_engine/utils/saved_object_configuration';
+import { initSavedObjects } from '../../risk_engine/utils/saved_object_configuration';
 import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
 
 export interface RiskScoreMaintainerDeps {
@@ -50,13 +47,6 @@ export const createRiskScoreMaintainer = ({
     await initSavedObjects({ savedObjectsClient: soClient, namespace });
     logger.debug(`Initializing risk score maintainer data client for namespace "${namespace}"`);
     await riskScoreDataClient.init();
-    logger.debug(
-      `Updating risk score maintainer saved object attribute for namespace "${namespace}"`
-    );
-    await updateSavedObjectAttribute({
-      savedObjectsClient: soClient,
-      attributes: { enabled: true },
-    });
 
     logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
     return status.state;

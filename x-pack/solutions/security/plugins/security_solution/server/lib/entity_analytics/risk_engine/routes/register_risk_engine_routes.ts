@@ -23,7 +23,7 @@ export const registerRiskEngineRoutes = ({
   const isEntityAnalyticsEntityStoreV2Enabled =
     config.experimentalFeatures.entityAnalyticsEntityStoreV2Enabled;
 
-  riskEngineStatusRoute(router, getStartServices);
+  riskEngineStatusRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);
   riskEngineInitRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);
   riskEngineEnableRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);
   riskEngineDisableRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);
