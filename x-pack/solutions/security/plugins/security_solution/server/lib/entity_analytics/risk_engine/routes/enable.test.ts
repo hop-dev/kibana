@@ -53,7 +53,7 @@ describe('risk score enable route', () => {
           security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
         },
       ]);
-      riskEngineEnableRoute(server.router, getStartServicesMock);
+      riskEngineEnableRoute(server.router, getStartServicesMock, false);
     });
 
     it('invokes the risk score service', async () => {
@@ -93,7 +93,7 @@ describe('risk score enable route', () => {
           security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
         },
       ]);
-      riskEngineEnableRoute(server.router, getStartServicesMock);
+      riskEngineEnableRoute(server.router, getStartServicesMock, false);
     });
 
     it('returns a 400 response', async () => {
@@ -106,6 +106,32 @@ describe('risk score enable route', () => {
           'Task Manager is unavailable, but is required by the risk engine. Please enable the taskManager plugin and try again.',
         status_code: 400,
       });
+    });
+  });
+
+  describe('when entity analytics 9.4 mode is enabled', () => {
+    beforeEach(() => {
+      getStartServicesMock = jest.fn().mockResolvedValue([
+        {},
+        {
+          taskManager: mockTaskManagerStart,
+          security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
+        },
+      ]);
+      riskEngineEnableRoute(server.router, getStartServicesMock, true);
+    });
+
+    it('returns a 400 response', async () => {
+      const request = buildRequest();
+      const response = await server.inject(request, context);
+
+      expect(response.status).toEqual(400);
+      expect(response.body).toEqual({
+        message:
+          'This API is not available when entity analytics 9.4 mode is enabled. Use the Entity Store APIs instead.',
+        status_code: 400,
+      });
+      expect(mockRiskEngineDataClient.enableRiskEngine).not.toHaveBeenCalled();
     });
   });
 });

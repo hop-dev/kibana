@@ -10,7 +10,7 @@ import { transformError } from '@kbn/securitysolution-es-utils';
 import type { IKibanaResponse } from '@kbn/core-http-server';
 import type { DisableRiskEngineResponse } from '../../../../../common/api/entity_analytics';
 import { RISK_ENGINE_DISABLE_URL, APP_ID } from '../../../../../common/constants';
-import { TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
+import { ENTITY_ANALYTICS_V2_MODE_API_ERROR, TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
 import { withRiskEnginePrivilegeCheck } from '../risk_engine_privileges';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { RiskEngineAuditActions } from '../audit';
@@ -18,7 +18,8 @@ import { AUDIT_CATEGORY, AUDIT_OUTCOME, AUDIT_TYPE } from '../../audit';
 
 export const riskEngineDisableRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
-  getStartServices: EntityAnalyticsRoutesDeps['getStartServices']
+  getStartServices: EntityAnalyticsRoutesDeps['getStartServices'],
+  isEntityAnalyticsEntityStoreV2Enabled: boolean
 ) => {
   router.versioned
     .post({
@@ -35,6 +36,15 @@ export const riskEngineDisableRoute = (
       withRiskEnginePrivilegeCheck(
         getStartServices,
         async (context, request, response): Promise<IKibanaResponse<DisableRiskEngineResponse>> => {
+          const siemResponse = buildSiemResponse(response);
+
+          if (isEntityAnalyticsEntityStoreV2Enabled) {
+            return siemResponse.error({
+              statusCode: 400,
+              body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+            });
+          }
+
           const securitySolution = await context.securitySolution;
 
           securitySolution.getAuditLogger()?.log({
@@ -47,7 +57,6 @@ export const riskEngineDisableRoute = (
             },
           });
 
-          const siemResponse = buildSiemResponse(response);
           const [_, { taskManager }] = await getStartServices();
 
           const riskEngineClient = securitySolution.getRiskEngineDataClient();

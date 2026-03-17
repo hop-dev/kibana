@@ -13,7 +13,7 @@ import {
   APP_ID,
   RISK_ENGINE_SCHEDULE_NOW_URL,
 } from '../../../../../common/constants';
-import { TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
+import { ENTITY_ANALYTICS_V2_MODE_API_ERROR, TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
 import { withRiskEnginePrivilegeCheck } from '../risk_engine_privileges';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { RiskEngineAuditActions } from '../audit';
@@ -21,7 +21,8 @@ import { AUDIT_CATEGORY, AUDIT_OUTCOME, AUDIT_TYPE } from '../../audit';
 
 export const riskEngineScheduleNowRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
-  getStartServices: EntityAnalyticsRoutesDeps['getStartServices']
+  getStartServices: EntityAnalyticsRoutesDeps['getStartServices'],
+  isEntityAnalyticsEntityStoreV2Enabled: boolean
 ) => {
   router.versioned
     .post({
@@ -49,6 +50,14 @@ export const riskEngineScheduleNowRoute = (
         });
 
         const siemResponse = buildSiemResponse(response);
+
+        if (isEntityAnalyticsEntityStoreV2Enabled) {
+          return siemResponse.error({
+            statusCode: 400,
+            body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+          });
+        }
+
         const [_, { taskManager }] = await getStartServices();
 
         const riskEngineClient = securitySolution.getRiskEngineDataClient();

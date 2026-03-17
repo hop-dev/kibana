@@ -12,12 +12,13 @@ import { RISK_ENGINE_CLEANUP_URL, APP_ID, API_VERSIONS } from '../../../../../co
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { RiskEngineAuditActions } from '../audit';
 import { AUDIT_CATEGORY, AUDIT_OUTCOME, AUDIT_TYPE } from '../../audit';
-import { TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
+import { ENTITY_ANALYTICS_V2_MODE_API_ERROR, TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
 import type { CleanUpRiskEngineResponse } from '../../../../../common/api/entity_analytics';
 
 export const riskEngineCleanupRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
-  getStartServices: EntityAnalyticsRoutesDeps['getStartServices']
+  getStartServices: EntityAnalyticsRoutesDeps['getStartServices'],
+  isEntityAnalyticsEntityStoreV2Enabled: boolean
 ) => {
   router.versioned
     .delete({
@@ -36,6 +37,14 @@ export const riskEngineCleanupRoute = (
         async (context, request, response): Promise<IKibanaResponse<CleanUpRiskEngineResponse>> => {
           const siemResponse = buildSiemResponse(response);
           const securitySolution = await context.securitySolution;
+
+          if (isEntityAnalyticsEntityStoreV2Enabled) {
+            return siemResponse.error({
+              statusCode: 400,
+              body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+            });
+          }
+
           const [_, { taskManager }] = await getStartServices();
           const riskEngineClient = securitySolution.getRiskEngineDataClient();
           const riskScoreDataClient = securitySolution.getRiskScoreDataClient();

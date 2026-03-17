@@ -6,17 +6,17 @@
  */
 
 import { taskManagerMock } from '@kbn/task-manager-plugin/server/mocks';
-import { riskEngineDisableRoute } from './disable';
-import { riskEnginePrivilegesMock } from './risk_engine_privileges.mock';
-import { RISK_ENGINE_DISABLE_URL } from '../../../../../common/constants';
+import { riskEngineInitRoute } from './init';
+import { RISK_ENGINE_INIT_URL } from '../../../../../common/constants';
 import {
   serverMock,
   requestContextMock,
   requestMock,
 } from '../../../detection_engine/routes/__mocks__';
 import { riskEngineDataClientMock } from '../risk_engine_data_client.mock';
+import { riskEnginePrivilegesMock } from './risk_engine_privileges.mock';
 
-describe('risk score disable route', () => {
+describe('risk engine init route', () => {
   let server: ReturnType<typeof serverMock.create>;
   let context: ReturnType<typeof requestContextMock.convertContext>;
   let mockTaskManagerStart: ReturnType<typeof taskManagerMock.createStart>;
@@ -39,7 +39,7 @@ describe('risk score disable route', () => {
   const buildRequest = () => {
     return requestMock.create({
       method: 'post',
-      path: RISK_ENGINE_DISABLE_URL,
+      path: RISK_ENGINE_INIT_URL,
       body: {},
     });
   };
@@ -53,34 +53,35 @@ describe('risk score disable route', () => {
           security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
         },
       ]);
-      riskEngineDisableRoute(server.router, getStartServicesMock, false);
+      riskEngineInitRoute(server.router, getStartServicesMock, false);
     });
 
-    it('invokes the risk score data client', async () => {
+    it('invokes the risk engine init client', async () => {
+      mockRiskEngineDataClient.init.mockResolvedValue({
+        riskEngineEnabled: true,
+        riskEngineResourcesInstalled: true,
+        riskEngineConfigurationCreated: true,
+        errors: [],
+      });
+
       const request = buildRequest();
       await server.inject(request, context);
 
-      expect(mockRiskEngineDataClient.disableRiskEngine).toHaveBeenCalled();
+      expect(mockRiskEngineDataClient.init).toHaveBeenCalled();
     });
 
-    it('returns a 200 when disabling is successful', async () => {
-      // @ts-expect-error response is not used in the route nor this test
-      mockRiskEngineDataClient.disableRiskEngine.mockResolvedValue({ enabled: false });
+    it('returns a 200 response when initialization is successful', async () => {
+      mockRiskEngineDataClient.init.mockResolvedValue({
+        riskEngineEnabled: true,
+        riskEngineResourcesInstalled: true,
+        riskEngineConfigurationCreated: true,
+        errors: [],
+      });
+
       const request = buildRequest();
       const response = await server.inject(request, context);
 
       expect(response.status).toEqual(200);
-    });
-
-    it('returns a 500 if disabling fails', async () => {
-      mockRiskEngineDataClient.disableRiskEngine.mockRejectedValue(
-        new Error('something went wrong')
-      );
-      const request = buildRequest();
-      const response = await server.inject(request, context);
-
-      expect(response.status).toEqual(500);
-      expect(response.body.message).toEqual('something went wrong');
     });
   });
 
@@ -93,7 +94,7 @@ describe('risk score disable route', () => {
           security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
         },
       ]);
-      riskEngineDisableRoute(server.router, getStartServicesMock, false);
+      riskEngineInitRoute(server.router, getStartServicesMock, false);
     });
 
     it('returns a 400 response', async () => {
@@ -118,7 +119,7 @@ describe('risk score disable route', () => {
           security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
         },
       ]);
-      riskEngineDisableRoute(server.router, getStartServicesMock, true);
+      riskEngineInitRoute(server.router, getStartServicesMock, true);
     });
 
     it('returns a 400 response', async () => {
@@ -131,7 +132,7 @@ describe('risk score disable route', () => {
           'This API is not available when entity analytics 9.4 mode is enabled. Use the Entity Store APIs instead.',
         status_code: 400,
       });
-      expect(mockRiskEngineDataClient.disableRiskEngine).not.toHaveBeenCalled();
+      expect(mockRiskEngineDataClient.init).not.toHaveBeenCalled();
     });
   });
 });

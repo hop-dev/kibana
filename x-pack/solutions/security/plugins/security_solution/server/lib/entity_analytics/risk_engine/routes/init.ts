@@ -13,14 +13,15 @@ import type {
   InitRiskEngineResult,
 } from '../../../../../common/api/entity_analytics';
 import { RISK_ENGINE_INIT_URL, APP_ID } from '../../../../../common/constants';
-import { TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
+import { ENTITY_ANALYTICS_V2_MODE_API_ERROR, TASK_MANAGER_UNAVAILABLE_ERROR } from './translations';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import { withRiskEnginePrivilegeCheck } from '../risk_engine_privileges';
 import { RiskEngineAuditActions } from '../audit';
 import { AUDIT_CATEGORY, AUDIT_OUTCOME, AUDIT_TYPE } from '../../audit';
 export const riskEngineInitRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
-  getStartServices: EntityAnalyticsRoutesDeps['getStartServices']
+  getStartServices: EntityAnalyticsRoutesDeps['getStartServices'],
+  isEntityAnalyticsEntityStoreV2Enabled: boolean
 ) => {
   router.versioned
     .post({
@@ -37,6 +38,15 @@ export const riskEngineInitRoute = (
       withRiskEnginePrivilegeCheck(
         getStartServices,
         async (context, _request, response): Promise<IKibanaResponse<InitRiskEngineResponse>> => {
+          const siemResponse = buildSiemResponse(response);
+
+          if (isEntityAnalyticsEntityStoreV2Enabled) {
+            return siemResponse.error({
+              statusCode: 400,
+              body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+            });
+          }
+
           const securitySolution = await context.securitySolution;
 
           securitySolution.getAuditLogger()?.log({
@@ -49,7 +59,6 @@ export const riskEngineInitRoute = (
             },
           });
 
-          const siemResponse = buildSiemResponse(response);
           const [_, { taskManager }] = await getStartServices();
           const riskEngineDataClient = securitySolution.getRiskEngineDataClient();
           const riskScoreDataClient = securitySolution.getRiskScoreDataClient();
