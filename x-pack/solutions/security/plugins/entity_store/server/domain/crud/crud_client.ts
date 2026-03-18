@@ -9,6 +9,7 @@ import type { Logger } from '@kbn/logging';
 import type {
   BulkOperationContainer,
   BulkUpdateAction,
+  QueryDslQueryContainer,
   Result,
 } from '@elastic/elasticsearch/lib/api/types';
 import type { ElasticsearchClient } from '@kbn/core/server';
@@ -122,6 +123,23 @@ export class CRUDClient {
       configurable: true,
       writable: true,
     });
+
+    const baseListEntities = this.listEntities.bind(this);
+    const tracedListEntities = (filter?: QueryDslQueryContainer): Promise<Entity[]> =>
+      runWithSpan({
+        name: 'entityStore.crud.list_entities',
+        namespace,
+        attributes: {
+          'entity_store.crud.operation': 'list_entities',
+        },
+        cb: () => baseListEntities(filter),
+      });
+
+    Object.defineProperty(this, 'listEntities', {
+      value: tracedListEntities,
+      configurable: true,
+      writable: true,
+    });
   }
 
   // upsertEntity takes a single entity and tries to either create or update
@@ -217,5 +235,24 @@ export class CRUDClient {
       }
       throw error;
     }
+  }
+
+  // listEntities searches the LATEST index for all entities.
+  // An optional DSL filter can be provided and is applied as an additional
+  // filter clause on the search query, e.g. to scope results by additional
+  // field conditions.
+  public async listEntities(filter?: QueryDslQueryContainer): Promise<Entity[]> {
+    this.logger.debug('Listing entities');
+
+    const query: QueryDslQueryContainer = filter
+      ? { bool: { filter: [filter] } }
+      : { match_all: {} };
+
+    const resp = await this.esClient.search<Entity>({
+      index: getLatestEntitiesIndexName(this.namespace),
+      query,
+    });
+
+    return resp.hits.hits.map((hit) => hit._source as Entity);
   }
 }
