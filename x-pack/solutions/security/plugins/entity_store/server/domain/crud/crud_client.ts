@@ -30,6 +30,17 @@ interface CRUDClientDependencies {
   namespace: string;
 }
 
+export interface ListEntitiesParams {
+  filter?: QueryDslQueryContainer;
+  size?: number;
+  searchAfter?: Array<string | number>;
+}
+
+export interface ListEntitiesResult {
+  entities: Entity[];
+  nextSearchAfter?: Array<string | number>;
+}
+
 export interface BulkObject {
   type: EntityType;
   doc: Entity;
@@ -125,14 +136,14 @@ export class CRUDClient {
     });
 
     const baseListEntities = this.listEntities.bind(this);
-    const tracedListEntities = (filter?: QueryDslQueryContainer): Promise<Entity[]> =>
+    const tracedListEntities = (params?: ListEntitiesParams): Promise<ListEntitiesResult> =>
       runWithSpan({
         name: 'entityStore.crud.list_entities',
         namespace,
         attributes: {
           'entity_store.crud.operation': 'list_entities',
         },
-        cb: () => baseListEntities(filter),
+        cb: () => baseListEntities(params),
       });
 
     Object.defineProperty(this, 'listEntities', {
@@ -240,9 +251,11 @@ export class CRUDClient {
   // listEntities searches the LATEST index for all entities.
   // An optional DSL filter can be provided and is applied as an additional
   // filter clause on the search query, e.g. to scope results by additional
-  // field conditions.
-  public async listEntities(filter?: QueryDslQueryContainer): Promise<Entity[]> {
+  // field conditions. Supports size and searchAfter for pagination.
+  public async listEntities(params?: ListEntitiesParams): Promise<ListEntitiesResult> {
     this.logger.debug('Listing entities');
+
+    const { filter, size, searchAfter } = params ?? {};
 
     const query: QueryDslQueryContainer = filter
       ? { bool: { filter: [filter] } }
@@ -251,8 +264,15 @@ export class CRUDClient {
     const resp = await this.esClient.search<Entity>({
       index: getLatestEntitiesIndexName(this.namespace),
       query,
+      size,
+      sort: [{ _id: 'asc' }],
+      search_after: searchAfter,
     });
 
-    return resp.hits.hits.map((hit) => hit._source as Entity);
+    const hits = resp.hits.hits;
+    const entities = hits.map((hit) => hit._source as Entity);
+    const lastHit = hits[hits.length - 1];
+
+    return { entities, nextSearchAfter: lastHit?.sort as Array<string | number> | undefined };
   }
 }

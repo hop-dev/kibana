@@ -14,10 +14,22 @@ import { API_VERSIONS, DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants'
 import type { EntityStorePluginRouter } from '../../../types';
 import { wrapMiddlewares } from '../../middleware';
 import { BadCRUDRequestError } from '../../../domain/errors';
+import type { ListEntitiesParams } from '../../../domain/crud/crud_client';
 
 const querySchema = z.object({
   filter: z.string().optional(),
+  size: z.coerce.number().int().positive().optional(),
+  searchAfter: z.string().optional(),
 });
+
+const parseJsonParam = <T>(raw: string | undefined, label: string): T | undefined => {
+  if (raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new BadCRUDRequestError(`Invalid ${label}: must be a valid JSON-encoded value`);
+  }
+};
 
 export function registerCRUDList(router: EntityStorePluginRouter) {
   router.versioned
@@ -39,25 +51,22 @@ export function registerCRUDList(router: EntityStorePluginRouter) {
         },
       },
       wrapMiddlewares(async (ctx, req, res): Promise<IKibanaResponse> => {
-        const entityStoreCtx = await ctx.entityStore;
-        const { logger, crudClient } = entityStoreCtx;
+        const { logger, crudClient } = await ctx.entityStore;
 
         logger.debug('CRUD List api called');
 
-        let parsedFilter: QueryDslQueryContainer | undefined;
-        if (req.query.filter) {
-          try {
-            parsedFilter = JSON.parse(req.query.filter) as QueryDslQueryContainer;
-          } catch {
-            return res.badRequest({
-              body: { message: 'Invalid filter: must be a valid JSON-encoded DSL query' },
-            });
-          }
-        }
-
         try {
-          const entities = await crudClient.listEntities(parsedFilter);
-          return res.ok({ body: { entities } });
+          const listParams: ListEntitiesParams = {
+            filter: parseJsonParam<QueryDslQueryContainer>(req.query.filter, 'filter'),
+            size: req.query.size,
+            searchAfter: parseJsonParam<Array<string | number>>(
+              req.query.searchAfter,
+              'searchAfter'
+            ),
+          };
+
+          const { entities, nextSearchAfter } = await crudClient.listEntities(listParams);
+          return res.ok({ body: { entities, nextSearchAfter } });
         } catch (error) {
           if (error instanceof BadCRUDRequestError) {
             return res.badRequest({ body: error });
