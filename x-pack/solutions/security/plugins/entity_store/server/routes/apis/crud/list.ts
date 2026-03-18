@@ -13,6 +13,7 @@ import { ENTITY_STORE_ROUTES } from '../../../../common';
 import { API_VERSIONS, DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
 import type { EntityStorePluginRouter } from '../../../types';
 import { wrapMiddlewares } from '../../middleware';
+import { BadCRUDRequestError } from '../../../domain/errors';
 
 const querySchema = z.object({
   filter: z.string().optional(),
@@ -54,8 +55,17 @@ export function registerCRUDList(router: EntityStorePluginRouter) {
           }
         }
 
-        const entities = await crudClient.listEntities(parsedFilter);
-        return res.ok({ body: { entities } });
+        try {
+          const entities = await crudClient.listEntities(parsedFilter);
+          return res.ok({ body: { entities } });
+        } catch (error) {
+          if (error instanceof BadCRUDRequestError) {
+            return res.badRequest({ body: error });
+          }
+
+          logger.error(error);
+          throw error;
+        }
       })
     );
 }
