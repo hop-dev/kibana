@@ -74,6 +74,37 @@ apiTest.describe.skip('Entity Store CRUD API tests', { tag: ENTITY_STORE_TAGS },
     expect(check.found).toBe(true);
   });
 
+  apiTest('Should list entities', async ({ apiClient, esClient }) => {
+    const entityObj: Entity = {
+      entity: {
+        id: 'required-id-list',
+      },
+    };
+
+    const create = await apiClient.put(ENTITY_STORE_ROUTES.CRUD_UPSERT('generic'), {
+      headers: defaultHeaders,
+      responseType: 'json',
+      body: entityObj,
+    });
+    expect(create.statusCode).toBe(200);
+    expect(await countEntitiesByID(esClient, LATEST_INDEX, entityObj.entity.id)).toBe(1);
+
+    const list = await apiClient.get(ENTITY_STORE_ROUTES.CRUD_GET, {
+      headers: defaultHeaders,
+      responseType: 'json',
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.body.entities).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entity: expect.objectContaining({
+            id: entityObj.entity.id,
+          }),
+        }),
+      ])
+    );
+  });
+
   apiTest('Should require a force flag', async ({ apiClient, esClient }) => {
     // Send a field that exists on generic definition but has allowAPIUpdate: false (e.g. entity.name)
     const entityObj: Entity = {

@@ -31,10 +31,10 @@ const parseJsonParam = <T>(raw: string | undefined, label: string): T | undefine
   }
 };
 
-export function registerCRUDList(router: EntityStorePluginRouter) {
+export function registerCRUDGet(router: EntityStorePluginRouter) {
   router.versioned
     .get({
-      path: ENTITY_STORE_ROUTES.CRUD_LIST,
+      path: ENTITY_STORE_ROUTES.CRUD_GET,
       access: 'internal',
       security: {
         authz: DEFAULT_ENTITY_STORE_PERMISSIONS,
@@ -53,7 +53,7 @@ export function registerCRUDList(router: EntityStorePluginRouter) {
       wrapMiddlewares(async (ctx, req, res): Promise<IKibanaResponse> => {
         const { logger, crudClient } = await ctx.entityStore;
 
-        logger.debug('CRUD List api called');
+        logger.debug('CRUD Get api called');
 
         try {
           const listParams: ListEntitiesParams = {
