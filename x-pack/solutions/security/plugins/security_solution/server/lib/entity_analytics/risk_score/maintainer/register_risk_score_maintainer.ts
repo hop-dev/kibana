@@ -12,12 +12,14 @@ import {
   type RegisterRiskScoreMaintainerDeps,
 } from './risk_score_maintainer';
 
+export type RegisterRiskScoreMaintainerOptions = RegisterRiskScoreMaintainerDeps & {
+  entityStore: EntityStoreSetupContract | undefined;
+};
+
 export const registerRiskScoreMaintainer = ({
   entityStore,
   ...deps
-}: RegisterRiskScoreMaintainerDeps & {
-  entityStore: EntityStoreSetupContract | undefined;
-}): void => {
+}: RegisterRiskScoreMaintainerOptions): void => {
   if (!entityStore) {
     deps.logger.info('Entity Store is unavailable; skipping risk score maintainer registration.');
     return;
