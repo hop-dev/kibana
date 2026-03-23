@@ -39,6 +39,7 @@ export const ENTITY_STORE_ROUTES = {
   CHECK_PRIVILEGES: `${ENTITY_STORE_BASE_ROUTE}/check_privileges`,
   FORCE_LOG_EXTRACTION: `${ENTITY_STORE_BASE_ROUTE}/{entityType}/force_log_extraction`,
   FORCE_HISTORY_SNAPSHOT: `${ENTITY_STORE_BASE_ROUTE}/force_history_snapshot`,
+  CRUD_GET: `${ENTITY_STORE_BASE_ROUTE}/entities`,
   CRUD_CREATE: `${ENTITY_STORE_BASE_ROUTE}/entities/{entityType}`,
   CRUD_UPDATE: `${ENTITY_STORE_BASE_ROUTE}/entities/{entityType}`,
   CRUD_BULK_UPDATE: `${ENTITY_STORE_BASE_ROUTE}/entities/bulk`,

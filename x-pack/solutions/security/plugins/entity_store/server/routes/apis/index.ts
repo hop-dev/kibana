@@ -12,6 +12,7 @@ export { registerForceLogExtraction } from './force_log_extraction';
 export { registerForceCcsExtractToUpdates } from './force_ccs_extract_to_updates';
 export { registerForceHistorySnapshot } from './force_history_snapshot';
 export { registerUninstall } from './uninstall';
+export { registerCRUDGet } from './crud/get';
 export { registerCRUDCreate } from './crud/create';
 export { registerCRUDUpdate } from './crud/update';
 export { registerCRUDBulkUpdate } from './crud/bulk_update';
