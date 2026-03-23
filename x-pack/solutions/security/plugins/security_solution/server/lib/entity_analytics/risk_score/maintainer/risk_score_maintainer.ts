@@ -8,7 +8,9 @@
 import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
+import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
+import type { ProductFeaturesService } from '../../../product_features_service/product_features_service';
 import { RiskScoreDataClient } from '../risk_score_data_client';
 import { initSavedObjects } from '../../risk_engine/utils/saved_object_configuration';
 import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
@@ -18,6 +20,7 @@ export interface RiskScoreMaintainerDeps {
   kibanaVersion: string;
   logger: Logger;
   auditLogger: AuditLogger | undefined;
+  productFeaturesService: ProductFeaturesService;
 }
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
@@ -27,6 +30,7 @@ export const createRiskScoreMaintainer = ({
   kibanaVersion,
   logger,
   auditLogger,
+  productFeaturesService,
 }: RiskScoreMaintainerDeps): RiskScoreMaintainerConfig => ({
   setup: async ({ status }) => {
     const namespace = status.metadata.namespace;
@@ -55,8 +59,13 @@ export const createRiskScoreMaintainer = ({
     const [, pluginsStart] = await getStartServices();
     const license = await pluginsStart.licensing.getLicense();
 
-    if (!license.hasAtLeast('platinum')) {
-      logger.debug('Risk score maintainer run skipped due to insufficient license');
+    const isFeatureEnabled = productFeaturesService.isEnabled(ProductFeatureKey.advancedInsights);
+    const hasPlatinumLicense = license.hasAtLeast('platinum');
+
+    if (!isFeatureEnabled || !hasPlatinumLicense) {
+      logger.debug(
+        'Risk score maintainer run skipped due to insufficient license or feature disabled'
+      );
       return status.state;
     }
 
