@@ -40,7 +40,9 @@ export default ({ getService }: FtrProviderContext) => {
       60_000,
       async () => {
         const response = await routes.getMaintainers();
-        const maintainer = response.body.maintainers.find((m) => m.id === maintainerId);
+        const maintainer = response.body.maintainers.find(
+          (m: { id: string; runs: number }) => m.id === maintainerId
+        );
         return maintainer !== undefined && maintainer.runs >= 1;
       }
     );
@@ -53,7 +55,6 @@ export default ({ getService }: FtrProviderContext) => {
     const isDefaultSpace = spaceId === 'default';
     const soResponse = await kibanaServer.savedObjects.find({
       type: riskEngineConfigurationTypeName,
-      perPage: 1,
       ...(isDefaultSpace ? {} : { namespace: spaceId }),
     });
 
