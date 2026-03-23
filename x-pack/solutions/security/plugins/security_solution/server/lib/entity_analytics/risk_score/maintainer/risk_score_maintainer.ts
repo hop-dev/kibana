@@ -52,15 +52,15 @@ export const createRiskScoreMaintainer = ({
     return status.state;
   },
   run: async ({ status, crudClient }) => {
-    const namespace = status.metadata.namespace;
-    // TODO: Implement risk score maintainer run logic
-    const errors = await crudClient.upsertEntitiesBulk({
-      objects: [],
-    });
+    const [, pluginsStart] = await getStartServices();
+    const license = await pluginsStart.licensing.getLicense();
 
-    logger.info(
-      `Risk score maintainer heartbeat for namespace "${namespace}": entity store CRUD bulk call succeeded with ${errors.length} errors`
-    );
+    if (!license.hasAtLeast('platinum')) {
+      logger.debug('Risk score maintainer run skipped due to insufficient license');
+      return status.state;
+    }
+
+    logger.debug('Risk score maintainer run');
 
     return status.state;
   },
