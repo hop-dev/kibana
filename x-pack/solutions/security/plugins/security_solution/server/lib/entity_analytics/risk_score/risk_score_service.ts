@@ -121,6 +121,8 @@ export const riskScoreServiceFactory = ({
         dataClient: riskScoreDataClient,
         spaceId,
         assetCriticalityService,
+        privmonUserCrudService,
+        experimentalFeatures,
         logger,
       });
       return results;
