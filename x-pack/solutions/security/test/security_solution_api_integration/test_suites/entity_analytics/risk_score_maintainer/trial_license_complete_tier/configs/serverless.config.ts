@@ -8,9 +8,9 @@
 import type { ExperimentalFeatures } from '@kbn/security-solution-plugin/common';
 import { createTestConfig } from '../../../../../config/serverless/config.base';
 
-  const securitySolutionEnableExperimental: Array<keyof ExperimentalFeatures> = [
-    'entityAnalyticsEntityStoreV2',
-  ];
+const securitySolutionEnableExperimental: Array<keyof ExperimentalFeatures> = [
+  'entityAnalyticsEntityStoreV2',
+];
 
 export default createTestConfig({
   kbnTestServerArgs: [
