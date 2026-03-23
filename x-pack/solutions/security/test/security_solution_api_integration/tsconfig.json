@@ -67,5 +67,6 @@
     "@kbn/detections-response-ftr-services",
     "@kbn/connector-schemas",
     "@kbn/spaces-utils",
+    "@kbn/entity-store"
   ]
 }
