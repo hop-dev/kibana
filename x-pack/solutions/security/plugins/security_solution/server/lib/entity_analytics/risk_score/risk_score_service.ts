@@ -26,6 +26,7 @@ import { calculateScoresWithESQL } from './calculate_esql_risk_scores';
 import type { ResetToZeroDependencies } from './reset_to_zero';
 import { resetToZero } from './reset_to_zero';
 import { createPrivilegedUsersCrudService } from '../privilege_monitoring/users/privileged_users_crud';
+import { getIsIdBasedRiskScoringEnabled } from './is_id_based_risk_scoring_enabled';
 
 export type RiskEngineConfigurationWithDefaults = RiskEngineConfiguration & {
   alertSampleSizePerShard: number;
@@ -115,14 +116,14 @@ export const riskScoreServiceFactory = ({
     resetToZero: async (
       deps: Pick<ResetToZeroDependencies, 'refresh' | 'entityType' | 'excludedEntities'>
     ) => {
+      const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
       const results = await resetToZero({
         ...deps,
+        idBasedRiskScoringEnabled,
         esClient,
         dataClient: riskScoreDataClient,
         spaceId,
         assetCriticalityService,
-        privmonUserCrudService,
-        experimentalFeatures,
         logger,
       });
       return results;

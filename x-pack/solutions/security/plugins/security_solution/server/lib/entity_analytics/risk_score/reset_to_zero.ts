@@ -7,16 +7,16 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import {
+  EntityIdentifierFields,
   EntityTypeToIdentifierField,
   type EntityType,
 } from '../../../../common/entity_analytics/types';
-import type { ExperimentalFeatures } from '../../../../common';
 import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
-import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 import type { RiskScoreBucket } from '../types';
-import { applyScoreModifiers } from './apply_score_modifiers';
+import { processScores } from './helpers';
 import { getIndexPatternDataStream } from './configurations';
+import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
@@ -24,14 +24,14 @@ export interface ResetToZeroDependencies {
   spaceId: string;
   entityType: EntityType;
   assetCriticalityService: AssetCriticalityService;
-  privmonUserCrudService: PrivmonUserCrudService;
   logger: Logger;
   excludedEntities: string[];
+  idBasedRiskScoringEnabled: boolean;
   refresh?: 'wait_for';
-  experimentalFeatures: ExperimentalFeatures;
 }
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
+const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
 
 export const resetToZero = async ({
   esClient,
@@ -39,29 +39,36 @@ export const resetToZero = async ({
   spaceId,
   entityType,
   assetCriticalityService,
-  privmonUserCrudService,
   logger,
   refresh,
   excludedEntities,
-  experimentalFeatures,
+  idBasedRiskScoringEnabled,
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
-  const entityField = EntityTypeToIdentifierField[entityType];
-
-  // Avoid interpolating a large exclusion list into the ES|QL query string.
-  // We filter in JavaScript after receiving results instead.
-  const esql = /* esql */ `
+  const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
+  const identifierField = idBasedRiskScoringEnabled
+    ? EntityIdentifierFields.generic
+    : EntityTypeToIdentifierField[entityType];
+  const excludedEntitiesClause = `AND id_value NOT IN (${excludedEntities
+    .map((e) => `"${e}"`)
+    .join(',')})`;
+  const esql = /* sql */ `
     FROM ${alias}
     | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
-    | STATS count = count(${entityField}) BY ${entityField}, score_type
-    | KEEP ${entityField}, score_type
-    | LIMIT 10000
-  `;
+    | EVAL id_value = TO_STRING(${entityField})
+    | WHERE id_value IS NOT NULL AND id_value != "" ${
+      excludedEntities.length > 0 ? excludedEntitiesClause : ''
+    }
+    | STATS count = count(id_value) BY id_value
+    | KEEP id_value
+    `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
 
   const response = await esClient.esql
-    .query({ query: esql, format: 'array' })
+    .query({
+      query: esql,
+    })
     .catch((e) => {
       logger.error(
         `Error executing ESQL query to reset ${entityType} risk scores to zero: ${e.message}`
@@ -69,17 +76,18 @@ export const resetToZero = async ({
       throw e;
     });
 
-  const excludedSet = new Set(excludedEntities);
-  const rowsToReset = (response.values as Array<[string, string | null]>).filter(
-    ([entity]) => entity !== null && !excludedSet.has(entity)
-  );
-
-  const buckets: RiskScoreBucket[] = rowsToReset.map(([entity]) => {
-    if (typeof entity !== 'string') {
-      throw new Error(`Invalid entity value: ${entity}`);
+  const entities = response.values.reduce<string[]>((acc, row) => {
+    const [entity] = row;
+    if (typeof entity !== 'string' || entity === '') {
+      return acc;
     }
-    return {
-      key: { [entityField]: entity },
+    acc.push(entity);
+    return acc;
+  }, []);
+
+  const buckets: RiskScoreBucket[] = entities.map((entity) => {
+    const bucket: RiskScoreBucket = {
+      key: { [identifierField]: entity },
       doc_count: 0,
       top_inputs: {
         doc_count: 0,
@@ -95,32 +103,39 @@ export const resetToZero = async ({
         },
       },
     };
+    return bucket;
   });
 
-  const scoreTypes = rowsToReset.map(([, scoreType]) => scoreType ?? 'individual');
-
-  const now = new Date().toISOString();
-  const rawScores = await applyScoreModifiers({
-    now,
-    identifierType: entityType,
-    deps: { assetCriticalityService, privmonUserCrudService, logger },
-    weights: [],
-    page: { buckets, bounds: {}, identifierField: entityField },
-    experimentalFeatures,
+  const scores = await processScores({
+    assetCriticalityService,
+    buckets,
+    identifierField,
+    logger,
+    now: new Date().toISOString(),
   });
-
-  const scores = rawScores.map((score, i) => ({
-    ...score,
-    score_type: scoreTypes[i] as 'individual' | 'resolution' | undefined,
-  }));
 
   const writer = await dataClient.getWriter({ namespace: spaceId });
-  if (entityType === 'host') {
-    await writer.bulk({ host: scores, refresh });
-  } else if (entityType === 'user') {
-    await writer.bulk({ user: scores, refresh });
-  } else if (entityType === 'service') {
-    await writer.bulk({ service: scores, refresh });
+  await writer.bulk({ [entityType]: scores, refresh }).catch((e) => {
+    logger.error(`Error resetting ${entityType} risk scores to zero: ${e.message}`);
+    throw e;
+  });
+
+  if (idBasedRiskScoringEnabled) {
+    const entityStoreErrors = await persistRiskScoresToEntityStore({
+      esClient,
+      logger,
+      spaceId,
+      scores: { [entityType]: scores },
+      refresh,
+    });
+
+    if (entityStoreErrors.length > 0) {
+      logger.warn(
+        `Entity store v2 write had ${
+          entityStoreErrors.length
+        } error(s) during reset: ${entityStoreErrors.join('; ')}`
+      );
+    }
   }
 
   return { scoresWritten: scores.length };
