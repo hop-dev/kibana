@@ -308,7 +308,7 @@ export class Plugin implements ISecuritySolutionPlugin {
 
     registerDeprecations({ core, config: this.config, logger: this.logger });
 
-    if (experimentalFeatures.entityAnalyticsEntityStoreV2Enabled) {
+    if (experimentalFeatures.entityAnalyticsEntityStoreV2) {
       registerRiskScoreMaintainer({
         entityStore: plugins.entityStore,
         getStartServices: core.getStartServices,
