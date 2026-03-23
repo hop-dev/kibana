@@ -8,7 +8,7 @@
 import { buildRouteValidationWithZod } from '@kbn/zod-helpers/v4';
 import { z } from '@kbn/zod/v4';
 import type { IKibanaResponse } from '@kbn/core-http-server';
-import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
+import { fromKueryExpression, KQLSyntaxError, toElasticsearchQuery } from '@kbn/es-query';
 import { ENTITY_STORE_ROUTES } from '../../../../common';
 import { API_VERSIONS, DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
 import type { EntityStorePluginRouter } from '../../../types';
@@ -55,9 +55,12 @@ export function registerCRUDGet(router: EntityStorePluginRouter) {
 
         logger.debug('CRUD Get api called');
 
+        const filter = req.query.filter
+          ? toElasticsearchQuery(fromKueryExpression(req.query.filter))
+          : undefined;
         try {
           const listParams: ListEntitiesParams = {
-            filter: parseJsonParam<QueryDslQueryContainer>(req.query.filter, 'filter'),
+            filter,
             size: req.query.size,
             searchAfter: parseJsonParam<Array<string | number>>(
               req.query.searchAfter,
@@ -68,7 +71,7 @@ export function registerCRUDGet(router: EntityStorePluginRouter) {
           const { entities, nextSearchAfter } = await crudClient.listEntities(listParams);
           return res.ok({ body: { entities, nextSearchAfter } });
         } catch (error) {
-          if (error instanceof BadCRUDRequestError) {
+          if (error instanceof BadCRUDRequestError || error instanceof KQLSyntaxError) {
             return res.badRequest({ body: error });
           }
 
