@@ -14,7 +14,7 @@ export type {
 } from './types';
 export type { RegisterEntityMaintainerConfig } from './tasks/entity_maintainers/types';
 export type { BulkObject, BulkObjectResponse } from './domain/crud';
-export { getLatestEntitiesIndexName } from './domain/asset_manager/latest_index';
+export { getLatestEntitiesIndexName } from '../common';
 export { getHistorySnapshotIndexPattern } from './domain/asset_manager/history_snapshot_index';
 
 export async function plugin(initializerContext: PluginInitializerContext) {
