@@ -108,6 +108,10 @@ export const RiskScoreInput = z.object({
    */
   timestamp: z.string().optional(),
   contribution_score: z.number().optional(),
+  /**
+   * The EUID of the entity within the graph that generated this alert.
+   */
+  entity_id: z.string().optional(),
 });
 
 export type RiskScoreCategories = z.infer<typeof RiskScoreCategories>;
@@ -172,6 +176,22 @@ export const EntityRiskScoreRecord = z.object({
         modifier_value: z.number().optional(),
         contribution: z.number(),
         metadata: z.object({}).catchall(z.unknown()).optional(),
+      })
+    )
+    .optional(),
+  /**
+   * Distinguishes individual scores from aggregated resolution group scores.
+   * Defaults to 'individual' if omitted (backward compatible).
+   */
+  score_type: z.enum(['individual', 'resolution']).optional(),
+  /**
+   * A list of entities related to this risk score (used by resolution scoring).
+   */
+  related_entities: z
+    .array(
+      z.object({
+        entity_id: z.string(),
+        relationship_type: z.string(),
       })
     )
     .optional(),

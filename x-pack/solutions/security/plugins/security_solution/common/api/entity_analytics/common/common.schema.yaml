@@ -141,6 +141,9 @@ components:
         contribution_score:
           type: number
           format: double
+        entity_id:
+          type: string
+          description: The EUID of the entity within the graph that generated this alert.
 
     RiskScoreCategories:
       type: string
@@ -246,6 +249,23 @@ components:
             required:
               - type
               - contribution
+        score_type:
+          type: string
+          enum:
+            - individual
+            - resolution
+          description: >-
+            Distinguishes individual scores from aggregated resolution group scores.
+            Defaults to 'individual' if omitted (backward compatible).
+        related_entities:
+          type: array
+          items:
+            type: object
+            properties:
+              entity_id:
+                type: string
+              relationship_type:
+                type: string
 
     RiskScoreEntityIdentifierWeights:
       type: number
