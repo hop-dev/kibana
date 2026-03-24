@@ -33,6 +33,7 @@ import {
 import { buildScopedInternalSavedObjectsClientUnsafe, convertRangeToISO } from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import { resetToZero } from './reset_to_zero';
 import { WatchlistConfigClient } from '../../watchlists/management/watchlist_config';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 
@@ -165,6 +166,7 @@ export const createRiskScoreMaintainer = ({
 
     for (const entityType of getEntityAnalyticsEntityTypes()) {
       let afterKey: Record<string, string> | undefined;
+      const scoredEntityIds: string[] = [];
 
       do {
         // Step 1: Paginate entity IDs via composite agg using Painless EUID runtime mapping.
@@ -208,6 +210,7 @@ export const createRiskScoreMaintainer = ({
         if (rows.length > 0) {
           // Step 3: Fetch entities from the Entity Store for modifier application.
           const euidValues = rows.map((row) => row.key[entityIdField]);
+          scoredEntityIds.push(...euidValues);
           let entityMap = new Map<string, Entity>();
 
           try {
@@ -265,6 +268,33 @@ export const createRiskScoreMaintainer = ({
           }
         }
       } while (afterKey !== undefined);
+
+      // Step 7: Reset to zero — clear stale positive scores for entities without recent alerts.
+      if (
+        experimentalFeatures.enableRiskScoreResetToZero &&
+        configuration?.enableResetToZero !== false
+      ) {
+        try {
+          const resetResult = await resetToZero({
+            esClient,
+            dataClient: riskScoreDataClient,
+            spaceId: namespace,
+            entityType,
+            logger,
+            excludedEntities: scoredEntityIds,
+            idBasedRiskScoringEnabled,
+            crudClient,
+            watchlistConfigs,
+          });
+          if (resetResult.scoresWritten > 0) {
+            logger.info(
+              `Reset ${resetResult.scoresWritten} stale ${entityType} risk scores to zero`
+            );
+          }
+        } catch (error) {
+          logger.warn(`Error resetting ${entityType} risk scores to zero: ${error}`);
+        }
+      }
     }
 
     logger.info(`Risk score maintainer run completed for namespace "${namespace}"`);
