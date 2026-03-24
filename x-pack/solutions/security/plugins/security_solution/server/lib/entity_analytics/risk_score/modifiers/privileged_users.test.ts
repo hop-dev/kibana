@@ -226,7 +226,7 @@ describe('applyPrivmonModifier', () => {
         type: 'watchlist',
         subtype: 'privmon',
         metadata: {
-          is_privileged_user: true,
+          watchlist_id: 'privmon',
         },
       });
       expect(result[1]).toBeUndefined();
@@ -402,7 +402,7 @@ describe('applyPrivmonModifier', () => {
         subtype: 'privmon',
         modifier_value: 1.5,
         metadata: {
-          is_privileged_user: true,
+          watchlist_id: 'privmon',
         },
       });
       expect(result[1]).toEqual({
@@ -410,7 +410,7 @@ describe('applyPrivmonModifier', () => {
         subtype: 'privmon',
         modifier_value: 1.5,
         metadata: {
-          is_privileged_user: true,
+          watchlist_id: 'privmon',
         },
       });
     });

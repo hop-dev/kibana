@@ -271,7 +271,7 @@ const ContextsSection = <T extends EntityType>({
           : riskScore[entityType].risk.category_2_score,
       },
       privmon: {
-        isPrivileged: privmon ? privmon.metadata?.is_privileged_user : false,
+        isPrivileged: privmon !== undefined,
         contribution: privmon?.contribution ?? 0,
       },
     };

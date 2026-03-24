@@ -9,6 +9,7 @@ import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
+import type { Entity } from '@kbn/entity-store/common';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import type { ExperimentalFeatures } from '../../../../../common';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
@@ -16,20 +17,14 @@ import {
   getEntityAnalyticsEntityTypes,
   getAlertsIndex,
 } from '../../../../../common/entity_analytics/utils';
-import { getPrivilegedMonitorUsersIndex } from '../../../../../common/entity_analytics/privileged_user_monitoring/utils';
 import type { ProductFeaturesService } from '../../../product_features_service/product_features_service';
 import { RiskScoreDataClient } from '../risk_score_data_client';
-import {
-  AssetCriticalityDataClient,
-  assetCriticalityServiceFactory,
-} from '../../asset_criticality';
-import { createPrivilegedUsersCrudService } from '../../privilege_monitoring/users/privileged_users_crud';
 import {
   getEuidCompositeQuery,
   getBaseScoreESQL,
   buildBaseScoreRiskScoreBucket,
 } from '../calculate_esql_risk_scores';
-import { applyScoreModifiers } from '../apply_score_modifiers';
+import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import { filterFromRange } from '../helpers';
 import {
   initSavedObjects,
@@ -38,6 +33,27 @@ import {
 import { buildScopedInternalSavedObjectsClientUnsafe, convertRangeToISO } from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import { WatchlistConfigClient } from '../../watchlists/management/watchlist_config';
+import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+
+const fetchWatchlistConfigs = async (
+  params: ConstructorParameters<typeof WatchlistConfigClient>[0]
+): Promise<Map<string, WatchlistObject>> => {
+  try {
+    const watchlistClient = new WatchlistConfigClient(params);
+    const watchlists = await watchlistClient.list();
+    return new Map(
+      watchlists
+        .filter((w): w is WatchlistObject & { id: string } => w.id != null)
+        .map((w) => [w.id, w])
+    );
+  } catch (error) {
+    params.logger.warn(
+      `Error fetching watchlist configs: ${error}. Scoring will proceed without watchlist modifiers.`
+    );
+    return new Map();
+  }
+};
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -111,24 +127,6 @@ export const createRiskScoreMaintainer = ({
       auditLogger,
     });
 
-    const assetCriticalityDataClient = new AssetCriticalityDataClient({
-      esClient,
-      logger,
-      auditLogger,
-      namespace,
-    });
-
-    const assetCriticalityService = assetCriticalityServiceFactory({
-      assetCriticalityDataClient,
-      uiSettingsClient: coreStart.uiSettings.asScopedToClient(soClient),
-    });
-
-    const privmonUserCrudService = createPrivilegedUsersCrudService({
-      index: getPrivilegedMonitorUsersIndex(namespace),
-      esClient,
-      logger,
-    });
-
     const configuration = await getConfiguration({ savedObjectsClient: soClient });
     const dataViewId = configuration?.dataViewId ?? getAlertsIndex(namespace);
     const { index: alertsIndex } = await riskScoreDataClient.getRiskInputsIndex({ dataViewId });
@@ -156,6 +154,9 @@ export const createRiskScoreMaintainer = ({
 
     const uiSettingsClient = coreStart.uiSettings.asScopedToClient(soClient);
     const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
+
+    // Fetch watchlist configs once per run and build a lookup map by SO ID.
+    const watchlistConfigs = await fetchWatchlistConfigs({ soClient, esClient, namespace, logger });
 
     const writer = await riskScoreDataClient.getWriter({ namespace });
     const now = new Date().toISOString();
@@ -205,25 +206,49 @@ export const createRiskScoreMaintainer = ({
         );
 
         if (rows.length > 0) {
-          // Step 3: Apply score modifiers (asset criticality, privileged-user monitoring).
-          const scores = await applyScoreModifiers({
+          // Step 3: Fetch entities from the Entity Store for modifier application.
+          const euidValues = rows.map((row) => row.key[entityIdField]);
+          let entityMap = new Map<string, Entity>();
+
+          try {
+            let searchAfter: Array<string | number> | undefined;
+            do {
+              const { entities: batch, nextSearchAfter } = await crudClient.listEntities({
+                filter: { terms: { 'entity.id': euidValues } },
+                size: euidValues.length,
+                searchAfter,
+              });
+              for (const entity of batch) {
+                if (entity.entity?.id) {
+                  entityMap.set(entity.entity.id, entity);
+                }
+              }
+              searchAfter = nextSearchAfter;
+            } while (searchAfter !== undefined);
+          } catch (error) {
+            logger.warn(
+              `Error fetching entities for modifier application: ${error}. Scoring will proceed without modifiers.`
+            );
+            entityMap = new Map();
+          }
+
+          // Step 4: Apply score modifiers from entity documents.
+          const scores = applyScoreModifiersFromEntities({
             now,
             identifierType: entityType,
-            deps: { assetCriticalityService, privmonUserCrudService, logger },
-            // Weights are not configurable via saved-object config; reserved for future use
             weights: [],
             page: {
               buckets: rows,
-              bounds: { lower, upper },
               identifierField: entityIdField,
             },
-            experimentalFeatures,
+            entities: entityMap,
+            watchlistConfigs,
           });
 
-          // Step 4: Persist risk scores.
+          // Step 5: Persist risk scores.
           await writer.bulk({ [entityType]: scores });
 
-          // Step 5: Dual-write to entity store (update existing entities only).
+          // Step 6: Dual-write to entity store (update existing entities only).
           if (idBasedRiskScoringEnabled) {
             const entityStoreErrors = await persistRiskScoresToEntityStore({
               crudClient,

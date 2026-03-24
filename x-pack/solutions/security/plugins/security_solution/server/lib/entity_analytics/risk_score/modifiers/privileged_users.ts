@@ -103,7 +103,7 @@ const buildModifier = (
     subtype: 'privmon',
     modifier_value: weightedModifier,
     metadata: {
-      is_privileged_user: true,
+      watchlist_id: 'privmon',
     },
   };
 };
