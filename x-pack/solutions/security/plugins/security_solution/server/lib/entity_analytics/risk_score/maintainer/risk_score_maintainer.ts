@@ -12,7 +12,10 @@ import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import type { ExperimentalFeatures } from '../../../../../common';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
-import { getEntityAnalyticsEntityTypes, getAlertsIndex } from '../../../../../common/entity_analytics/utils';
+import {
+  getEntityAnalyticsEntityTypes,
+  getAlertsIndex,
+} from '../../../../../common/entity_analytics/utils';
 import { getPrivilegedMonitorUsersIndex } from '../../../../../common/entity_analytics/privileged_user_monitoring/utils';
 import type { ProductFeaturesService } from '../../../product_features_service/product_features_service';
 import { RiskScoreDataClient } from '../risk_score_data_client';
@@ -27,11 +30,14 @@ import {
   buildBaseScoreRiskScoreBucket,
 } from '../calculate_esql_risk_scores';
 import { applyScoreModifiers } from '../apply_score_modifiers';
+import { filterFromRange } from '../helpers';
 import {
   initSavedObjects,
   getConfiguration,
 } from '../../risk_engine/utils/saved_object_configuration';
-import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
+import { buildScopedInternalSavedObjectsClientUnsafe, convertRangeToISO } from '../tasks/helpers';
+import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
+import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -127,6 +133,30 @@ export const createRiskScoreMaintainer = ({
     const dataViewId = configuration?.dataViewId ?? getAlertsIndex(namespace);
     const { index: alertsIndex } = await riskScoreDataClient.getRiskInputsIndex({ dataViewId });
 
+    const range = convertRangeToISO(configuration.range);
+    const alertFilters: import('@elastic/elasticsearch/lib/api/types').QueryDslQueryContainer[] = [
+      filterFromRange(range),
+    ];
+    if (configuration.excludeAlertStatuses && configuration.excludeAlertStatuses.length > 0) {
+      alertFilters.push({
+        bool: {
+          must_not: {
+            terms: { 'kibana.alert.workflow_status': configuration.excludeAlertStatuses },
+          },
+        },
+      });
+    }
+    if (configuration.excludeAlertTags && configuration.excludeAlertTags.length > 0) {
+      alertFilters.push({
+        bool: {
+          must_not: { terms: { 'kibana.alert.workflow_tags': configuration.excludeAlertTags } },
+        },
+      });
+    }
+
+    const uiSettingsClient = coreStart.uiSettings.asScopedToClient(soClient);
+    const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
+
     const writer = await riskScoreDataClient.getWriter({ namespace });
     const now = new Date().toISOString();
     const sampleSize = 10_000;
@@ -138,12 +168,20 @@ export const createRiskScoreMaintainer = ({
       do {
         // Step 1: Paginate entity IDs via composite agg using Painless EUID runtime mapping.
         const compositeResponse = await esClient.search(
-          getEuidCompositeQuery(entityType, [], { index: alertsIndex, pageSize, afterKey })
+          getEuidCompositeQuery(entityType, alertFilters, {
+            index: alertsIndex,
+            pageSize,
+            afterKey,
+          })
         );
 
-        type CompositeAgg = { buckets: Array<{ key: Record<string, string> }>; after_key?: Record<string, string> };
-        const compositeAgg = (compositeResponse.aggregations as { by_entity_id?: CompositeAgg } | undefined)
-          ?.by_entity_id;
+        interface CompositeAgg {
+          buckets: Array<{ key: Record<string, string> }>;
+          after_key?: Record<string, string>;
+        }
+        const compositeAgg = (
+          compositeResponse.aggregations as { by_entity_id?: CompositeAgg } | undefined
+        )?.by_entity_id;
         const buckets = compositeAgg?.buckets ?? [];
 
         if (buckets.length === 0) break;
@@ -159,37 +197,48 @@ export const createRiskScoreMaintainer = ({
           format: 'array',
         });
 
-        type EsqlArrayResponse = { values: Array<Array<unknown>> };
+        interface EsqlArrayResponse {
+          values: Array<Array<unknown>>;
+        }
         const rows = ((esqlResponse as unknown as EsqlArrayResponse).values ?? []).map(
           buildBaseScoreRiskScoreBucket(entityType, alertsIndex)
         );
 
-        if (rows.length === 0) break;
+        if (rows.length > 0) {
+          // Step 3: Apply score modifiers (asset criticality, privileged-user monitoring).
+          const scores = await applyScoreModifiers({
+            now,
+            identifierType: entityType,
+            deps: { assetCriticalityService, privmonUserCrudService, logger },
+            // Weights are not configurable via saved-object config; reserved for future use
+            weights: [],
+            page: {
+              buckets: rows,
+              bounds: { lower, upper },
+              identifierField: entityIdField,
+            },
+            experimentalFeatures,
+          });
 
-        // Step 3: Apply score modifiers (asset criticality, privileged-user monitoring).
-        const scores = await applyScoreModifiers({
-          now,
-          identifierType: entityType,
-          deps: { assetCriticalityService, privmonUserCrudService, logger },
-          weights: [],
-          page: {
-            buckets: rows,
-            bounds: { lower, upper },
-            identifierField: entityIdField,
-          },
-          experimentalFeatures,
-        });
+          // Step 4: Persist risk scores.
+          await writer.bulk({ [entityType]: scores });
 
-        // Step 4: Persist risk scores.
-        if (entityType === 'host') {
-          await writer.bulk({ host: scores });
-        } else if (entityType === 'user') {
-          await writer.bulk({ user: scores });
-        } else if (entityType === 'service') {
-          await writer.bulk({ service: scores });
+          // Step 5: Dual-write to entity store (update existing entities only).
+          if (idBasedRiskScoringEnabled) {
+            const entityStoreErrors = await persistRiskScoresToEntityStore({
+              crudClient,
+              logger,
+              scores: { [entityType]: scores },
+            });
+            if (entityStoreErrors.length > 0) {
+              logger.warn(
+                `Entity store dual-write had ${
+                  entityStoreErrors.length
+                } error(s): ${entityStoreErrors.join('; ')}`
+              );
+            }
+          }
         }
-
-        // TODO(Phase 2): Dual-write to entity store via bulkUpdateEntity() once PR #258368 lands.
       } while (afterKey !== undefined);
     }
 
