@@ -6,8 +6,11 @@
  */
 
 import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/common.gen';
+import type { Client } from '@elastic/elasticsearch';
+import type { ToolingLog } from '@kbn/tooling-log';
 import expect from '@kbn/expect';
 import type { InitEntityStoreRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/enable.gen';
+import { waitFor } from '@kbn/detections-response-ftr-services';
 import type { FtrProviderContext } from '../../../ftr_provider_context';
 import { elasticAssetCheckerFactory } from './elastic_asset_checker';
 
@@ -238,4 +241,74 @@ export const EntityStoreUtils = (
     waitForEngineStatus,
     initEntityEngineForEntityType,
   };
+};
+
+/**
+ * Reads entities from the Entity Store V2 latest index.
+ */
+export const readEntityStoreEntities = async (
+  es: Client,
+  namespace: string = 'default'
+): Promise<Array<{ entity: { id: string; risk?: Record<string, unknown> } }>> => {
+  const index = `.entities.v2.latest.security_${namespace}`;
+  try {
+    const results = await es.search({ index, size: 1000 });
+    return results.hits.hits.map(
+      (hit) => hit._source as { entity: { id: string; risk?: Record<string, unknown> } }
+    );
+  } catch (e) {
+    if (e.meta?.statusCode === 404) {
+      return [];
+    }
+    throw e;
+  }
+};
+
+/**
+ * Waits for at least `count` entities to be present in the Entity Store V2 latest index.
+ */
+export const waitForEntityStoreEntities = async ({
+  es,
+  log,
+  count = 1,
+  namespace = 'default',
+}: {
+  es: Client;
+  log: ToolingLog;
+  count?: number;
+  namespace?: string;
+}): Promise<void> => {
+  await waitFor(
+    async () => {
+      const entities = await readEntityStoreEntities(es, namespace);
+      return entities.length >= count;
+    },
+    'waitForEntityStoreEntities',
+    log
+  );
+};
+
+/**
+ * Asserts that risk scores have been dual-written to the Entity Store.
+ * Checks that entities in the store have `entity.risk` fields populated.
+ */
+export const assertRiskScoresWrittenToEntityStore = async ({
+  es,
+  log,
+  expectedEntityCount,
+  namespace = 'default',
+}: {
+  es: Client;
+  log: ToolingLog;
+  expectedEntityCount: number;
+  namespace?: string;
+}): Promise<void> => {
+  const entities = await readEntityStoreEntities(es, namespace);
+  const entitiesWithRisk = entities.filter(
+    (entity) => entity.entity?.risk && entity.entity.risk.calculated_score_norm !== undefined
+  );
+  log.info(
+    `Entity store dual-write check: ${entitiesWithRisk.length}/${entities.length} entities have risk scores (expected ${expectedEntityCount})`
+  );
+  expect(entitiesWithRisk.length).to.eql(expectedEntityCount);
 };
