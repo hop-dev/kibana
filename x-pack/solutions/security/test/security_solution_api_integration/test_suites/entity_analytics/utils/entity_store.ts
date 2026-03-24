@@ -35,6 +35,18 @@ export const EntityStoreUtils = (
   log.debug(`EntityStoreUtils namespace: ${namespace}`);
 
   const cleanEngines = async () => {
+    const supertest = getService('supertest');
+    let settingsUrl = '/internal/kibana/settings';
+    if (namespace !== 'default') {
+      settingsUrl = `/s/${namespace}${settingsUrl}`;
+    }
+    await supertest
+      .post(settingsUrl)
+      .set('kbn-xsrf', 'true')
+      .set('x-elastic-internal-origin', 'Kibana')
+      .send({ changes: { 'securitySolution:entityStoreEnableV2': null } })
+      .expect(200);
+
     const { body } = await entityAnalyticsApi.listEntityEngines(namespace).expect(200);
 
     // @ts-expect-error body is any
