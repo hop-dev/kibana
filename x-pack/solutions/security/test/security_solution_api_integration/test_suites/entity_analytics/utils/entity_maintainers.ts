@@ -56,8 +56,7 @@ export const entityMaintainerRouteHelpersFactory = (
               `initMaintainers failed with status ${res.status}. Body: ${JSON.stringify(res.body)}`
             );
           }
-        })
-        .expect(expectStatusCode);
+        });
       return response;
     },
 
