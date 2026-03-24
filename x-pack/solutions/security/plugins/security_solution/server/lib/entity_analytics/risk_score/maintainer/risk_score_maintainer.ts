@@ -59,10 +59,13 @@ export const createRiskScoreMaintainer = ({
     const [, pluginsStart] = await getStartServices();
     const license = await pluginsStart.licensing.getLicense();
 
+    // Advanced insights requires a platinum license (ESS) or feature enablement (Serverless).
+    // In Serverless, hasAtLeast('platinum') is always true; in ESS, isEnabled() is always true.
+    // Both conditions must be met to correctly gate access in either environment.
     const isFeatureEnabled = productFeaturesService.isEnabled(ProductFeatureKey.advancedInsights);
     const hasPlatinumLicense = license.hasAtLeast('platinum');
 
-    if (!isFeatureEnabled && !hasPlatinumLicense) {
+    if (!isFeatureEnabled || !hasPlatinumLicense) {
       logger.debug(
         'Risk score maintainer run skipped due to insufficient license or feature disabled'
       );
