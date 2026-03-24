@@ -6,15 +6,18 @@
  */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import {
   EntityIdentifierFields,
   EntityTypeToIdentifierField,
   type EntityType,
 } from '../../../../common/entity_analytics/types';
+import type { ExperimentalFeatures } from '../../../../common';
 import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
+import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 import type { RiskScoreBucket } from '../types';
-import { processScores } from './helpers';
+import { applyScoreModifiers } from './apply_score_modifiers';
 import { getIndexPatternDataStream } from './configurations';
 import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
 
@@ -24,9 +27,12 @@ export interface ResetToZeroDependencies {
   spaceId: string;
   entityType: EntityType;
   assetCriticalityService: AssetCriticalityService;
+  privmonUserCrudService: PrivmonUserCrudService;
+  experimentalFeatures: ExperimentalFeatures;
   logger: Logger;
   excludedEntities: string[];
   idBasedRiskScoringEnabled: boolean;
+  crudClient?: EntityStoreCRUDClient;
   refresh?: 'wait_for';
 }
 
@@ -39,35 +45,40 @@ export const resetToZero = async ({
   spaceId,
   entityType,
   assetCriticalityService,
+  privmonUserCrudService,
+  experimentalFeatures,
   logger,
   refresh,
   excludedEntities,
   idBasedRiskScoringEnabled,
+  crudClient,
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
   const identifierField = idBasedRiskScoringEnabled
     ? EntityIdentifierFields.generic
     : EntityTypeToIdentifierField[entityType];
-  const excludedEntitiesClause = `AND id_value NOT IN (${excludedEntities
-    .map((e) => `"${e}"`)
-    .join(',')})`;
   const esql = /* sql */ `
     FROM ${alias}
     | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
     | EVAL id_value = TO_STRING(${entityField})
-    | WHERE id_value IS NOT NULL AND id_value != "" ${
-      excludedEntities.length > 0 ? excludedEntitiesClause : ''
-    }
+    | WHERE id_value IS NOT NULL AND id_value != ""
     | STATS count = count(id_value) BY id_value
     | KEEP id_value
+    | LIMIT 10000
     `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
 
+  const exclusionFilter =
+    excludedEntities.length > 0
+      ? { bool: { must_not: [{ terms: { [identifierField]: excludedEntities } }] } }
+      : undefined;
+
   const response = await esClient.esql
     .query({
       query: esql,
+      ...(exclusionFilter ? { filter: exclusionFilter } : {}),
     })
     .catch((e) => {
       logger.error(
@@ -106,12 +117,16 @@ export const resetToZero = async ({
     return bucket;
   });
 
-  const scores = await processScores({
-    assetCriticalityService,
-    buckets,
-    identifierField,
-    logger,
+  const scores = await applyScoreModifiers({
     now: new Date().toISOString(),
+    identifierType: entityType,
+    deps: { assetCriticalityService, privmonUserCrudService, logger },
+    page: {
+      buckets,
+      bounds: { lower: '*' },
+      identifierField,
+    },
+    experimentalFeatures,
   });
 
   const writer = await dataClient.getWriter({ namespace: spaceId });
@@ -120,13 +135,11 @@ export const resetToZero = async ({
     throw e;
   });
 
-  if (idBasedRiskScoringEnabled) {
+  if (idBasedRiskScoringEnabled && crudClient) {
     const entityStoreErrors = await persistRiskScoresToEntityStore({
-      esClient,
+      crudClient,
       logger,
-      spaceId,
       scores: { [entityType]: scores },
-      refresh,
     });
 
     if (entityStoreErrors.length > 0) {

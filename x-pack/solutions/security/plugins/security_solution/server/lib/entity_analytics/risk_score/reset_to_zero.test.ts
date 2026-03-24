@@ -7,11 +7,14 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import { assetCriticalityServiceMock } from '../asset_criticality/asset_criticality_service.mock';
 import { riskScoreDataClientMock } from './risk_score_data_client.mock';
 import type { RiskScoreDataClient } from './risk_score_data_client';
+import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 import { resetToZero } from './reset_to_zero';
 import { EntityType } from '../../../../common/entity_analytics/types';
+import { allowedExperimentalValues } from '../../../../common';
 import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
 
 jest.mock('./persist_risk_scores_to_entity_store');
@@ -21,6 +24,9 @@ describe('resetToZero', () => {
   let logger: Logger;
   let dataClient: RiskScoreDataClient;
   let writerBulkMock: jest.Mock;
+  let privmonUserCrudService: jest.Mocked<PrivmonUserCrudService>;
+  let crudClient: jest.Mocked<EntityStoreCRUDClient>;
+  const experimentalFeatures = { ...allowedExperimentalValues };
 
   beforeEach(() => {
     esClient = elasticsearchServiceMock.createScopedClusterClient().asCurrentUser;
@@ -29,6 +35,20 @@ describe('resetToZero', () => {
     writerBulkMock = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
     (dataClient.getWriter as jest.Mock).mockResolvedValue({ bulk: writerBulkMock });
     (persistRiskScoresToEntityStore as jest.Mock).mockResolvedValue([]);
+    privmonUserCrudService = {
+      create: jest.fn(),
+      get: jest.fn(),
+      update: jest.fn(),
+      list: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+    };
+    crudClient = {
+      createEntity: jest.fn(),
+      updateEntity: jest.fn(),
+      bulkUpdateEntity: jest.fn().mockResolvedValue([]),
+      deleteEntity: jest.fn(),
+      listEntities: jest.fn().mockResolvedValue({ entities: [], nextSearchAfter: undefined }),
+    } as unknown as jest.Mocked<EntityStoreCRUDClient>;
   });
 
   afterEach(() => {
@@ -46,6 +66,8 @@ describe('resetToZero', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       assetCriticalityService: assetCriticalityServiceMock.create(),
+      privmonUserCrudService,
+      experimentalFeatures,
       logger,
       excludedEntities: [],
       idBasedRiskScoringEnabled: false,
@@ -78,11 +100,23 @@ describe('resetToZero', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       assetCriticalityService: assetCriticalityServiceMock.create(),
+      privmonUserCrudService,
+      experimentalFeatures,
       logger,
       excludedEntities: ['host:do-not-reset'],
       idBasedRiskScoringEnabled: true,
+      crudClient,
       refresh: 'wait_for',
     });
+
+    // Finding 1: exclusions are passed as a native ES filter, not in the ES|QL string
+    expect(esClient.esql.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: {
+          bool: { must_not: [{ terms: { 'entity.id': ['host:do-not-reset'] } }] },
+        },
+      })
+    );
 
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
@@ -96,9 +130,8 @@ describe('resetToZero', () => {
       refresh: 'wait_for',
     });
     expect(persistRiskScoresToEntityStore).toHaveBeenCalledWith({
-      esClient,
+      crudClient,
       logger,
-      spaceId: 'default',
       scores: {
         host: [
           expect.objectContaining({
@@ -109,7 +142,6 @@ describe('resetToZero', () => {
           }),
         ],
       },
-      refresh: 'wait_for',
     });
   });
 
@@ -127,6 +159,8 @@ describe('resetToZero', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       assetCriticalityService: assetCriticalityServiceMock.create(),
+      privmonUserCrudService,
+      experimentalFeatures,
       logger,
       excludedEntities: [],
       idBasedRiskScoringEnabled: false,
