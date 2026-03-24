@@ -16,6 +16,15 @@ export type RegisterRiskScoreMaintainerOptions = RegisterRiskScoreMaintainerDeps
   entityStore: EntityStoreSetupContract | undefined;
 };
 
+/**
+ * Registers the risk score maintainer with the entity store.
+ *
+ * The experimental flag (riskScoringMaintainerEnabled) gates maintainer
+ * registration at plugin startup. The UI setting (entityStoreV2Enabled)
+ * independently controls id-based scoring and entity store dual-write at
+ * runtime. Both gates are intentionally separate so the maintainer can be
+ * toggled without restarting Kibana.
+ */
 export const registerRiskScoreMaintainer = ({
   entityStore,
   ...deps
