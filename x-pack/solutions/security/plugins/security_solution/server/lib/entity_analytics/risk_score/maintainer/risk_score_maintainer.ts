@@ -62,7 +62,7 @@ export const createRiskScoreMaintainer = ({
     const isFeatureEnabled = productFeaturesService.isEnabled(ProductFeatureKey.advancedInsights);
     const hasPlatinumLicense = license.hasAtLeast('platinum');
 
-    if (!isFeatureEnabled || !hasPlatinumLicense) {
+    if (!isFeatureEnabled && !hasPlatinumLicense) {
       logger.debug(
         'Risk score maintainer run skipped due to insufficient license or feature disabled'
       );
