@@ -14,3 +14,4 @@ export * from './elastic_asset_checker';
 export * from './entity_analytics';
 export * from './privilege_monitoring';
 export * from './data_view';
+export * from './watchlist';

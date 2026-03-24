@@ -22,6 +22,7 @@ import {
   assetCriticalityRouteHelpersFactory,
   cleanAssetCriticality,
   waitForAssetCriticalityToBePresent,
+  watchlistRouteHelpersFactory,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -210,6 +211,79 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(score.criticality_modifier).to.be(undefined);
           expect(score.calculated_score_norm).to.be.within(8.1006017, 8.100602);
           expect(score.id_value).to.eql('host:host-1');
+        });
+      });
+
+      describe('@skipInServerless with watchlist modifier data', () => {
+        const watchlistRoutes = watchlistRouteHelpersFactory(supertest);
+
+        afterEach(async () => {
+          const listResponse = await watchlistRoutes.list();
+          for (const watchlist of listResponse.body) {
+            if (watchlist.id) {
+              await watchlistRoutes.delete(watchlist.id);
+            }
+          }
+        });
+
+        it('calculates risk scores with watchlist modifiers', async () => {
+          const documentId = uuidv4();
+          await indexListOfDocuments([buildDocument({ user: { name: 'user-1' } }, documentId)]);
+
+          await createAndSyncRuleAndAlerts({
+            query: `id: ${documentId}`,
+            alerts: 1,
+            riskScore: 21,
+          });
+
+          // Create a watchlist with a custom riskModifier
+          const createResponse = await watchlistRoutes.create({
+            name: 'high-risk-vendors',
+            riskModifier: 1.8,
+          });
+          const watchlistId = createResponse.body.id!;
+
+          await entityStoreUtils.installEntityStoreV2();
+          await waitForMaintainerRun(maintainerRoutes);
+          await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
+
+          // Get base risk score (no watchlist modifier yet)
+          const baseScores = await readRiskScores(es);
+          const [baseScore] = sanitizeScores(normalizeScores(baseScores));
+          const baseNormScore = baseScore.calculated_score_norm!;
+
+          // Update the entity in the entity store to add watchlist membership
+          await es.updateByQuery({
+            index: '.entities.v2.latest.security_default',
+            query: { term: { 'entity.id': 'user:user-1' } },
+            script: {
+              source: `
+                if (!ctx._source.entity.containsKey('attributes')) {
+                  ctx._source.entity.attributes = new HashMap();
+                }
+                ctx._source.entity.attributes.watchlists = params.watchlistIds;
+              `,
+              lang: 'painless',
+              params: { watchlistIds: [watchlistId] },
+            },
+            refresh: true,
+          });
+
+          // Delete existing risk scores and re-run maintainer
+          await deleteAllRiskScores(log, es);
+          await maintainerRoutes.runMaintainer('risk-score');
+          await waitForMaintainerRun(maintainerRoutes, 2);
+          await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
+
+          const scores = await readRiskScores(es);
+          const [score] = sanitizeScores(normalizeScores(scores));
+
+          expect(score.modifiers).to.have.length(1);
+          expect(score.modifiers![0].type).to.eql('watchlist');
+          expect(score.modifiers![0].subtype).to.eql('high-risk-vendors');
+          expect(score.modifiers![0].modifier_value).to.eql(1.8);
+          expect(score.calculated_score_norm).to.be.greaterThan(baseNormScore);
+          expect(score.id_value).to.eql('user:user-1');
         });
       });
     });
