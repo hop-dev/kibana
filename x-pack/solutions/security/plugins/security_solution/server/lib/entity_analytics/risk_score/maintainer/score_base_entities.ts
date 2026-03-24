@@ -12,11 +12,8 @@ import type { Entity } from '@kbn/entity-store/common';
 import type { EntityType } from '../../../../../common/search_strategy';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
-import {
-  getEuidCompositeQuery,
-  getBaseScoreESQL,
-  buildBaseScoreRiskScoreBucket,
-} from '../calculate_esql_risk_scores';
+import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_scores';
+import { esqlRowToObject } from './esql_row_to_object';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 
@@ -91,19 +88,17 @@ export const scoreBaseEntities = async ({
     // Step 2: Score the page with ES|QL.
     const esqlResponse = await esClient.esql.query({
       query: getBaseScoreESQL(entityType, { lower, upper }, sampleSize, pageSize, alertsIndex),
-      format: 'array',
+      format: 'columns',
     });
 
-    interface EsqlArrayResponse {
-      values: Array<Array<unknown>>;
-    }
-    const rows = ((esqlResponse as unknown as EsqlArrayResponse).values ?? []).map(
-      buildBaseScoreRiskScoreBucket(entityType, alertsIndex)
+    // Map each row to an object using columns
+    const rows = (esqlResponse.values ?? []).map((row: unknown[]) =>
+      esqlRowToObject(row, esqlResponse.columns)
     );
 
     if (rows.length > 0) {
       // Step 3: Fetch entities from the Entity Store for modifier application.
-      const euidValues = rows.map((row) => row.key[entityIdField]);
+      const euidValues = rows.map((row) => row[entityIdField]);
       scoredEntityIds.push(...euidValues);
       let entityMap = new Map<string, Entity>();
 

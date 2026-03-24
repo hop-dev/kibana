@@ -17,6 +17,7 @@ import type { RiskScoreDataClient } from './risk_score_data_client';
 import type { AssetCriticalityService } from '../asset_criticality';
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
 import type { RiskScoreBucket } from '../types';
+import { esqlRowToObject } from './maintainer/esql_row_to_object';
 import { applyScoreModifiers } from './apply_score_modifiers';
 import { getIndexPatternDataStream } from './configurations';
 import { persistRiskScoresToEntityStore } from './persist_risk_scores_to_entity_store';
@@ -87,14 +88,10 @@ export const resetToZero = async ({
       throw e;
     });
 
-  const entities = response.values.reduce<string[]>((acc, row) => {
-    const [entity] = row;
-    if (typeof entity !== 'string' || entity === '') {
-      return acc;
-    }
-    acc.push(entity);
-    return acc;
-  }, []);
+  const entities = (response.values ?? [])
+    .map((row: unknown[]) => esqlRowToObject<{ id_value: string }>(row, response.columns))
+    .map((obj) => obj.id_value)
+    .filter((entity): entity is string => typeof entity === 'string' && entity !== '');
 
   const buckets: RiskScoreBucket[] = entities.map((entity) => {
     const bucket: RiskScoreBucket = {
