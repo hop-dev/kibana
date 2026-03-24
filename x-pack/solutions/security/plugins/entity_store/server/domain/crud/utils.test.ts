@@ -43,7 +43,9 @@ const createDefinition = (type: EntityType, fields: EntityField[]): ManagedEntit
   type,
   fields,
   identityField: {
-    euidFields: [[{ field: 'entity.id' }]],
+    euidRanking: {
+      branches: [{ ranking: [[{ field: 'entity.id' }]] }],
+    },
     documentsFilter: isNotEmptyCondition('entity.id'),
   },
   indexPatterns: ['logs-*'],
