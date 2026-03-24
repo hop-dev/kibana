@@ -8,11 +8,13 @@
 import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
+import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
 import type { ExperimentalFeatures } from '../../../../../common';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import { getEntityAnalyticsEntityTypes, getAlertsIndex } from '../../../../../common/entity_analytics/utils';
 import { getPrivilegedMonitorUsersIndex } from '../../../../../common/entity_analytics/privileged_user_monitoring/utils';
+import type { ProductFeaturesService } from '../../../product_features_service/product_features_service';
 import { RiskScoreDataClient } from '../risk_score_data_client';
 import {
   AssetCriticalityDataClient,
@@ -37,6 +39,7 @@ export interface RiskScoreMaintainerDeps {
   logger: Logger;
   auditLogger: AuditLogger | undefined;
   experimentalFeatures: ExperimentalFeatures;
+  productFeaturesService: ProductFeaturesService;
 }
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
@@ -47,6 +50,7 @@ export const createRiskScoreMaintainer = ({
   logger,
   auditLogger,
   experimentalFeatures,
+  productFeaturesService,
 }: RiskScoreMaintainerDeps): RiskScoreMaintainerConfig => ({
   setup: async ({ status }) => {
     const namespace = status.metadata.namespace;
@@ -71,9 +75,24 @@ export const createRiskScoreMaintainer = ({
     logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
     return status.state;
   },
-  run: async ({ status }) => {
+  run: async ({ status, crudClient }) => {
+    const [coreStart, pluginsStart] = await getStartServices();
+    const license = await pluginsStart.licensing.getLicense();
+
+    // Advanced insights requires a platinum license (ESS) or feature enablement (Serverless).
+    // In Serverless, hasAtLeast('platinum') is always true; in ESS, isEnabled() is always true.
+    // Both conditions must be met to correctly gate access in either environment.
+    const isFeatureEnabled = productFeaturesService.isEnabled(ProductFeatureKey.advancedInsights);
+    const hasPlatinumLicense = license.hasAtLeast('platinum');
+
+    if (!isFeatureEnabled || !hasPlatinumLicense) {
+      logger.debug(
+        'Risk score maintainer run skipped due to insufficient license or feature disabled'
+      );
+      return status.state;
+    }
+
     const namespace = status.metadata.namespace;
-    const [coreStart] = await getStartServices();
     const esClient = coreStart.elasticsearch.client.asInternalUser;
     const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
 

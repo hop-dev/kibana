@@ -21,7 +21,7 @@ export const registerRiskEngineRoutes = ({
   config,
 }: EntityAnalyticsRoutesDeps) => {
   const isEntityAnalyticsEntityStoreV2Enabled =
-    config.experimentalFeatures.entityAnalyticsEntityStoreV2Enabled;
+    config.experimentalFeatures.entityAnalyticsEntityStoreV2;
 
   riskEngineStatusRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);
   riskEngineInitRoute(router, getStartServices, isEntityAnalyticsEntityStoreV2Enabled);

@@ -16,7 +16,7 @@ const withHeaders = (req: SuperTest.Test) =>
   req
     .set('kbn-xsrf', 'true')
     .set('elastic-api-version', ENTITY_STORE_INTERNAL_API_VERSION)
-    .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana');
+    .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'Kibana');
 
 export interface EntityMaintainerResponse {
   id: string;
@@ -32,63 +32,62 @@ export interface EntityMaintainerResponse {
 export const entityMaintainerRouteHelpersFactory = (
   supertest: SuperTest.Agent,
   namespace?: string
-) => ({
-  getMaintainers: async (expectStatusCode: number = 200) => {
+) => {
+  const getMaintainers = async (expectStatusCode: number = 200) => {
     const response = await withHeaders(
       supertest.get(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace))
     ).expect(expectStatusCode);
     return response as SuperTest.Response & {
       body: { maintainers: EntityMaintainerResponse[] };
     };
-  },
+  };
 
-  initMaintainers: async (expectStatusCode: number = 200) => {
-    const response = await withHeaders(
-      supertest.post(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_INIT, namespace))
-    )
-      .send()
-      .expect((res) => {
-        if (res.status !== expectStatusCode) {
-          // eslint-disable-next-line no-console
-          console.error(
-            `initMaintainers failed with status ${res.status}. Body: ${JSON.stringify(res.body)}`
-          );
-        }
-        return res;
-      })
-      .expect(expectStatusCode);
-    return response;
-  },
+  return {
+    getMaintainers,
 
-  runMaintainer: async (id: string, expectStatusCode: number = 200) => {
-    const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_RUN.replace('{id}', id);
-    const response = await withHeaders(supertest.post(routeWithNamespace(route, namespace)))
-      .send()
-      .expect(expectStatusCode);
-    return response;
-  },
+    initMaintainers: async (expectStatusCode: number = 200) => {
+      const response = await withHeaders(
+        supertest.post(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_INIT, namespace))
+      )
+        .send()
+        .expect((res) => {
+          if (res.status !== expectStatusCode) {
+            throw new Error(
+              `initMaintainers failed with status ${res.status}. Body: ${JSON.stringify(res.body)}`
+            );
+          }
+        });
+      return response;
+    },
 
-  startMaintainer: async (id: string, expectStatusCode: number = 200) => {
-    const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_START.replace('{id}', id);
-    const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
-      .send()
-      .expect(expectStatusCode);
-    return response;
-  },
+    runMaintainer: async (id: string, expectStatusCode: number = 200) => {
+      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_RUN.replace('{id}', id);
+      const response = await withHeaders(supertest.post(routeWithNamespace(route, namespace)))
+        .send()
+        .expect(expectStatusCode);
+      return response;
+    },
 
-  stopMaintainer: async (id: string, expectStatusCode: number = 200) => {
-    const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_STOP.replace('{id}', id);
-    const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
-      .send()
-      .expect(expectStatusCode);
-    return response;
-  },
+    startMaintainer: async (id: string, expectStatusCode: number = 200) => {
+      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_START.replace('{id}', id);
+      const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
+        .send()
+        .expect(expectStatusCode);
+      return response;
+    },
 
-  getRiskScoreMaintainer: async (): Promise<EntityMaintainerResponse | null> => {
-    const response = await withHeaders(
-      supertest.get(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace))
-    ).expect(200);
-    const maintainers: EntityMaintainerResponse[] = response.body.maintainers ?? [];
-    return maintainers.find((m) => m.id === 'risk-score') ?? null;
-  },
-});
+    stopMaintainer: async (id: string, expectStatusCode: number = 200) => {
+      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_STOP.replace('{id}', id);
+      const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
+        .send()
+        .expect(expectStatusCode);
+      return response;
+    },
+
+    getRiskScoreMaintainer: async (): Promise<EntityMaintainerResponse | null> => {
+      const response = await getMaintainers();
+      const maintainers: EntityMaintainerResponse[] = response.body.maintainers ?? [];
+      return maintainers.find((m) => m.id === 'risk-score') ?? null;
+    },
+  };
+};

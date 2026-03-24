@@ -14,7 +14,7 @@ export default async function ({ readConfigFile }: FtrConfigProviderContext) {
   );
 
   const securitySolutionEnableExperimental: Array<keyof ExperimentalFeatures> = [
-    'entityAnalyticsEntityStoreV2Enabled',
+    'entityAnalyticsEntityStoreV2',
   ];
 
   return {

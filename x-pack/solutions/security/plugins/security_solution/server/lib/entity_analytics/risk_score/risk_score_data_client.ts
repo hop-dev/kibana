@@ -199,7 +199,11 @@ export class RiskScoreDataClient {
         },
       });
     } catch (error) {
-      this.options.logger.error(`Error initializing risk engine resources: ${error.message}`);
+      this.options.logger.error(
+        `Error initializing risk engine resources: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       throw error;
     }
   }
@@ -230,7 +234,9 @@ export class RiskScoreDataClient {
       });
     } catch (error) {
       this.options.logger.error(
-        `Error initializing legacy risk engine transforms: ${error.message}`
+        `Error initializing legacy risk engine transforms: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
       throw error;
     }

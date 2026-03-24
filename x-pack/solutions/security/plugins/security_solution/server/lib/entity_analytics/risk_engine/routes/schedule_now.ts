@@ -37,6 +37,15 @@ export const riskEngineScheduleNowRoute = (
     .addVersion(
       { version: API_VERSIONS.public.v1, validate: {} },
       withRiskEnginePrivilegeCheck('run', getStartServices, async (context, request, response) => {
+        const siemResponse = buildSiemResponse(response);
+
+        if (isEntityAnalyticsEntityStoreV2Enabled) {
+          return siemResponse.error({
+            statusCode: 400,
+            body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
+          });
+        }
+
         const securitySolution = await context.securitySolution;
 
         securitySolution.getAuditLogger()?.log({
@@ -48,15 +57,6 @@ export const riskEngineScheduleNowRoute = (
             outcome: AUDIT_OUTCOME.UNKNOWN,
           },
         });
-
-        const siemResponse = buildSiemResponse(response);
-
-        if (isEntityAnalyticsEntityStoreV2Enabled) {
-          return siemResponse.error({
-            statusCode: 400,
-            body: ENTITY_ANALYTICS_V2_MODE_API_ERROR,
-          });
-        }
 
         const [_, { taskManager }] = await getStartServices();
 

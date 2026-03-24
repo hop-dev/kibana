@@ -112,7 +112,7 @@ export default ({ getService }: FtrProviderContext) => {
       await spaces.delete(customSpaceName);
     });
 
-    describe('when entityAnalyticsEntityStoreV2Enabled is true', () => {
+    describe('when entityAnalyticsEntityStoreV2 is true', () => {
       it('should return 400 for legacy risk engine init api', async () => {
         await riskEngineRoutes.init(400);
       });
