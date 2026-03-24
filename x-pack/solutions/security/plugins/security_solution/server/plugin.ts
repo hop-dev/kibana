@@ -315,7 +315,6 @@ export class Plugin implements ISecuritySolutionPlugin {
         kibanaVersion: pluginContext.env.packageInfo.version,
         logger: this.logger,
         auditLogger: plugins.security?.audit.withoutRequest,
-        experimentalFeatures,
         productFeaturesService,
       });
     } else {

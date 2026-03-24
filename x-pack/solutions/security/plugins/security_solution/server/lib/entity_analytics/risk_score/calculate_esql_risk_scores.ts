@@ -16,6 +16,7 @@ import {
 } from '@kbn/rule-registry-plugin/common/technical_rule_data_field_names';
 import { toEntries } from 'fp-ts/Record';
 
+import { euid } from '@kbn/entity-store/common/euid_helpers';
 import { EntityTypeToIdentifierField } from '../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../common/entity_analytics/utils';
 import type { EntityType } from '../../../../common/search_strategy';
@@ -35,7 +36,6 @@ import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from './constants';
 import { filterFromRange } from './helpers';
 import { applyScoreModifiers } from './apply_score_modifiers';
 import type { PrivmonUserCrudService } from '../privilege_monitoring/users/privileged_users_crud';
-import { euid } from '@kbn/entity-store/common/euid_helpers';
 
 type ESQLResults = Array<
   [EntityType, { scores: EntityRiskScoreRecord[]; afterKey: EntityAfterKey }]
@@ -568,12 +568,7 @@ export const getBaseScoreESQL = (
 export const buildBaseScoreRiskScoreBucket =
   (entityType: EntityType, index: string) =>
   (row: FieldValue[]): RiskScoreBucket => {
-    const [count, score, _inputs, entityId] = row as [
-      number,
-      number,
-      string | string[],
-      string,
-    ];
+    const [count, score, _inputs, entityId] = row as [number, number, string | string[], string];
 
     const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
       let parsedRiskInputData: Record<string, string> = {};

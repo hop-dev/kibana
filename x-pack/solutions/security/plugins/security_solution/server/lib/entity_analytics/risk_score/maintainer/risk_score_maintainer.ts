@@ -9,9 +9,7 @@ import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
-import type { Entity } from '@kbn/entity-store/common';
 import type { EntityAnalyticsRoutesDeps } from '../../types';
-import type { ExperimentalFeatures } from '../../../../../common';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -20,20 +18,14 @@ import {
 import type { ProductFeaturesService } from '../../../product_features_service/product_features_service';
 import { RiskScoreDataClient } from '../risk_score_data_client';
 import {
-  getEuidCompositeQuery,
-  getBaseScoreESQL,
-  buildBaseScoreRiskScoreBucket,
-} from '../calculate_esql_risk_scores';
-import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
-import { filterFromRange } from '../helpers';
-import {
   initSavedObjects,
   getConfiguration,
 } from '../../risk_engine/utils/saved_object_configuration';
-import { buildScopedInternalSavedObjectsClientUnsafe, convertRangeToISO } from '../tasks/helpers';
+import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import { resetToZero } from './reset_to_zero';
+import { buildAlertFilters } from './build_alert_filters';
+import { scoreBaseEntities } from './score_base_entities';
 import { WatchlistConfigClient } from '../../watchlists/management/watchlist_config';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 
@@ -61,7 +53,6 @@ export interface RiskScoreMaintainerDeps {
   kibanaVersion: string;
   logger: Logger;
   auditLogger: AuditLogger | undefined;
-  experimentalFeatures: ExperimentalFeatures;
   productFeaturesService: ProductFeaturesService;
 }
 
@@ -72,7 +63,6 @@ export const createRiskScoreMaintainer = ({
   kibanaVersion,
   logger,
   auditLogger,
-  experimentalFeatures,
   productFeaturesService,
 }: RiskScoreMaintainerDeps): RiskScoreMaintainerConfig => ({
   setup: async ({ status }) => {
@@ -132,26 +122,7 @@ export const createRiskScoreMaintainer = ({
     const dataViewId = configuration?.dataViewId ?? getAlertsIndex(namespace);
     const { index: alertsIndex } = await riskScoreDataClient.getRiskInputsIndex({ dataViewId });
 
-    const range = convertRangeToISO(configuration.range);
-    const alertFilters: import('@elastic/elasticsearch/lib/api/types').QueryDslQueryContainer[] = [
-      filterFromRange(range),
-    ];
-    if (configuration.excludeAlertStatuses && configuration.excludeAlertStatuses.length > 0) {
-      alertFilters.push({
-        bool: {
-          must_not: {
-            terms: { 'kibana.alert.workflow_status': configuration.excludeAlertStatuses },
-          },
-        },
-      });
-    }
-    if (configuration.excludeAlertTags && configuration.excludeAlertTags.length > 0) {
-      alertFilters.push({
-        bool: {
-          must_not: { terms: { 'kibana.alert.workflow_tags': configuration.excludeAlertTags } },
-        },
-      });
-    }
+    const alertFilters = buildAlertFilters(configuration);
 
     const uiSettingsClient = coreStart.uiSettings.asScopedToClient(soClient);
     const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
@@ -165,115 +136,26 @@ export const createRiskScoreMaintainer = ({
     const pageSize = DEFAULT_RISK_SCORE_PAGE_SIZE;
 
     for (const entityType of getEntityAnalyticsEntityTypes()) {
-      let afterKey: Record<string, string> | undefined;
-      const scoredEntityIds: string[] = [];
+      // Phase 1: Base scoring — paginate, score, apply modifiers, persist.
+      const scoredEntityIds = await scoreBaseEntities({
+        esClient,
+        crudClient,
+        writer,
+        logger,
+        entityType,
+        alertFilters,
+        alertsIndex,
+        pageSize,
+        sampleSize,
+        now,
+        watchlistConfigs,
+        idBasedRiskScoringEnabled,
+      });
 
-      do {
-        // Step 1: Paginate entity IDs via composite agg using Painless EUID runtime mapping.
-        const compositeResponse = await esClient.search(
-          getEuidCompositeQuery(entityType, alertFilters, {
-            index: alertsIndex,
-            pageSize,
-            afterKey,
-          })
-        );
+      // Phase 2 (PR 2): Resolution scoring will be called here.
 
-        interface CompositeAgg {
-          buckets: Array<{ key: Record<string, string> }>;
-          after_key?: Record<string, string>;
-        }
-        const compositeAgg = (
-          compositeResponse.aggregations as { by_entity_id?: CompositeAgg } | undefined
-        )?.by_entity_id;
-        const buckets = compositeAgg?.buckets ?? [];
-
-        if (buckets.length === 0) break;
-
-        const entityIdField = `${entityType}_id`;
-        const lower = buckets[0].key[entityIdField];
-        const upper = buckets[buckets.length - 1].key[entityIdField];
-        afterKey = compositeAgg?.after_key;
-
-        // Step 2: Score the page with ES|QL.
-        const esqlResponse = await esClient.esql.query({
-          query: getBaseScoreESQL(entityType, { lower, upper }, sampleSize, pageSize, alertsIndex),
-          format: 'array',
-        });
-
-        interface EsqlArrayResponse {
-          values: Array<Array<unknown>>;
-        }
-        const rows = ((esqlResponse as unknown as EsqlArrayResponse).values ?? []).map(
-          buildBaseScoreRiskScoreBucket(entityType, alertsIndex)
-        );
-
-        if (rows.length > 0) {
-          // Step 3: Fetch entities from the Entity Store for modifier application.
-          const euidValues = rows.map((row) => row.key[entityIdField]);
-          scoredEntityIds.push(...euidValues);
-          let entityMap = new Map<string, Entity>();
-
-          try {
-            let searchAfter: Array<string | number> | undefined;
-            do {
-              const { entities: batch, nextSearchAfter } = await crudClient.listEntities({
-                filter: { terms: { 'entity.id': euidValues } },
-                size: euidValues.length,
-                searchAfter,
-              });
-              for (const entity of batch) {
-                if (entity.entity?.id) {
-                  entityMap.set(entity.entity.id, entity);
-                }
-              }
-              searchAfter = nextSearchAfter;
-            } while (searchAfter !== undefined);
-          } catch (error) {
-            logger.warn(
-              `Error fetching entities for modifier application: ${error}. Scoring will proceed without modifiers.`
-            );
-            entityMap = new Map();
-          }
-
-          // Step 4: Apply score modifiers from entity documents.
-          const scores = applyScoreModifiersFromEntities({
-            now,
-            identifierType: entityType,
-            weights: [],
-            page: {
-              buckets: rows,
-              identifierField: entityIdField,
-            },
-            entities: entityMap,
-            watchlistConfigs,
-          });
-
-          // Step 5: Persist risk scores.
-          await writer.bulk({ [entityType]: scores });
-
-          // Step 6: Dual-write to entity store (update existing entities only).
-          if (idBasedRiskScoringEnabled) {
-            const entityStoreErrors = await persistRiskScoresToEntityStore({
-              crudClient,
-              logger,
-              scores: { [entityType]: scores },
-            });
-            if (entityStoreErrors.length > 0) {
-              logger.warn(
-                `Entity store dual-write had ${
-                  entityStoreErrors.length
-                } error(s): ${entityStoreErrors.join('; ')}`
-              );
-            }
-          }
-        }
-      } while (afterKey !== undefined);
-
-      // Step 7: Reset to zero — clear stale positive scores for entities without recent alerts.
-      if (
-        experimentalFeatures.enableRiskScoreResetToZero &&
-        configuration?.enableResetToZero !== false
-      ) {
+      // Reset to zero — clear stale positive scores for entities without recent alerts.
+      if (configuration?.enableResetToZero !== false) {
         try {
           const resetResult = await resetToZero({
             esClient,
