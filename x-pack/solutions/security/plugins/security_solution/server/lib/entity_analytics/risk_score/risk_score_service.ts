@@ -6,6 +6,7 @@
  */
 
 import type { ElasticsearchClient, IUiSettingsClient, Logger } from '@kbn/core/server';
+import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import { getPrivilegedMonitorUsersIndex } from '../../../../common/entity_analytics/privileged_user_monitoring/utils';
 import type { ExperimentalFeatures } from '../../../../common';
 import type { RiskScoresPreviewResponse } from '../../../../common/api/entity_analytics';
@@ -57,6 +58,7 @@ export interface RiskScoreServiceFactoryParams {
   refresh?: 'wait_for';
   experimentalFeatures: ExperimentalFeatures;
   uiSettingsClient: IUiSettingsClient;
+  crudClient?: EntityStoreCRUDClient;
 }
 
 export const riskScoreServiceFactory = ({
@@ -68,6 +70,7 @@ export const riskScoreServiceFactory = ({
   spaceId,
   experimentalFeatures,
   uiSettingsClient,
+  crudClient,
 }: RiskScoreServiceFactoryParams): RiskScoreService => {
   const privmonUserCrudService = createPrivilegedUsersCrudService({
     index: getPrivilegedMonitorUsersIndex(spaceId),
@@ -124,7 +127,10 @@ export const riskScoreServiceFactory = ({
         dataClient: riskScoreDataClient,
         spaceId,
         assetCriticalityService,
+        privmonUserCrudService,
+        experimentalFeatures,
         logger,
+        crudClient,
       });
       return results;
     },
