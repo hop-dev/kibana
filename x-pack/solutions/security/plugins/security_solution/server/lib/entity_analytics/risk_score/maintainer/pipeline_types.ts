@@ -10,6 +10,8 @@
  * Nothing in this file is exported outside `risk_score/`.
  */
 
+import type { ParsedRiskScore } from './parse_esql_row';
+
 /** Document stored in .entity_analytics.risk_score.lookup-{namespace}.
  * The entity_id is also the ES _id. */
 export interface LookupIndexDocument {
@@ -21,16 +23,6 @@ export interface LookupIndexDocument {
   /** Full ECS path, e.g. 'entity.relationships.resolution.resolved_to'. */
   relationship_type: string;
   '@timestamp': string;
-}
-
-/** Raw ES|QL row returned by the Phase 1 base scoring query.
- * Column order must match getBaseScoreESQL(). */
-export interface EsqlBaseScoreRow {
-  entity_id: string;
-  alert_count: number;
-  scores: number;
-  /** Single value → string; multiple → string[]. */
-  risk_inputs: string | string[];
 }
 
 /** Raw ES|QL row returned by the Phase 2 Loop 2 resolution scoring query. */
@@ -45,11 +37,11 @@ export interface EsqlResolutionScoreRow {
 /** Output of categorizeEntities(): separates a scored page into the three write paths. */
 export interface CategorizedEntities {
   /** Entities that exist in the Entity Store and have no relationships. Dual-write immediately. */
-  individual: EsqlBaseScoreRow[];
+  individual: ParsedRiskScore[];
   /** Entities that have relationships. Write to lookup index; defer scoring to Phase 2. */
-  deferred: Array<{ row: EsqlBaseScoreRow; lookupDoc: LookupIndexDocument }>;
+  deferred: Array<{ score: ParsedRiskScore; lookupDoc: LookupIndexDocument }>;
   /** Entities not found in the Entity Store. Skip Entity Store write. */
-  unknown: EsqlBaseScoreRow[];
+  unknown: ParsedRiskScore[];
   /** Explicit deletes for entities that were active but lost all relationships. */
   lookupDeletes: string[];
 }

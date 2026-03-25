@@ -13,8 +13,14 @@ import type { RiskScoreWeights } from '../../../../../common/api/entity_analytic
 import type { RiskScoreBucket } from '../../types';
 import { getCriticalityModifier } from '../../asset_criticality/helpers';
 import type { Modifier } from './types';
-import { riskScoreDocFactory } from '../apply_score_modifiers';
-import { getGlobalWeightForIdentifierType } from '../helpers';
+import { getGlobalWeightForIdentifierType, max10DecimalPlaces } from '../helpers';
+import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
+import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
+import { getRiskLevel, RiskCategories } from '../../../../../common/entity_analytics/risk_engine';
+import { bayesianUpdate } from '../../asset_criticality/helpers';
+import { buildLegacyCriticalityFields } from './asset_criticality';
+import { RIEMANN_ZETA_VALUE } from '../constants';
+import { isDefined } from '../../../../../common/utils/nullable';
 
 /**
  * Extracts modifier metadata from a pre-fetched Entity document.
@@ -88,7 +94,7 @@ interface ApplyModifiersFromEntitiesParams {
   identifierType?: EntityType;
   weights?: RiskScoreWeights;
   page: {
-    buckets: RiskScoreBucket[];
+    scores: ParsedRiskScore[];
     identifierField: string;
   };
   entities: Map<string, Entity>;
@@ -114,8 +120,8 @@ export const applyScoreModifiersFromEntities = ({
     ? getGlobalWeightForIdentifierType(identifierType, weights)
     : undefined;
 
-  const modifiers = page.buckets.map((bucket) => {
-    const entityId = bucket.key[page.identifierField];
+  const modifiers = page.scores.map((score) => {
+    const entityId = score.entity_id;
     const entity = entities.get(entityId);
     return extractModifiersFromEntity(entity, globalWeight, watchlistConfigs);
   });
@@ -123,11 +129,111 @@ export const applyScoreModifiersFromEntities = ({
   const criticality = modifiers.map(([c]) => c);
   const watchlists = modifiers.map(([, w]) => w);
 
-  const factory = riskScoreDocFactory({
+  const factory = v2RiskScoreDocFactory({
     now,
     identifierField: page.identifierField,
     globalWeight,
   });
 
-  return page.buckets.map((bucket, i) => factory(bucket, criticality[i], watchlists[i]));
+  return page.scores.map((score, i) => factory(score, criticality[i], watchlists[i]));
 };
+
+interface RiskScoreDocFactoryParams {
+  now: string;
+  identifierField: string;
+  globalWeight?: number;
+}
+
+const v2RiskScoreDocFactory =
+  ({ now, identifierField, globalWeight = 1 }: RiskScoreDocFactoryParams) =>
+  (
+    score: ParsedRiskScore,
+    criticalityModifierFields: Modifier<'asset_criticality'> | undefined,
+    watchlistModifiers: Array<Modifier<'watchlist'>>
+  ): EntityRiskScoreRecord => {
+    const alertsRiskScoreFields = {
+      category_1_score: max10DecimalPlaces(score.score / RIEMANN_ZETA_VALUE), // normalize value to be between 0-100
+      category_1_count: score.alert_count,
+    };
+
+    const watchlistModifierProduct = watchlistModifiers.reduce(
+      (acc, m) => acc * (m.modifier_value ?? 1),
+      1
+    );
+
+    const totalModifier =
+      (criticalityModifierFields?.modifier_value ?? 1) * watchlistModifierProduct;
+
+    const originalScore = score.normalized_score * globalWeight;
+    const totalScoreWithModifiers = bayesianUpdate({
+      modifier: totalModifier,
+      score: originalScore,
+    });
+
+    const weightedScore =
+      globalWeight !== undefined ? score.score * globalWeight : score.score;
+    const finalRiskScoreFields = {
+      calculated_level: getRiskLevel(totalScoreWithModifiers),
+      calculated_score: max10DecimalPlaces(weightedScore),
+      calculated_score_norm: max10DecimalPlaces(totalScoreWithModifiers),
+    };
+
+    const appliedModifiers = [criticalityModifierFields, ...watchlistModifiers].filter(isDefined);
+
+    const getContribution = getProportionalModifierContribution(
+      appliedModifiers.map((modifier) => modifier.modifier_value ?? 1),
+      originalScore,
+      totalScoreWithModifiers
+    );
+
+    type DocModifier = NonNullable<EntityRiskScoreRecord['modifiers']>[number];
+    const modifiers = appliedModifiers.map<DocModifier>((modifier) => ({
+      ...modifier,
+      contribution: max10DecimalPlaces(getContribution(modifier.modifier_value ?? 1)),
+    }));
+
+    const found = modifiers.find((mod) => mod.type === 'asset_criticality') as
+      | (Modifier<'asset_criticality'> & { contribution: number })
+      | undefined;
+
+    const legacyCat2Fields = buildLegacyCriticalityFields(found);
+
+    return {
+      '@timestamp': now,
+      id_field: identifierField,
+      id_value: score.entity_id,
+      ...finalRiskScoreFields,
+      ...alertsRiskScoreFields,
+      ...legacyCat2Fields,
+      modifiers,
+      notes: [],
+      inputs: score.risk_inputs.map((riskInput) => ({
+        id: riskInput.id,
+        index: riskInput.index,
+        description: `Alert from Rule: ${riskInput.rule_name ?? 'RULE_NOT_FOUND'}`,
+        category: RiskCategories.category_1,
+        risk_score: riskInput.score,
+        timestamp: riskInput.time,
+        contribution_score: riskInput.contribution,
+      })),
+    };
+  };
+
+const getProportionalModifierContribution =
+  (allModifiers: number[], originalScore: number, finalScore: number) => (modifier: number) => {
+    // This converts the modifiers to Log-Odds, transforming non-linear multiplication into linear addition, allowing us to measure the force of the change.
+    const modifierWeight = Math.log(modifier);
+    const combinedWeight = allModifiers
+      .map((each) => Math.log(each))
+      .reduce((sum, next) => sum + next, 0);
+
+    const combinedWeightIsEffectivelyZero = Math.abs(combinedWeight) < 0.0001;
+
+    const scalingFactor = combinedWeightIsEffectivelyZero
+      ? // If the combined weight is 0, we can't divide by it. In this case, we use the slope.
+        (originalScore * (100 - originalScore)) / 100
+      : // If the combined weight is not 0, we distribute the actual score change.
+        (finalScore - originalScore) / combinedWeight;
+
+    return scalingFactor * modifierWeight;
+  };

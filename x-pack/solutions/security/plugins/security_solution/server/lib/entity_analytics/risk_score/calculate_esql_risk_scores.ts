@@ -385,14 +385,9 @@ export const getESQL = (
 export const buildRiskScoreBucket =
   (entityType: EntityType, index: string) =>
   (row: FieldValue[]): RiskScoreBucket => {
-    const [count, score, _inputs, entity] = row as [
-      number,
-      number,
-      string | string[], // ES Multivalue nonsense: if it's just one value we get the value, if it's multiple we get an array
-      string
-    ];
+    const [count, score, _inputs, entity] = row as [number, number, string | string[], string];
 
-    const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
+    const inputs = [_inputs].flat().map((input, i) => {
       let parsedRiskInputData = JSON.parse('{}');
       let ruleName: string | undefined;
       let category: string | undefined;
@@ -462,12 +457,6 @@ export const buildRiskScoreBucket =
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The runtime field name used to hold the computed EUID for a given entity type.
- * Named `${entityType}_id` (e.g., `host_id`) to avoid collision with `host.entity.id`.
- */
-const getRiskScoreEntityIdField = (entityType: EntityType): string => `${entityType}_id`;
-
-/**
  * Builds a composite aggregation that paginates by entity_id (EUID).
  * Uses a Painless runtime mapping from getEuidPainlessRuntimeMapping() to compute entity_id server-side.
  * Returns bounds (first and last EUID on the page) that are passed to getBaseScoreESQL().
@@ -481,19 +470,18 @@ export const getEuidCompositeQuery = (
     afterKey?: Record<string, string>;
   }
 ) => {
-  const entityIdField = getRiskScoreEntityIdField(entityType);
   const runtimeMapping = euid.getEuidPainlessRuntimeMapping(entityType);
 
   return {
     index: params.index,
     size: 0,
-    runtime_mappings: { [entityIdField]: runtimeMapping },
+    runtime_mappings: { entity_id: runtimeMapping },
     query: filter.length > 0 ? { bool: { filter } } : { match_all: {} },
     aggs: {
       by_entity_id: {
         composite: {
           size: params.pageSize,
-          sources: [{ [entityIdField]: { terms: { field: entityIdField } } }],
+          sources: [{ entity_id: { terms: { field: 'entity_id' } } }],
           ...(params.afterKey !== undefined ? { after: params.afterKey } : {}),
         },
       },
@@ -504,11 +492,11 @@ export const getEuidCompositeQuery = (
 /**
  * Returns an ES|QL query that:
  * 1. Filters documents where the entity has an identifiable EUID
- * 2. EVALs entity_id = CONCAT("${entityType}:", ...) using the EUID evaluation logic
+ * 2. Uses the entity store EUID evaluation logic to compute entity_id
  * 3. Filters to the EUID page bounds: WHERE entity_id > lower AND entity_id <= upper
  * 4. STATs alert_count, scores (MV_PSERIES_WEIGHTED_SUM), risk_inputs BY entity_id
  *
- * Column order: [alert_count, scores, risk_inputs, ${entityType}_id]
+ * Column order: [alert_count, scores, risk_inputs, entity_id]
  * This order must match buildBaseScoreRiskScoreBucket().
  */
 export const getBaseScoreESQL = (
@@ -518,7 +506,6 @@ export const getBaseScoreESQL = (
   pageSize: number,
   index: string = '.alerts-security.alerts-default'
 ): string => {
-  const entityIdField = getRiskScoreEntityIdField(entityType);
   const euidEval = euid.getEuidEsqlEvaluation(entityType, { withTypeId: true });
   const containsIdFilter = euid.getEuidEsqlDocumentsContainsIdFilter(entityType);
 
@@ -526,8 +513,8 @@ export const getBaseScoreESQL = (
     throw new Error('Either lower or upper bound must be provided for EUID pagination');
   }
 
-  const lower = bounds.lower ? `${entityIdField} > "${bounds.lower}"` : undefined;
-  const upper = bounds.upper ? `${entityIdField} <= "${bounds.upper}"` : undefined;
+  const lower = bounds.lower ? `entity_id > "${bounds.lower}"` : undefined;
+  const upper = bounds.upper ? `entity_id <= "${bounds.upper}"` : undefined;
   const rangeClause = [lower, upper].filter(Boolean).join(' AND ');
 
   const query = /* esql */ `
@@ -539,7 +526,7 @@ export const getBaseScoreESQL = (
              kibana.alert.uuid as alert_id,
              event.kind as category,
              @timestamp as time
-    | EVAL ${entityIdField} = ${euidEval},
+    | EVAL entity_id = ${euidEval},
            rule_name_b64 = TO_BASE64(rule_name),
            category_b64 = TO_BASE64(category)
     | EVAL input = CONCAT(""" {"risk_score": """", risk_score::keyword, """", "time": """", time::keyword, """", "index": """", _index, """", "rule_name_b64": """", rule_name_b64, """\", "category_b64": """", category_b64, """\", "id": \"""", alert_id, """\" } """)
@@ -548,82 +535,10 @@ export const getBaseScoreESQL = (
         alert_count = count(risk_score),
         scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
         risk_inputs = TOP(input, 10, "desc")
-        BY ${entityIdField}
+        BY entity_id
     | SORT scores DESC
     | LIMIT ${pageSize}
   `;
 
   return query;
 };
-
-/**
- * Adapter: converts a raw ES|QL row from getBaseScoreESQL() into a RiskScoreBucket
- * so that the existing applyScoreModifiers() can be used unchanged.
- *
- * Column order (must match getBaseScoreESQL): [alert_count, scores, risk_inputs, ${entityType}_id]
- *
- * Design note: id_field is set to 'entity.id' and id_value is set to the full EUID
- * (e.g. 'host:my-host'). This aligns with the Entity Store's native ID format.
- */
-export const buildBaseScoreRiskScoreBucket =
-  (entityType: EntityType, index: string) =>
-  (row: FieldValue[]): RiskScoreBucket => {
-    const [count, score, _inputs, entityId] = row as [number, number, string | string[], string];
-
-    const inputs = (Array.isArray(_inputs) ? _inputs : [_inputs]).map((input, i) => {
-      let parsedRiskInputData: Record<string, string> = {};
-      let ruleName: string | undefined;
-      let category: string | undefined;
-
-      try {
-        parsedRiskInputData = JSON.parse(input);
-        ruleName = parsedRiskInputData.rule_name_b64
-          ? Buffer.from(parsedRiskInputData.rule_name_b64, 'base64').toString('utf-8')
-          : parsedRiskInputData.rule_name;
-        category = parsedRiskInputData.category_b64
-          ? Buffer.from(parsedRiskInputData.category_b64, 'base64').toString('utf-8')
-          : parsedRiskInputData.category;
-      } catch {
-        ruleName = parsedRiskInputData.rule_name;
-        category = parsedRiskInputData.category;
-      }
-
-      const value = parseFloat(parsedRiskInputData.risk_score);
-      const currentScore = value / Math.pow(i + 1, RIEMANN_ZETA_S_VALUE);
-      const otherFields = omit(parsedRiskInputData, [
-        'risk_score',
-        'rule_name',
-        'rule_name_b64',
-        'category',
-        'category_b64',
-      ]);
-
-      return {
-        id: parsedRiskInputData.id,
-        ...otherFields,
-        rule_name: ruleName,
-        category,
-        score: value,
-        contribution: currentScore / RIEMANN_ZETA_VALUE,
-        index,
-      };
-    });
-
-    return {
-      key: { 'entity.id': entityId },
-      doc_count: count,
-      top_inputs: {
-        doc_count: inputs.length,
-        risk_details: {
-          value: {
-            score,
-            normalized_score: score / RIEMANN_ZETA_VALUE,
-            notes: [],
-            category_1_score: score,
-            category_1_count: count,
-            risk_inputs: inputs,
-          },
-        },
-      },
-    };
-  };

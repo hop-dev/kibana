@@ -13,7 +13,7 @@ import type { EntityType } from '../../../../../common/search_strategy';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
 import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_scores';
-import { esqlRowToObject } from './esql_row_to_object';
+import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 
@@ -58,7 +58,6 @@ export const scoreBaseEntities = async ({
 }: ScoreBaseEntitiesParams): Promise<string[]> => {
   let afterKey: Record<string, string> | undefined;
   const scoredEntityIds: string[] = [];
-  const entityIdField = `${entityType}_id`;
 
   do {
     // Step 1: Paginate entity IDs via composite agg using Painless EUID runtime mapping.
@@ -81,8 +80,8 @@ export const scoreBaseEntities = async ({
 
     if (buckets.length === 0) break;
 
-    const lower = buckets[0].key[entityIdField];
-    const upper = buckets[buckets.length - 1].key[entityIdField];
+    const lower = buckets[0].key.entity_id;
+    const upper = buckets[buckets.length - 1].key.entity_id;
     afterKey = compositeAgg?.after_key;
 
     // Step 2: Score the page with ES|QL.
@@ -91,14 +90,12 @@ export const scoreBaseEntities = async ({
       format: 'columns',
     });
 
-    // Map each row to an object using columns
-    const rows = (esqlResponse.values ?? []).map((row: unknown[]) =>
-      esqlRowToObject(row, esqlResponse.columns)
-    );
+    // Parse each row into a strong domain type
+    const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
 
-    if (rows.length > 0) {
+    if (scores.length > 0) {
       // Step 3: Fetch entities from the Entity Store for modifier application.
-      const euidValues = rows.map((row) => row[entityIdField]);
+      const euidValues = scores.map((score) => score.entity_id);
       scoredEntityIds.push(...euidValues);
       let entityMap = new Map<string, Entity>();
 
@@ -125,27 +122,27 @@ export const scoreBaseEntities = async ({
       }
 
       // Step 4: Apply score modifiers from entity documents.
-      const scores = applyScoreModifiersFromEntities({
+      const finalScores = applyScoreModifiersFromEntities({
         now,
         identifierType: entityType,
         weights: [],
         page: {
-          buckets: rows,
-          identifierField: entityIdField,
+          scores,
+          identifierField: 'entity_id',
         },
         entities: entityMap,
         watchlistConfigs,
       });
 
       // Step 5: Persist risk scores.
-      await writer.bulk({ [entityType]: scores });
+      await writer.bulk({ [entityType]: finalScores });
 
       // Step 6: Dual-write to entity store (update existing entities only).
       if (idBasedRiskScoringEnabled) {
         const entityStoreErrors = await persistRiskScoresToEntityStore({
           crudClient,
           logger,
-          scores: { [entityType]: scores },
+          scores: { [entityType]: finalScores },
         });
         if (entityStoreErrors.length > 0) {
           logger.warn(
