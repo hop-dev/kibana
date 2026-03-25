@@ -9,7 +9,11 @@ import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
-import type { EntityAnalyticsRoutesDeps, RiskEngineConfiguration } from '../../types';
+import type {
+  EntityAnalyticsConfig,
+  EntityAnalyticsRoutesDeps,
+  RiskEngineConfiguration,
+} from '../../types';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -51,6 +55,7 @@ const fetchWatchlistConfigs = async (
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
+  entityAnalyticsConfig: EntityAnalyticsConfig;
   kibanaVersion: string;
   logger: Logger;
   auditLogger: AuditLogger | undefined;
@@ -61,6 +66,7 @@ type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 
 
 export const createRiskScoreMaintainer = ({
   getStartServices,
+  entityAnalyticsConfig,
   kibanaVersion,
   logger,
   auditLogger,
@@ -96,6 +102,18 @@ export const createRiskScoreMaintainer = ({
     //   across related entities (placeholder until implemented).
     // - Post-phase cleanup: reset stale positive scores to zero.
     const [coreStart, pluginsStart] = await getStartServices();
+    const namespace = status.metadata.namespace;
+    const esClient = coreStart.elasticsearch.client.asInternalUser;
+    const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
+    const riskScoreDataClient = new RiskScoreDataClient({
+      logger,
+      kibanaVersion,
+      esClient,
+      namespace,
+      soClient,
+      auditLogger,
+    });
+
     const license = await pluginsStart.licensing.getLicense();
 
     // Keep both checks so gating works in ESS (license) and Serverless (feature flag).
@@ -109,26 +127,11 @@ export const createRiskScoreMaintainer = ({
       return status.state;
     }
 
-    const namespace = status.metadata.namespace;
-    const esClient = coreStart.elasticsearch.client.asInternalUser;
-    const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
-
-    const riskScoreDataClient = new RiskScoreDataClient({
-      logger,
-      kibanaVersion,
-      esClient,
-      namespace,
-      soClient,
-      auditLogger,
-    });
-
     const configuration: RiskEngineConfiguration =
       (await getConfiguration({ savedObjectsClient: soClient })) ??
       getDefaultRiskEngineConfiguration({ namespace });
     const dataViewId = configuration.dataViewId ?? getAlertsIndex(namespace);
     const { index: alertsIndex } = await riskScoreDataClient.getRiskInputsIndex({ dataViewId });
-
-    const alertFilters = buildAlertFilters(configuration);
 
     const uiSettingsClient = coreStart.uiSettings.asScopedToClient(soClient);
     const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
@@ -137,29 +140,34 @@ export const createRiskScoreMaintainer = ({
     const watchlistConfigs = await fetchWatchlistConfigs({ soClient, esClient, namespace, logger });
 
     const writer = await riskScoreDataClient.getWriter({ namespace });
-    const now = new Date().toISOString();
-    const sampleSize = 10_000;
-    const pageSize = DEFAULT_RISK_SCORE_PAGE_SIZE;
+    const sampleSize =
+      configuration.alertSampleSizePerShard ??
+      entityAnalyticsConfig.riskEngine.alertSampleSizePerShard;
+    const pageSize = configuration.pageSize ?? DEFAULT_RISK_SCORE_PAGE_SIZE;
+    const entityTypes = configuration.identifierType
+      ? [configuration.identifierType]
+      : getEntityAnalyticsEntityTypes();
 
-    for (const entityType of getEntityAnalyticsEntityTypes()) {
+    for (const entityType of entityTypes) {
       // Phase 1 (Base Entity Scoring):
       // - reads alert inputs for this entity type
       // - applies modifiers from Entity Store/watchlists
       // - categorizes scores into write decisions
       // - persists with temporary behavior for Phase 2 candidates
+      const alertFilters = buildAlertFilters(configuration, entityType);
       const scoredEntityIds = await scoreBaseEntities({
-        esClient,
-        crudClient,
-        writer,
-        logger,
-        entityType,
         alertFilters,
         alertsIndex,
+        crudClient,
+        entityType,
+        esClient,
+        idBasedRiskScoringEnabled,
+        logger,
+        now: new Date().toISOString(),
         pageSize,
         sampleSize,
-        now,
         watchlistConfigs,
-        idBasedRiskScoringEnabled,
+        writer,
       });
 
       // Phase 2 (Cross-Entity Aggregation/Resolution) will run here.
