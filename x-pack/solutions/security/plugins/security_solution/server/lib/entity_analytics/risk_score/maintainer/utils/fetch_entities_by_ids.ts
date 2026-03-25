@@ -6,11 +6,11 @@
  */
 
 import type { Logger } from '@kbn/core/server';
-import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
+import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { Entity } from '@kbn/entity-store/common';
 
 interface FetchEntitiesByIdsParams {
-  crudClient: EntityStoreCRUDClient;
+  crudClient: EntityUpdateClient;
   entityIds: string[];
   logger: Logger;
   errorContext: string;

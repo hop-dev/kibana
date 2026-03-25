@@ -7,7 +7,7 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
-import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
+import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../../common/search_strategy';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
@@ -21,7 +21,7 @@ import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
-  crudClient: EntityStoreCRUDClient;
+  crudClient: EntityUpdateClient;
   logger: Logger;
   entityType: EntityType;
   alertFilters: QueryDslQueryContainer[];

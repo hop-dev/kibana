@@ -6,7 +6,7 @@
  */
 
 import type { Logger } from '@kbn/core/server';
-import type { EntityStoreCRUDClient, BulkObject } from '@kbn/entity-store/server';
+import type { EntityUpdateClient, BulkObject } from '@kbn/entity-store/server';
 import type { Entity } from '@kbn/entity-store/common';
 import type { EntityType } from '../../../../common/entity_analytics/types';
 import type { EntityRiskScoreRecord } from '../../../../common/api/entity_analytics/common';
@@ -33,7 +33,7 @@ export const persistRiskScoresToEntityStore = async ({
   logger,
   scores,
 }: {
-  crudClient: EntityStoreCRUDClient;
+  crudClient: EntityUpdateClient;
   logger: Logger;
   scores: Partial<Record<EntityType, EntityRiskScoreRecord[]>>;
 }): Promise<string[]> => {

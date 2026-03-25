@@ -9,7 +9,7 @@
 // optional-dependency branching between pipelines.
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
-import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
+import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import {
   EntityIdentifierFields,
   type EntityType,
@@ -29,7 +29,7 @@ export interface ResetToZeroDependencies {
   entityType: EntityType;
   logger: Logger;
   excludedEntities: string[];
-  crudClient: EntityStoreCRUDClient;
+  crudClient: EntityUpdateClient;
   watchlistConfigs: Map<string, WatchlistObject>;
   idBasedRiskScoringEnabled: boolean;
 }

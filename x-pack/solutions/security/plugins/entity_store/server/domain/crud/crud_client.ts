@@ -59,7 +59,10 @@ interface BulkUpdateEntityParams {
 
 // EntityUpdateClient is a stripped CRUD client allowing only for updates. Used
 // by Entity Maintainers.
-export type EntityUpdateClient = Pick<CRUDClient, 'updateEntity' | 'bulkUpdateEntity'>;
+export type EntityUpdateClient = Pick<
+  CRUDClient,
+  'updateEntity' | 'bulkUpdateEntity' | 'listEntities'
+>;
 
 export class CRUDClient {
   private readonly logger: Logger;
