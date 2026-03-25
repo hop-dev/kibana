@@ -10,7 +10,6 @@ import type { Entity } from '@kbn/entity-store/common';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { EntityType } from '../../../../../common/entity_analytics/types';
 import type { RiskScoreWeights } from '../../../../../common/api/entity_analytics/common';
-import type { RiskScoreBucket } from '../../types';
 import { getCriticalityModifier } from '../../asset_criticality/helpers';
 import type { Modifier } from './types';
 import { getGlobalWeightForIdentifierType, max10DecimalPlaces } from '../helpers';
@@ -94,7 +93,8 @@ interface ApplyModifiersFromEntitiesParams {
   identifierType?: EntityType;
   weights?: RiskScoreWeights;
   page: {
-    scores: ParsedRiskScore[];
+    scores?: ParsedRiskScore[];
+    buckets?: Array<import('../../types').RiskScoreBucket>;
     identifierField: string;
   };
   entities: Map<string, Entity>;
@@ -116,11 +116,28 @@ export const applyScoreModifiersFromEntities = ({
   entities,
   watchlistConfigs,
 }: ApplyModifiersFromEntitiesParams) => {
+  const scores: ParsedRiskScore[] =
+    page.scores ??
+    page.buckets?.map((bucket) => {
+      const value = bucket.top_inputs.risk_details.value;
+      return {
+        entity_id:
+          bucket.key[page.identifierField] ??
+          Object.values(bucket.key).find((identifier): identifier is string => Boolean(identifier)) ??
+          '',
+        alert_count: value.category_1_count,
+        score: value.score,
+        normalized_score: value.normalized_score,
+        risk_inputs: value.risk_inputs,
+      };
+    }) ??
+    [];
+
   const globalWeight = identifierType
     ? getGlobalWeightForIdentifierType(identifierType, weights)
     : undefined;
 
-  const modifiers = page.scores.map((score) => {
+  const modifiers = scores.map((score) => {
     const entityId = score.entity_id;
     const entity = entities.get(entityId);
     return extractModifiersFromEntity(entity, globalWeight, watchlistConfigs);
@@ -135,7 +152,7 @@ export const applyScoreModifiersFromEntities = ({
     globalWeight,
   });
 
-  return page.scores.map((score, i) => factory(score, criticality[i], watchlists[i]));
+  return scores.map((score, i) => factory(score, criticality[i], watchlists[i]));
 };
 
 interface RiskScoreDocFactoryParams {

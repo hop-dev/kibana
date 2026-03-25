@@ -87,7 +87,6 @@ export const scoreBaseEntities = async ({
     // Step 2: Score the page with ES|QL.
     const esqlResponse = await esClient.esql.query({
       query: getBaseScoreESQL(entityType, { lower, upper }, sampleSize, pageSize, alertsIndex),
-      format: 'columns',
     });
 
     // Parse each row into a strong domain type

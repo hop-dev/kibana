@@ -9,7 +9,7 @@ import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
-import type { EntityAnalyticsRoutesDeps } from '../../types';
+import type { EntityAnalyticsRoutesDeps, RiskEngineConfiguration } from '../../types';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -20,6 +20,7 @@ import { RiskScoreDataClient } from '../risk_score_data_client';
 import {
   initSavedObjects,
   getConfiguration,
+  getDefaultRiskEngineConfiguration,
 } from '../../risk_engine/utils/saved_object_configuration';
 import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
@@ -118,8 +119,10 @@ export const createRiskScoreMaintainer = ({
       auditLogger,
     });
 
-    const configuration = await getConfiguration({ savedObjectsClient: soClient });
-    const dataViewId = configuration?.dataViewId ?? getAlertsIndex(namespace);
+    const configuration: RiskEngineConfiguration =
+      (await getConfiguration({ savedObjectsClient: soClient })) ??
+      getDefaultRiskEngineConfiguration({ namespace });
+    const dataViewId = configuration.dataViewId ?? getAlertsIndex(namespace);
     const { index: alertsIndex } = await riskScoreDataClient.getRiskInputsIndex({ dataViewId });
 
     const alertFilters = buildAlertFilters(configuration);
@@ -155,7 +158,7 @@ export const createRiskScoreMaintainer = ({
       // Phase 2 (PR 2): Resolution scoring will be called here.
 
       // Reset to zero — clear stale positive scores for entities without recent alerts.
-      if (configuration?.enableResetToZero !== false) {
+      if (configuration.enableResetToZero !== false) {
         try {
           const resetResult = await resetToZero({
             esClient,

@@ -458,7 +458,7 @@ export const buildRiskScoreBucket =
 
 /**
  * Builds a composite aggregation that paginates by entity_id (EUID).
- * Uses a Painless runtime mapping from getEuidPainlessRuntimeMapping() to compute entity_id server-side.
+ * Uses a Painless runtime mapping from euid.painless.getEuidRuntimeMapping() to compute entity_id server-side.
  * Returns bounds (first and last EUID on the page) that are passed to getBaseScoreESQL().
  */
 export const getEuidCompositeQuery = (
@@ -470,7 +470,7 @@ export const getEuidCompositeQuery = (
     afterKey?: Record<string, string>;
   }
 ) => {
-  const runtimeMapping = euid.getEuidPainlessRuntimeMapping(entityType);
+  const runtimeMapping = euid.painless.getEuidRuntimeMapping(entityType);
 
   return {
     index: params.index,
@@ -506,8 +506,8 @@ export const getBaseScoreESQL = (
   pageSize: number,
   index: string = '.alerts-security.alerts-default'
 ): string => {
-  const euidEval = euid.getEuidEsqlEvaluation(entityType, { withTypeId: true });
-  const containsIdFilter = euid.getEuidEsqlDocumentsContainsIdFilter(entityType);
+  const euidEval = euid.esql.getEuidEvaluation(entityType, { withTypeId: true });
+  const containsIdFilter = euid.esql.getEuidDocumentsContainsIdFilter(entityType);
 
   if (!bounds.lower && !bounds.upper) {
     throw new Error('Either lower or upper bound must be provided for EUID pagination');
