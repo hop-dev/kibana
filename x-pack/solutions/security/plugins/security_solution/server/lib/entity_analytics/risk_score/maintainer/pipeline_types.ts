@@ -9,8 +9,8 @@
  * Shared types for the maintainer pipeline.
  */
 
-import type { ParsedRiskScore } from './parse_esql_row';
 import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
+import type { Entity } from '@kbn/entity-store/common';
 
 /** Document stored in .entity_analytics.risk_score.lookup-{namespace}. */
 export interface LookupIndexDocument {
@@ -35,22 +35,22 @@ export interface EsqlResolutionScoreRow {
 
 /** Output of categorizeEntities() for downstream write/routing decisions. */
 export interface CategorizedEntities {
-  /** Known entities with final individual scores for immediate write. */
-  individual: ParsedRiskScore[];
-  /** Entities with relationships; defer final scoring to later loops. */
-  deferred: Array<{ score: ParsedRiskScore; lookupDoc: LookupIndexDocument }>;
   /** Entities missing in Entity Store. */
-  unknown: ParsedRiskScore[];
+  not_in_store: EntityRiskScoreRecord[];
+  /** Scores that are final in Phase 1 and safe to persist immediately. */
+  write_now: EntityRiskScoreRecord[];
+  /** Scores that should be deferred to Phase 2 once aggregation is enabled. */
+  defer_to_phase_2: Array<{ score: EntityRiskScoreRecord; lookupDoc: LookupIndexDocument }>;
   /** Lookup ids to delete when relationships are removed. */
   lookupDeletes: string[];
 }
 
 export interface MaintainerPhase1Stats {
   entitiesScored: number;
-  individualWrites: number;
-  deferredToLookup: number;
+  writeNowCount: number;
+  deferToPhase2Count: number;
   lookupDeletes: number;
-  unknownEntities: number;
+  notInStoreCount: number;
 }
 
 export interface MaintainerPhase2Stats {
@@ -62,4 +62,5 @@ export interface MaintainerPhase2Stats {
 export interface ScoredEntityPage {
   entityIds: string[];
   scores: EntityRiskScoreRecord[];
+  entities: Map<string, Entity>;
 }

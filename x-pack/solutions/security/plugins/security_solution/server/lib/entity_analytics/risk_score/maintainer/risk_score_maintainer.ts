@@ -90,6 +90,11 @@ export const createRiskScoreMaintainer = ({
     return status.state;
   },
   run: async ({ status, crudClient }) => {
+    // Two-Phased Risk Scoring pipeline:
+    // - Phase 1 (Base Entity Scoring): score entities from their own alerts.
+    // - Phase 2 (Cross-Entity Aggregation/Resolution): aggregate deferred scores
+    //   across related entities (placeholder until implemented).
+    // - Post-phase cleanup: reset stale positive scores to zero.
     const [coreStart, pluginsStart] = await getStartServices();
     const license = await pluginsStart.licensing.getLicense();
 
@@ -137,6 +142,11 @@ export const createRiskScoreMaintainer = ({
     const pageSize = DEFAULT_RISK_SCORE_PAGE_SIZE;
 
     for (const entityType of getEntityAnalyticsEntityTypes()) {
+      // Phase 1 (Base Entity Scoring):
+      // - reads alert inputs for this entity type
+      // - applies modifiers from Entity Store/watchlists
+      // - categorizes scores into write decisions
+      // - persists with temporary behavior for Phase 2 candidates
       const scoredEntityIds = await scoreBaseEntities({
         esClient,
         crudClient,
@@ -152,9 +162,11 @@ export const createRiskScoreMaintainer = ({
         idBasedRiskScoringEnabled,
       });
 
-      // Phase 2 scoring will run here when propagation/resolution loops are added.
+      // Phase 2 (Cross-Entity Aggregation/Resolution) will run here.
+      // This is where deferred scores will stop writing "as-is" and instead be
+      // aggregated/resolved before persistence.
 
-      // Clear stale positive scores for entities that were not scored in this run.
+      // Cleanup step: clear stale positive scores for entities not scored in this run.
       if (configuration.enableResetToZero !== false) {
         try {
           const resetResult = await resetToZero({

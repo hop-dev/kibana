@@ -16,7 +16,8 @@ import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_
 import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import type { ScoredEntityPage } from './pipeline_types';
-import { persistScoredPage } from './persist_scored_page';
+import { categorizePhase1Entities } from './categorize_phase1_entities';
+import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
@@ -44,7 +45,9 @@ interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
  * Streams scored pages for one entity type:
  * - page entity ids via composite aggregation on EUID
  * - compute base scores with ES|QL for each page bound
- * - fetch matching Entity Store documents and apply modifiers
+ * - fetch matching Entity Store documents once and reuse for:
+ *   - modifier application
+ *   - downstream category decisions in the persistence path
  *
  * Returns scored pages without any persistence.
  */
@@ -131,7 +134,7 @@ export const calculateBaseEntityScores = async function* ({
         watchlistConfigs,
       });
 
-      yield { entityIds: euidValues, scores: finalScores };
+      yield { entityIds: euidValues, scores: finalScores, entities: entityMap };
     }
   } while (afterKey !== undefined);
 };
@@ -141,21 +144,59 @@ export const scoreBaseEntities = async ({
   idBasedRiskScoringEnabled,
   ...params
 }: ScoreAndPersistBaseEntitiesParams): Promise<string[]> => {
-  // Persists each base-score page to the risk score index and, when enabled,
-  // dual-writes the same base scores to Entity Store via persistScoredPage().
+  // Persists each base-score page in explicit phase-1 categories so phase-2
+  // defer/lookup routing can be introduced without reshaping this loop.
   const scoredEntityIds: string[] = [];
+  let writeNowCount = 0;
+  let deferToPhase2Count = 0;
+  let notInStoreCount = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
     scoredEntityIds.push(...page.entityIds);
-    await persistScoredPage({
-      writer,
-      crudClient: params.crudClient,
-      logger: params.logger,
-      entityType: params.entityType,
-      idBasedRiskScoringEnabled,
-      page,
-    });
+    const categorized = categorizePhase1Entities(page);
+
+    writeNowCount += categorized.write_now.length;
+    deferToPhase2Count += categorized.defer_to_phase_2.length;
+    notInStoreCount += categorized.not_in_store.length;
+
+    params.logger.debug(
+      `Phase 1 categorization for ${params.entityType} page: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
+    );
+
+    // Temporary Phase 1 behavior: defer_to_phase_2 scores are still written now.
+    // When Phase 2 aggregation is implemented, this write set will become
+    // write_now only and defer_to_phase_2 will be handled in that phase.
+    const riskIndexWrites = [
+      ...categorized.write_now,
+      ...categorized.defer_to_phase_2.map(({ score }) => score),
+    ];
+    await writer.bulk({ [params.entityType]: riskIndexWrites });
+
+    if (idBasedRiskScoringEnabled) {
+      const entityStoreErrors = await persistRiskScoresToEntityStore({
+        crudClient: params.crudClient,
+        logger: params.logger,
+        scores: { [params.entityType]: riskIndexWrites },
+      });
+      if (entityStoreErrors.length > 0) {
+        params.logger.warn(
+          `Entity store dual-write had ${
+            entityStoreErrors.length
+          } error(s): ${entityStoreErrors.join('; ')}`
+        );
+      }
+
+      if (categorized.not_in_store.length > 0) {
+        params.logger.debug(
+          `Skipped all writes for ${categorized.not_in_store.length} not_in_store ${params.entityType} entities`
+        );
+      }
+    }
   }
+
+  params.logger.debug(
+    `Phase 1 categorization totals for ${params.entityType}: write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
+  );
 
   return scoredEntityIds;
 };
