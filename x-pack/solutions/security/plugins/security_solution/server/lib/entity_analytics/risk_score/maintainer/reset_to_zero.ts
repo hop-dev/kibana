@@ -10,7 +10,6 @@
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
-import type { Entity } from '@kbn/entity-store/common';
 import {
   EntityIdentifierFields,
   type EntityType,
@@ -21,6 +20,7 @@ import type { RiskScoreBucket } from '../../types';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import { getIndexPatternDataStream } from '../configurations';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
@@ -111,7 +111,13 @@ export const resetToZero = async ({
     },
   }));
 
-  const entities = await fetchEntitiesForReset({ crudClient, entityIds, logger });
+  const entities = await fetchEntitiesByIds({
+    crudClient,
+    entityIds,
+    logger,
+    errorContext:
+      'Error fetching entities for reset-to-zero modifier application. Reset will proceed without modifiers',
+  });
 
   const scores = applyScoreModifiersFromEntities({
     now: new Date().toISOString(),
@@ -147,39 +153,4 @@ export const resetToZero = async ({
   }
 
   return { scoresWritten: scores.length };
-};
-
-const fetchEntitiesForReset = async ({
-  crudClient,
-  entityIds,
-  logger,
-}: {
-  crudClient: EntityStoreCRUDClient;
-  entityIds: string[];
-  logger: Logger;
-}): Promise<Map<string, Entity>> => {
-  const entityMap = new Map<string, Entity>();
-
-  try {
-    let searchAfter: Array<string | number> | undefined;
-    do {
-      const { entities: batch, nextSearchAfter } = await crudClient.listEntities({
-        filter: { terms: { 'entity.id': entityIds } },
-        size: entityIds.length,
-        searchAfter,
-      });
-      for (const entity of batch) {
-        if (entity.entity?.id) {
-          entityMap.set(entity.entity.id, entity);
-        }
-      }
-      searchAfter = nextSearchAfter;
-    } while (searchAfter !== undefined);
-  } catch (error) {
-    logger.warn(
-      `Error fetching entities for reset-to-zero modifier application: ${error}. Reset will proceed without modifiers.`
-    );
-  }
-
-  return entityMap;
 };

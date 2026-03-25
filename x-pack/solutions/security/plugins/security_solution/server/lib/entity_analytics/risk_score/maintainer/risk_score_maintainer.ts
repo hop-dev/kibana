@@ -31,27 +31,7 @@ import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enab
 import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
 import { scoreBaseEntities } from './score_base_entities';
-import { WatchlistConfigClient } from '../../watchlists/management/watchlist_config';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-
-const fetchWatchlistConfigs = async (
-  params: ConstructorParameters<typeof WatchlistConfigClient>[0]
-): Promise<Map<string, WatchlistObject>> => {
-  try {
-    const watchlistClient = new WatchlistConfigClient(params);
-    const watchlists = await watchlistClient.list();
-    return new Map(
-      watchlists
-        .filter((w): w is WatchlistObject & { id: string } => w.id != null)
-        .map((w) => [w.id, w])
-    );
-  } catch (error) {
-    params.logger.warn(
-      `Error fetching watchlist configs: ${error}. Scoring will proceed without watchlist modifiers.`
-    );
-    return new Map();
-  }
-};
+import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];

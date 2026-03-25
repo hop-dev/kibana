@@ -8,7 +8,6 @@
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
-import type { Entity } from '@kbn/entity-store/common';
 import type { EntityType } from '../../../../../common/search_strategy';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
@@ -18,6 +17,7 @@ import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_fr
 import type { ScoredEntityPage } from './pipeline_types';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
@@ -98,29 +98,13 @@ export const calculateBaseEntityScores = async function* ({
 
     if (scores.length > 0) {
       const euidValues = scores.map((score) => score.entity_id);
-      let entityMap = new Map<string, Entity>();
-
-      try {
-        let searchAfter: Array<string | number> | undefined;
-        do {
-          const { entities: batch, nextSearchAfter } = await crudClient.listEntities({
-            filter: { terms: { 'entity.id': euidValues } },
-            size: euidValues.length,
-            searchAfter,
-          });
-          for (const entity of batch) {
-            if (entity.entity?.id) {
-              entityMap.set(entity.entity.id, entity);
-            }
-          }
-          searchAfter = nextSearchAfter;
-        } while (searchAfter !== undefined);
-      } catch (error) {
-        logger.warn(
-          `Error fetching entities for modifier application: ${error}. Scoring will proceed without modifiers.`
-        );
-        entityMap = new Map();
-      }
+      const entityMap = await fetchEntitiesByIds({
+        crudClient,
+        entityIds: euidValues,
+        logger,
+        errorContext:
+          'Error fetching entities for modifier application. Scoring will proceed without modifiers',
+      });
 
       const finalScores = applyScoreModifiersFromEntities({
         now,
