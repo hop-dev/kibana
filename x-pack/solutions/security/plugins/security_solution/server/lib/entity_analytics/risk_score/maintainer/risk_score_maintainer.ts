@@ -93,9 +93,7 @@ export const createRiskScoreMaintainer = ({
     const [coreStart, pluginsStart] = await getStartServices();
     const license = await pluginsStart.licensing.getLicense();
 
-    // Advanced insights requires a platinum license (ESS) or feature enablement (Serverless).
-    // In Serverless, hasAtLeast('platinum') is always true; in ESS, isEnabled() is always true.
-    // Both conditions must be met to correctly gate access in either environment.
+    // Keep both checks so gating works in ESS (license) and Serverless (feature flag).
     const isFeatureEnabled = productFeaturesService.isEnabled(ProductFeatureKey.advancedInsights);
     const hasPlatinumLicense = license.hasAtLeast('platinum');
 
@@ -130,7 +128,7 @@ export const createRiskScoreMaintainer = ({
     const uiSettingsClient = coreStart.uiSettings.asScopedToClient(soClient);
     const idBasedRiskScoringEnabled = await getIsIdBasedRiskScoringEnabled(uiSettingsClient);
 
-    // Fetch watchlist configs once per run and build a lookup map by SO ID.
+    // Build once per run to avoid repeated SO reads in the scoring loop.
     const watchlistConfigs = await fetchWatchlistConfigs({ soClient, esClient, namespace, logger });
 
     const writer = await riskScoreDataClient.getWriter({ namespace });
@@ -139,7 +137,6 @@ export const createRiskScoreMaintainer = ({
     const pageSize = DEFAULT_RISK_SCORE_PAGE_SIZE;
 
     for (const entityType of getEntityAnalyticsEntityTypes()) {
-      // Phase 1: Base scoring — paginate, score, apply modifiers, persist.
       const scoredEntityIds = await scoreBaseEntities({
         esClient,
         crudClient,
@@ -155,9 +152,9 @@ export const createRiskScoreMaintainer = ({
         idBasedRiskScoringEnabled,
       });
 
-      // Phase 2 (PR 2): Resolution scoring will be called here.
+      // Phase 2 scoring will run here when propagation/resolution loops are added.
 
-      // Reset to zero — clear stale positive scores for entities without recent alerts.
+      // Clear stale positive scores for entities that were not scored in this run.
       if (configuration.enableResetToZero !== false) {
         try {
           const resetResult = await resetToZero({

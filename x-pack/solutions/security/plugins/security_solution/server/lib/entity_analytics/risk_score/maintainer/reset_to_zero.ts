@@ -5,9 +5,8 @@
  * 2.0.
  */
 
-// Dedicated V2 copy of ../reset_to_zero.ts. Duplicated rather than shared so
-// each pipeline has its own required-dep signature with no optional-dep
-// polymorphism. The V1 original will be removed when legacy scoring is deleted.
+// V2 maintainer copy kept separate from legacy reset-to-zero to avoid
+// optional-dependency branching between pipelines.
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';

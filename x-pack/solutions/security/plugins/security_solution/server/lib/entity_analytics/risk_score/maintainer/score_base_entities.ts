@@ -15,12 +15,12 @@ import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
 import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_scores';
 import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import type { ScoredEntityPage } from './pipeline_types';
+import { persistScoredPage } from './persist_scored_page';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
   crudClient: EntityStoreCRUDClient;
-  writer: RiskEngineDataWriter;
   logger: Logger;
   entityType: EntityType;
   alertFilters: QueryDslQueryContainer[];
@@ -29,23 +29,28 @@ interface ScoreBaseEntitiesParams {
   sampleSize: number;
   now: string;
   watchlistConfigs: Map<string, WatchlistObject>;
+}
+
+interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
+  writer: RiskEngineDataWriter;
   idBasedRiskScoringEnabled: boolean;
 }
 
 /**
  * Phase 1: Base Scoring for a single entity type.
+ * "Base" means risk derived directly from this entity's own alert inputs in the
+ * current run window, before any cross-entity propagation/resolution phases.
  *
- * Paginates through all entities with active alerts using a composite
- * aggregation, scores each page via ES|QL, fetches entity documents
- * for modifier application, and persists scores to both the Risk Index
- * and (optionally) the Entity Store.
+ * Streams scored pages for one entity type:
+ * - page entity ids via composite aggregation on EUID
+ * - compute base scores with ES|QL for each page bound
+ * - fetch matching Entity Store documents and apply modifiers
  *
- * Returns the list of scored entity IDs for use in reset-to-zero exclusion.
+ * Returns scored pages without any persistence.
  */
-export const scoreBaseEntities = async ({
+export const calculateBaseEntityScores = async function* ({
   esClient,
   crudClient,
-  writer,
   logger,
   entityType,
   alertFilters,
@@ -54,13 +59,11 @@ export const scoreBaseEntities = async ({
   sampleSize,
   now,
   watchlistConfigs,
-  idBasedRiskScoringEnabled,
-}: ScoreBaseEntitiesParams): Promise<string[]> => {
+}: ScoreBaseEntitiesParams): AsyncGenerator<ScoredEntityPage> {
   let afterKey: Record<string, string> | undefined;
-  const scoredEntityIds: string[] = [];
 
   do {
-    // Step 1: Paginate entity IDs via composite agg using Painless EUID runtime mapping.
+    // Composite paging gives deterministic page bounds for the ES|QL score query.
     const compositeResponse = await esClient.search(
       getEuidCompositeQuery(entityType, alertFilters, {
         index: alertsIndex,
@@ -84,18 +87,14 @@ export const scoreBaseEntities = async ({
     const upper = buckets[buckets.length - 1].key.entity_id;
     afterKey = compositeAgg?.after_key;
 
-    // Step 2: Score the page with ES|QL.
     const esqlResponse = await esClient.esql.query({
       query: getBaseScoreESQL(entityType, { lower, upper }, sampleSize, pageSize, alertsIndex),
     });
 
-    // Parse each row into a strong domain type
     const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
 
     if (scores.length > 0) {
-      // Step 3: Fetch entities from the Entity Store for modifier application.
       const euidValues = scores.map((score) => score.entity_id);
-      scoredEntityIds.push(...euidValues);
       let entityMap = new Map<string, Entity>();
 
       try {
@@ -120,7 +119,6 @@ export const scoreBaseEntities = async ({
         entityMap = new Map();
       }
 
-      // Step 4: Apply score modifiers from entity documents.
       const finalScores = applyScoreModifiersFromEntities({
         now,
         identifierType: entityType,
@@ -133,26 +131,31 @@ export const scoreBaseEntities = async ({
         watchlistConfigs,
       });
 
-      // Step 5: Persist risk scores.
-      await writer.bulk({ [entityType]: finalScores });
-
-      // Step 6: Dual-write to entity store (update existing entities only).
-      if (idBasedRiskScoringEnabled) {
-        const entityStoreErrors = await persistRiskScoresToEntityStore({
-          crudClient,
-          logger,
-          scores: { [entityType]: finalScores },
-        });
-        if (entityStoreErrors.length > 0) {
-          logger.warn(
-            `Entity store dual-write had ${
-              entityStoreErrors.length
-            } error(s): ${entityStoreErrors.join('; ')}`
-          );
-        }
-      }
+      yield { entityIds: euidValues, scores: finalScores };
     }
   } while (afterKey !== undefined);
+};
+
+export const scoreBaseEntities = async ({
+  writer,
+  idBasedRiskScoringEnabled,
+  ...params
+}: ScoreAndPersistBaseEntitiesParams): Promise<string[]> => {
+  // Persists each base-score page to the risk score index and, when enabled,
+  // dual-writes the same base scores to Entity Store via persistScoredPage().
+  const scoredEntityIds: string[] = [];
+
+  for await (const page of calculateBaseEntityScores(params)) {
+    scoredEntityIds.push(...page.entityIds);
+    await persistScoredPage({
+      writer,
+      crudClient: params.crudClient,
+      logger: params.logger,
+      entityType: params.entityType,
+      idBasedRiskScoringEnabled,
+      page,
+    });
+  }
 
   return scoredEntityIds;
 };
