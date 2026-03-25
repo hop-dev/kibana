@@ -17,12 +17,8 @@ import type { Entity } from '../../../common/domain/definitions/entity.gen';
 import type { EntityType } from '../../../common';
 import { getEuidFromObject } from '../../../common/domain/euid';
 import { getLatestEntitiesIndexName } from '../../../common/domain/entity_index';
-import { BadCRUDRequestError, EntityNotFoundError } from '../errors';
-import {
-  hashEuid,
-  validateAndTransformDocForUpsert,
-  validateUpdateDocIdentification,
-} from './utils';
+import { BadCRUDRequestError, EntityNotFoundError, EntityAlreadyExistsError } from '../errors';
+import { hashEuid, validateAndTransformDoc } from './utils';
 import { runWithSpan } from '../../telemetry/traces';
 
 const RETRY_ON_CONFLICT = 3;
@@ -60,6 +56,10 @@ interface BulkUpdateEntityParams {
   objects: BulkObject[];
   force?: boolean;
 }
+
+// EntityUpdateClient is a stripped CRUD client allowing only for updates. Used
+// by Entity Maintainers.
+export type EntityUpdateClient = Pick<CRUDClient, 'updateEntity' | 'bulkUpdateEntity'>;
 
 export class CRUDClient {
   private readonly logger: Logger;
@@ -182,8 +182,8 @@ export class CRUDClient {
   // 3. Identity only - no ID and identifying data - ID will be generated
   public async updateEntity(entityType: EntityType, doc: Entity, force: boolean): Promise<void> {
     const generatedId = getEuidFromObject(entityType, doc);
-    validateUpdateDocIdentification(doc, generatedId);
-    const valid = validateAndTransformDocForUpsert(
+    const valid = validateAndTransformDoc(
+      'update',
       entityType,
       this.namespace,
       doc,
@@ -225,8 +225,8 @@ export class CRUDClient {
     this.logger.debug(`Preparing ${objects.length} entities for bulk update`);
     for (const { type: entityType, doc } of objects) {
       const generatedId = getEuidFromObject(entityType, doc);
-      validateUpdateDocIdentification(doc, generatedId);
-      const valid = validateAndTransformDocForUpsert(
+      const valid = validateAndTransformDoc(
+        'update',
         entityType,
         this.namespace,
         doc,
@@ -266,23 +266,26 @@ export class CRUDClient {
   // createEntity generates EUID and creates the entity in the LATEST index
   public async createEntity(entityType: EntityType, doc: Entity): Promise<void> {
     const id = getEuidFromObject(entityType, doc);
-
     if (!id) {
       throw new BadCRUDRequestError(`Could not derive EUID from document`);
     }
-    const valid = validateAndTransformDocForUpsert(entityType, this.namespace, doc, id, true);
-    const { result } = await this.esClient.create({
-      index: getLatestEntitiesIndexName(this.namespace),
-      id: hashEuid(valid.id),
-      document: valid.doc,
-      refresh: 'wait_for',
-    });
-
-    if (result === 'created') {
-      this.logger.debug(`Created entity ID ${id}`);
+    const valid = validateAndTransformDoc('create', entityType, this.namespace, doc, id, true);
+    try {
+      const { result } = await this.esClient.create({
+        index: getLatestEntitiesIndexName(this.namespace),
+        id: hashEuid(valid.id),
+        document: valid.doc,
+        refresh: 'wait_for',
+      });
+      if (result === 'created') {
+        this.logger.debug(`Created entity ID ${id}`);
+      }
+    } catch (error) {
+      if (error.statusCode === 409) {
+        throw new EntityAlreadyExistsError(valid.id);
+      }
+      throw error;
     }
-
-    return;
   }
 
   public async deleteEntity(id: string): Promise<void> {

@@ -8,11 +8,12 @@
 import { buildRouteValidationWithZod } from '@kbn/zod-helpers/v4';
 import type { IKibanaResponse } from '@kbn/core-http-server';
 import { z } from '@kbn/zod/v4';
-import { ALL_ENTITY_TYPES, ENTITY_STORE_ROUTES } from '../../../../common';
-import { API_VERSIONS, DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
+import { unflattenObject } from '@kbn/object-utils';
+import { ALL_ENTITY_TYPES, API_VERSIONS, ENTITY_STORE_ROUTES } from '../../../../common';
+import { DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
 import type { EntityStorePluginRouter } from '../../../types';
 import { wrapMiddlewares } from '../../middleware';
-import { BadCRUDRequestError } from '../../../domain/errors';
+import { BadCRUDRequestError, EntityAlreadyExistsError } from '../../../domain/errors';
 import { Entity } from '../../../../common/domain/definitions/entity.gen';
 
 const paramsSchema = z
@@ -36,7 +37,9 @@ export function registerCRUDCreate(router: EntityStorePluginRouter) {
         version: API_VERSIONS.internal.v2,
         validate: {
           request: {
-            body: buildRouteValidationWithZod(Entity),
+            body: buildRouteValidationWithZod(
+              z.preprocess((val) => unflattenObject(val as Record<string, unknown>), Entity)
+            ),
             params: buildRouteValidationWithZod(paramsSchema),
           },
         },
@@ -52,6 +55,9 @@ export function registerCRUDCreate(router: EntityStorePluginRouter) {
         } catch (error) {
           if (error instanceof BadCRUDRequestError) {
             return res.badRequest({ body: error });
+          }
+          if (error instanceof EntityAlreadyExistsError) {
+            return res.conflict({ body: error });
           }
 
           logger.error(error);
