@@ -50,35 +50,28 @@ export const persistRiskScoresToEntityStore = async ({
     return [];
   }
 
-  // Pre-filter to entities that already exist in the store — bulkUpdateEntity
-  // is update-only and will error for missing documents.
-  const euidValues = allObjects.map((obj) => obj.doc.entity?.id).filter(Boolean) as string[];
-  const { entities: existing } = await crudClient.listEntities({
-    filter: { terms: { 'entity.id': euidValues } },
-    size: euidValues.length,
-  });
-
-  const existingIds = new Set(existing.map((e) => e.entity?.id).filter(Boolean));
-  const objectsToUpdate = allObjects.filter((obj) => {
-    const id = obj.doc.entity?.id;
-    return id && existingIds.has(id);
-  });
-
-  if (objectsToUpdate.length === 0) {
-    logger.debug(
-      `persistRiskScoresToEntityStore: ${allObjects.length} score(s) had no matching entities — skipping bulk update`
-    );
-    return [];
-  }
-
-  logger.debug(
-    `persistRiskScoresToEntityStore: updating ${objectsToUpdate.length} of ${allObjects.length} scored entities`
-  );
-
   const errors = await crudClient.bulkUpdateEntity({
-    objects: objectsToUpdate,
+    objects: allObjects,
     force: true,
   });
 
-  return errors.map((e) => `[${e._id}] ${e.reason}`);
+  const missingEntityErrors = errors.filter(isMissingEntityUpdateError);
+  const unexpectedErrors = errors.filter((error) => !isMissingEntityUpdateError(error));
+
+  if (missingEntityErrors.length > 0) {
+    logger.debug(
+      `persistRiskScoresToEntityStore: skipped ${missingEntityErrors.length} score(s) for missing entities`
+    );
+  }
+
+  if (unexpectedErrors.length > 0) {
+    logger.warn(
+      `persistRiskScoresToEntityStore: ${unexpectedErrors.length} unexpected bulk update error(s)`
+    );
+  }
+
+  return unexpectedErrors.map((e) => `[${e._id}] ${e.reason}`);
 };
+
+const isMissingEntityUpdateError = ({ status, type }: { status: number; type?: string }): boolean =>
+  status === 404 || type === 'document_missing_exception';
