@@ -20,8 +20,7 @@ export const registerRiskEngineRoutes = ({
   getStartServices,
   config,
 }: EntityAnalyticsRoutesDeps) => {
-  const isRiskScoringMaintainerEnabled =
-    config.experimentalFeatures.entityAnalyticsEntityStoreV2;
+  const isRiskScoringMaintainerEnabled = config.experimentalFeatures.entityAnalyticsEntityStoreV2;
 
   riskEngineStatusRoute(router, getStartServices, isRiskScoringMaintainerEnabled);
   riskEngineInitRoute(router, getStartServices, isRiskScoringMaintainerEnabled);
