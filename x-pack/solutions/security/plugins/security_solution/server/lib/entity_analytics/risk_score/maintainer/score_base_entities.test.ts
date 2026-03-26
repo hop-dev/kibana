@@ -8,6 +8,7 @@
 import { elasticsearchServiceMock } from '@kbn/core/server/mocks';
 import type { Logger } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
+import { EntityType } from '../../../../../common/entity_analytics/types';
 import { calculateBaseEntityScores } from './score_base_entities';
 
 describe('calculateBaseEntityScores pagination bounds', () => {
@@ -20,7 +21,7 @@ describe('calculateBaseEntityScores pagination bounds', () => {
       bulkUpdateEntity: jest.fn(),
     } as unknown as EntityUpdateClient;
 
-    (esClient.search as jest.Mock)
+    (esClient.search as unknown as jest.Mock)
       .mockResolvedValueOnce({
         aggregations: {
           by_entity_id: {
@@ -38,14 +39,14 @@ describe('calculateBaseEntityScores pagination bounds', () => {
       });
 
     // Empty score rows are enough to validate query bound generation.
-    (esClient.esql.query as jest.Mock).mockResolvedValue({ values: [] });
+    (esClient.esql.query as unknown as jest.Mock).mockResolvedValue({ values: [] });
 
     const pages = [];
     for await (const page of calculateBaseEntityScores({
       esClient,
       crudClient,
       logger,
-      entityType: 'host',
+      entityType: EntityType.host,
       alertFilters: [],
       alertsIndex: '.alerts-security.alerts-default',
       pageSize: 2,
@@ -61,8 +62,10 @@ describe('calculateBaseEntityScores pagination bounds', () => {
     expect(pages).toEqual([]);
     expect(esClient.esql.query).toHaveBeenCalledTimes(2);
 
-    const firstQuery = (esClient.esql.query as jest.Mock).mock.calls[0][0].query as string;
-    const secondQuery = (esClient.esql.query as jest.Mock).mock.calls[1][0].query as string;
+    const firstQuery = (esClient.esql.query as unknown as jest.Mock).mock.calls[0][0]
+      .query as string;
+    const secondQuery = (esClient.esql.query as unknown as jest.Mock).mock.calls[1][0]
+      .query as string;
 
     // First page should only be upper-bounded to avoid skipping the first entity.
     expect(firstQuery).toContain('entity_id <= "host:b"');

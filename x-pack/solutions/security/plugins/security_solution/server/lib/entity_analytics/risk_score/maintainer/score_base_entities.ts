@@ -8,7 +8,7 @@
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { EntityType } from '../../../../../common/search_strategy';
+import type { EntityType } from '../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
 import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_scores';

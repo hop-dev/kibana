@@ -34,7 +34,7 @@ export const persistRiskScoresToEntityStore = async ({
   scores,
 }: {
   crudClient: EntityUpdateClient;
-  logger: Logger;
+  logger: Pick<Logger, 'debug' | 'warn'>;
   scores: Partial<Record<EntityType, EntityRiskScoreRecord[]>>;
 }): Promise<string[]> => {
   const allObjects: BulkObject[] = [];
