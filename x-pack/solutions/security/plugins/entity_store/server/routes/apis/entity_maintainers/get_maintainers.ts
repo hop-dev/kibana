@@ -7,7 +7,10 @@
 
 import type { IKibanaResponse } from '@kbn/core-http-server';
 import { buildRouteValidationWithZod } from '@kbn/zod-helpers/v4';
-import type { GetEntityMaintainersResponse, EntityMaintainerResponseItem } from '../../../../common';
+import type {
+  GetEntityMaintainersResponse,
+  EntityMaintainerResponseItem,
+} from '../../../../common';
 import { API_VERSIONS, ENTITY_STORE_ROUTES } from '../../../../common';
 import { DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
 import type { EntityStorePluginRouter } from '../../../types';
@@ -52,11 +55,7 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
         },
       },
       wrapMiddlewares(
-        async (
-          ctx,
-          req,
-          res
-        ): Promise<IKibanaResponse<GetEntityMaintainersResponse>> => {
+        async (ctx, req, res): Promise<IKibanaResponse<GetEntityMaintainersResponse>> => {
           const entityStoreCtx = await ctx.entityStore;
           const { entityMaintainersClient } = entityStoreCtx;
           const requestedIds = req.query.ids
@@ -65,8 +64,9 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
               : [req.query.ids]
             : undefined;
           const filteredMaintainers = await entityMaintainersClient.getMaintainers(requestedIds);
-          const formattedMaintainers: EntityMaintainerResponseItem[] =
-            filteredMaintainers.map(toGetMaintainersResponseItem);
+          const formattedMaintainers: EntityMaintainerResponseItem[] = filteredMaintainers.map(
+            toGetMaintainersResponseItem
+          );
 
           return res.ok({ body: { maintainers: formattedMaintainers } });
         }

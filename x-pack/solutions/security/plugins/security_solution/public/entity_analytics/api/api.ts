@@ -120,7 +120,9 @@ export const useEntityAnalyticsRoutes = () => {
         },
       });
 
-    const fetchRiskScoreMaintainer = async (): Promise<EntityMaintainerResponseItem | undefined> => {
+    const fetchRiskScoreMaintainer = async (): Promise<
+      EntityMaintainerResponseItem | undefined
+    > => {
       const maintainers = await fetchEntityMaintainers([RISK_SCORE_MAINTAINER_ID]);
       return maintainers.maintainers[0];
     };
@@ -232,7 +234,10 @@ export const useEntityAnalyticsRoutes = () => {
     const enableRiskEngine = async () => {
       if (isMaintainerRiskScoreV2Enabled) {
         await http.fetch<{ ok: true }>(
-          getMaintainerRouteWithId(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_START, RISK_SCORE_MAINTAINER_ID),
+          getMaintainerRouteWithId(
+            ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_START,
+            RISK_SCORE_MAINTAINER_ID
+          ),
           {
             method: 'PUT',
             query: ENTITY_STORE_V2_QUERY,
@@ -254,7 +259,10 @@ export const useEntityAnalyticsRoutes = () => {
     const disableRiskEngine = async () => {
       if (isMaintainerRiskScoreV2Enabled) {
         await http.fetch<{ ok: true }>(
-          getMaintainerRouteWithId(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_STOP, RISK_SCORE_MAINTAINER_ID),
+          getMaintainerRouteWithId(
+            ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_STOP,
+            RISK_SCORE_MAINTAINER_ID
+          ),
           {
             method: 'PUT',
             query: ENTITY_STORE_V2_QUERY,
@@ -276,7 +284,10 @@ export const useEntityAnalyticsRoutes = () => {
     const scheduleNowRiskEngine = async () => {
       if (isMaintainerRiskScoreV2Enabled) {
         await http.fetch<{ ok: true }>(
-          getMaintainerRouteWithId(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_RUN, RISK_SCORE_MAINTAINER_ID),
+          getMaintainerRouteWithId(
+            ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_RUN,
+            RISK_SCORE_MAINTAINER_ID
+          ),
           {
             method: 'POST',
             query: ENTITY_STORE_V2_QUERY,
