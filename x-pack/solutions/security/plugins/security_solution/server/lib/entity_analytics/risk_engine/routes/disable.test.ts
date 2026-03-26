@@ -22,14 +22,11 @@ describe('risk score disable route', () => {
   let mockTaskManagerStart: ReturnType<typeof taskManagerMock.createStart>;
   let mockRiskEngineDataClient: ReturnType<typeof riskEngineDataClientMock.create>;
   let getStartServicesMock: jest.Mock;
-  let mockUiSettingsClientGet: jest.Mock;
 
   beforeEach(() => {
     server = serverMock.create();
     const { clients } = requestContextMock.createTools();
     mockRiskEngineDataClient = riskEngineDataClientMock.create();
-    mockUiSettingsClientGet = clients.core.uiSettings.client.get as jest.Mock;
-    mockUiSettingsClientGet.mockResolvedValue(false);
     context = requestContextMock.convertContext(
       requestContextMock.create({
         ...clients,
@@ -109,55 +106,6 @@ describe('risk score disable route', () => {
           'Task Manager is unavailable, but is required by the risk engine. Please enable the taskManager plugin and try again.',
         status_code: 400,
       });
-    });
-  });
-
-  describe('when maintainer feature and Entity Store V2 mode are enabled', () => {
-    beforeEach(() => {
-      mockUiSettingsClientGet.mockResolvedValue(true);
-      getStartServicesMock = jest.fn().mockResolvedValue([
-        {},
-        {
-          taskManager: mockTaskManagerStart,
-          security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
-        },
-      ]);
-      riskEngineDisableRoute(server.router, getStartServicesMock, true);
-    });
-
-    it('returns a 400 response', async () => {
-      const request = buildRequest();
-      const response = await server.inject(request, context);
-
-      expect(response.status).toEqual(400);
-      expect(response.body).toEqual({
-        message:
-          'This API is not available when Entity Store V2 is enabled. Use the Entity Store APIs instead.',
-        status_code: 400,
-      });
-      expect(mockRiskEngineDataClient.disableRiskEngine).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('when maintainer feature is enabled but Entity Store V2 mode is disabled', () => {
-    beforeEach(() => {
-      mockUiSettingsClientGet.mockResolvedValue(false);
-      getStartServicesMock = jest.fn().mockResolvedValue([
-        {},
-        {
-          taskManager: mockTaskManagerStart,
-          security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
-        },
-      ]);
-      riskEngineDisableRoute(server.router, getStartServicesMock, true);
-    });
-
-    it('allows the route', async () => {
-      const request = buildRequest();
-      const response = await server.inject(request, context);
-
-      expect(response.status).toEqual(200);
-      expect(mockRiskEngineDataClient.disableRiskEngine).toHaveBeenCalled();
     });
   });
 });
