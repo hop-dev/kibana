@@ -158,11 +158,12 @@ export class EntityMaintainersClient {
     }
   }
 
-  public async getMaintainers(): Promise<EntityMaintainerListEntry[]> {
+  public async getMaintainers(ids?: string[]): Promise<EntityMaintainerListEntry[]> {
     const entries = entityMaintainersRegistry.getAll();
+    const filteredEntries = ids?.length ? entries.filter(({ id }) => ids.includes(id)) : entries;
 
     const results = await Promise.all(
-      entries.map(async (entry): Promise<EntityMaintainerListEntry> => {
+      filteredEntries.map(async (entry): Promise<EntityMaintainerListEntry> => {
         const { id, interval, description } = entry;
         const taskId = getTaskId(id, this.namespace);
         let taskSnapshot: TaskSnapshot | undefined;

@@ -64,10 +64,7 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
               ? req.query.ids
               : [req.query.ids]
             : undefined;
-          const clientMaintainers = await entityMaintainersClient.getMaintainers();
-          const filteredMaintainers = requestedIds
-            ? clientMaintainers.filter(({ id }) => requestedIds.includes(id))
-            : clientMaintainers;
+          const filteredMaintainers = await entityMaintainersClient.getMaintainers(requestedIds);
           const formattedMaintainers: EntityMaintainerResponseItem[] =
             filteredMaintainers.map(toGetMaintainersResponseItem);
 

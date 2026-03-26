@@ -322,6 +322,23 @@ describe('EntityMaintainersClient', () => {
   });
 
   describe('getMaintainers', () => {
+    it('should only return requested maintainers when ids filter is provided', async () => {
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        { id: 'm1', interval: '5m' },
+        { id: 'm2', interval: '10m' },
+      ]);
+      const taskManagerGet = jest.fn().mockRejectedValue(new Error('Not found'));
+      const client = createClient({ taskManager: { get: taskManagerGet } });
+      mockSavedObjectsErrorHelpers.isNotFoundError.mockReturnValue(true);
+
+      const result = await client.getMaintainers(['m2']);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('m2');
+      expect(taskManagerGet).toHaveBeenCalledTimes(1);
+      expect(taskManagerGet).toHaveBeenCalledWith('m2:default');
+    });
+
     it('should return entries with taskStatus NOT_STARTED and no taskSnapshot when task does not exist (not-found)', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
         {
