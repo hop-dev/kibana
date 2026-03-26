@@ -28,6 +28,7 @@ describe('resetToZero (maintainer)', () => {
   let writerBulkMock: jest.Mock;
   let crudClient: jest.Mocked<EntityStoreCRUDClient>;
   const emptyWatchlistConfigs = new Map<string, WatchlistObject>();
+  const now = '2026-01-01T00:00:00.000Z';
 
   beforeEach(() => {
     esClient = elasticsearchServiceMock.createScopedClusterClient().asCurrentUser;
@@ -63,6 +64,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -100,6 +102,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -163,6 +166,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs,
     });
 
@@ -193,6 +197,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -225,6 +230,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -246,6 +252,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -269,6 +276,7 @@ describe('resetToZero (maintainer)', () => {
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
+      now,
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
