@@ -80,9 +80,8 @@ export const createRiskScoreMaintainer = ({
   },
   run: async ({ status, crudClient }) => {
     // Two-Phased Risk Scoring pipeline:
-    // - Phase 1 (Base Entity Scoring): score entities from their own alerts.
-    // - Phase 2 (Cross-Entity Aggregation/Resolution): aggregate deferred scores
-    //   across related entities (placeholder until implemented).
+    // - Phase 1: base scoring + lookup table synchronization.
+    // - Phase 2: propagation + resolution scoring using the Phase 1 lookup table.
     // - Post-phase cleanup: reset stale positive scores to zero.
     const [coreStart, pluginsStart] = await getStartServices();
     const namespace = status.metadata.namespace;
@@ -140,11 +139,13 @@ export const createRiskScoreMaintainer = ({
       );
       runLogger.debug('starting base scoring/reset pass');
 
-      // Phase 1 (Base Entity Scoring):
+      // Phase 1 (base scoring):
       // - reads alert inputs for this entity type
       // - applies modifiers from Entity Store/watchlists
       // - categorizes scores into write decisions
       // - persists with temporary behavior for Phase 2 candidates
+      //
+      // Phase 1 lookup table synchronization is intentionally not in this branch.
       const alertFilters = buildAlertFilters(configuration, entityType);
       await scoreBaseEntities({
         alertFilters,
@@ -163,9 +164,12 @@ export const createRiskScoreMaintainer = ({
       });
       runLogger.debug('completed base scoring pass');
 
-      // Phase 2 (Cross-Entity Aggregation/Resolution) will run here.
-      // This is where deferred scores will stop writing "as-is" and instead be
-      // aggregated/resolved before persistence.
+      // TODO(phase-2): run propagation + resolution scoring here, using the
+      // Phase 1 lookup table synchronized during base scoring.
+      // Until lookup synchronization lands, keep Phase 2 explicitly skipped.
+      runLogger.debug(
+        `phase 2 (propagation/resolution) skipped: waiting for phase 1 lookup sync; entityType="${entityType}", calculationRunId="${calculationRunId}"`
+      );
 
       // Cleanup step: clear stale positive scores for entities not scored in this run.
       if (configuration.enableResetToZero !== false) {

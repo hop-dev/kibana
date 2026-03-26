@@ -17,6 +17,14 @@ export interface ParsedRiskScore {
   risk_inputs: SearchHitRiskInput[];
 }
 
+/**
+ * Parses a single base-score ES|QL row for the V2 maintainer path.
+ *
+ * NOTE: This intentionally mirrors parts of the legacy row parsing in
+ * `buildRiskScoreBucket` (`calculate_esql_risk_scores.ts`). We keep the parsing
+ * logic local to each pipeline so V2 maintainer changes can evolve independently
+ * without coupling behavior to the legacy risk scoring path.
+ */
 export const parseEsqlBaseScoreRow = (index: string) => (row: unknown[]): ParsedRiskScore => {
   const [count, score, _inputs, entityId] = row as [number, number, string | string[], string];
 
