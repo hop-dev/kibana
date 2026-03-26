@@ -66,7 +66,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1 });
+    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
         expect.objectContaining({
@@ -108,7 +108,7 @@ describe('resetToZero (maintainer)', () => {
         filter: { terms: { 'entity.id': ['host:host-1'] } },
       })
     );
-    expect(result).toEqual({ scoresWritten: 1 });
+    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
 
     // Zero base score means modifier doesn't change the numeric score (bayesianUpdate(0, ?) = 0),
     // but the modifier metadata should appear in the score document.
@@ -166,7 +166,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1 });
+    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
     expect(writerBulkMock).toHaveBeenCalledWith({
       user: [
         expect.objectContaining({
@@ -196,7 +196,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1 });
+    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('Error fetching entities for reset-to-zero')
     );
@@ -228,7 +228,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 0 });
+    expect(result).toEqual({ scoresWritten: 0, resetBatchLimitHit: false });
     expect(writerBulkMock).not.toHaveBeenCalled();
   });
 

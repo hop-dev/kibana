@@ -41,6 +41,11 @@ const RISK_SCORE_TYPE_FIELD = 'risk.score_type';
 const RISK_SCORE_RUN_ID_FIELD = 'risk.calculation_run_id';
 const RESET_BATCH_LIMIT = 10000;
 
+export interface ResetToZeroSummary {
+  scoresWritten: number;
+  resetBatchLimitHit: boolean;
+}
+
 export const resetToZero = async ({
   esClient,
   dataClient,
@@ -51,7 +56,7 @@ export const resetToZero = async ({
   watchlistConfigs,
   idBasedRiskScoringEnabled,
   calculationRunId,
-}: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
+}: ResetToZeroDependencies): Promise<ResetToZeroSummary> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
   const scoreField = `${entityType}.${RISK_SCORE_FIELD}`;
@@ -96,11 +101,12 @@ export const resetToZero = async ({
 
   if (entityIds.length === 0) {
     logger.debug('reset_to_zero found no stale entities');
-    return { scoresWritten: 0 };
+    return { scoresWritten: 0, resetBatchLimitHit: false };
   }
 
+  const resetBatchLimitHit = entityIds.length === RESET_BATCH_LIMIT;
   logger.debug(`reset_to_zero found ${entityIds.length} stale entities`);
-  if (entityIds.length === RESET_BATCH_LIMIT) {
+  if (resetBatchLimitHit) {
     logger.debug(
       `reset_to_zero reached batch limit (${RESET_BATCH_LIMIT}); remaining stale entities will be reset in subsequent runs`
     );
@@ -156,5 +162,5 @@ export const resetToZero = async ({
     }
   }
 
-  return { scoresWritten: scores.length };
+  return { scoresWritten: scores.length, resetBatchLimitHit };
 };

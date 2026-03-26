@@ -39,6 +39,14 @@ interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
   idBasedRiskScoringEnabled: boolean;
 }
 
+export interface Phase1BaseScoringSummary {
+  pagesProcessed: number;
+  writeNowCount: number;
+  deferToPhase2Count: number;
+  notInStoreCount: number;
+  scoresWritten: number;
+}
+
 /**
  * Phase 1: Base Scoring for a single entity type.
  * "Base" means risk derived directly from this entity's own alert inputs in the
@@ -139,13 +147,14 @@ export const scoreBaseEntities = async ({
   writer,
   idBasedRiskScoringEnabled,
   ...params
-}: ScoreAndPersistBaseEntitiesParams): Promise<void> => {
+}: ScoreAndPersistBaseEntitiesParams): Promise<Phase1BaseScoringSummary> => {
   // Persists each base-score page in explicit phase-1 categories so phase-2
   // defer/lookup routing can be introduced without reshaping this loop.
   let writeNowCount = 0;
   let deferToPhase2Count = 0;
   let notInStoreCount = 0;
   let pagesProcessed = 0;
+  let scoresWritten = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
     pagesProcessed += 1;
@@ -164,6 +173,7 @@ export const scoreBaseEntities = async ({
     // write_now only and defer_to_phase_2 will be handled in that phase.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
     await writer.bulk({ [params.entityType]: riskIndexWrites });
+    scoresWritten += riskIndexWrites.length;
 
     if (idBasedRiskScoringEnabled) {
       const entityStoreErrors = await persistRiskScoresToEntityStore({
@@ -190,4 +200,12 @@ export const scoreBaseEntities = async ({
   params.logger.debug(
     `categorization totals: pages=${pagesProcessed}, write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
   );
+
+  return {
+    pagesProcessed,
+    writeNowCount,
+    deferToPhase2Count,
+    notInStoreCount,
+    scoresWritten,
+  };
 };

@@ -314,6 +314,165 @@ export const RISK_SCORE_EXECUTION_CANCELLATION_EVENT: EventTypeOpts<{
   },
 };
 
+type RiskScoreMaintainerStatus = 'success' | 'error' | 'skipped' | 'aborted';
+type RiskScoreMaintainerSkipReason =
+  | 'license_insufficient'
+  | 'feature_disabled'
+  | 'risk_engine_disabled'
+  | 'reset_to_zero_disabled'
+  | 'phase_not_available';
+type RiskScoreMaintainerErrorKind =
+  | 'esql_query_failed'
+  | 'bulk_write_failed'
+  | 'entity_store_write_failed'
+  | 'entity_fetch_failed'
+  | 'unexpected';
+type RiskScoreMaintainerStage = 'phase1_base_scoring' | 'reset_to_zero';
+
+export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
+  namespace: string;
+  entityType: string;
+  calculationRunId: string;
+  status: RiskScoreMaintainerStatus;
+  skipReason?: RiskScoreMaintainerSkipReason;
+  errorKind?: RiskScoreMaintainerErrorKind;
+  errorMessage?: string;
+  durationMs: number;
+  scoresWrittenTotal: number;
+  scoresWrittenBase: number;
+  scoresWrittenResetToZero: number;
+  pagesProcessed: number;
+  deferToPhase2Count: number;
+  notInStoreCount: number;
+  idBasedRiskScoringEnabled: boolean;
+  pipelineVersion: string;
+}> = {
+  eventType: 'risk_score_maintainer_run_summary',
+  schema: {
+    namespace: { type: 'keyword', _meta: { description: 'Kibana space where scoring ran' } },
+    entityType: { type: 'keyword', _meta: { description: 'Entity type scored (e.g. host, user)' } },
+    calculationRunId: {
+      type: 'keyword',
+      _meta: { description: 'Correlation ID for one maintainer run and entity type' },
+    },
+    status: { type: 'keyword', _meta: { description: 'Run outcome status' } },
+    skipReason: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Bounded reason when status is skipped' },
+    },
+    errorKind: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Bounded error category when status is error' },
+    },
+    errorMessage: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Capped error message for diagnostics' },
+    },
+    durationMs: { type: 'long', _meta: { description: 'Run duration in milliseconds' } },
+    scoresWrittenTotal: { type: 'long', _meta: { description: 'Total risk score docs written' } },
+    scoresWrittenBase: {
+      type: 'long',
+      _meta: { description: 'Risk score docs written during base scoring stage' },
+    },
+    scoresWrittenResetToZero: {
+      type: 'long',
+      _meta: { description: 'Risk score docs written during reset-to-zero stage' },
+    },
+    pagesProcessed: {
+      type: 'long',
+      _meta: { description: 'Number of base-scoring pages processed' },
+    },
+    deferToPhase2Count: {
+      type: 'long',
+      _meta: { description: 'Entities classified as defer_to_phase_2' },
+    },
+    notInStoreCount: {
+      type: 'long',
+      _meta: { description: 'Entities classified as not_in_store' },
+    },
+    idBasedRiskScoringEnabled: {
+      type: 'boolean',
+      _meta: { description: 'Whether Entity Store dual-write was enabled' },
+    },
+    pipelineVersion: {
+      type: 'keyword',
+      _meta: { description: 'Version identifier for V2 telemetry evolution' },
+    },
+  },
+};
+
+export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
+  namespace: string;
+  entityType: string;
+  calculationRunId: string;
+  stage: RiskScoreMaintainerStage;
+  status: RiskScoreMaintainerStatus;
+  skipReason?: RiskScoreMaintainerSkipReason;
+  errorKind?: RiskScoreMaintainerErrorKind;
+  errorMessage?: string;
+  durationMs: number;
+  pagesProcessed?: number;
+  scoresWritten?: number;
+  deferToPhase2Count?: number;
+  notInStoreCount?: number;
+  resetBatchLimitHit?: boolean;
+  idBasedRiskScoringEnabled: boolean;
+  pipelineVersion: string;
+}> = {
+  eventType: 'risk_score_maintainer_stage_summary',
+  schema: {
+    namespace: { type: 'keyword', _meta: { description: 'Kibana space where scoring ran' } },
+    entityType: { type: 'keyword', _meta: { description: 'Entity type scored (e.g. host, user)' } },
+    calculationRunId: {
+      type: 'keyword',
+      _meta: { description: 'Correlation ID for one maintainer run and entity type' },
+    },
+    stage: { type: 'keyword', _meta: { description: 'Phase-1 stage identifier' } },
+    status: { type: 'keyword', _meta: { description: 'Stage outcome status' } },
+    skipReason: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Bounded reason when status is skipped' },
+    },
+    errorKind: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Bounded error category when status is error' },
+    },
+    errorMessage: {
+      type: 'keyword',
+      _meta: { optional: true, description: 'Capped error message for diagnostics' },
+    },
+    durationMs: { type: 'long', _meta: { description: 'Stage duration in milliseconds' } },
+    pagesProcessed: {
+      type: 'long',
+      _meta: { optional: true, description: 'Number of pages processed in this stage' },
+    },
+    scoresWritten: {
+      type: 'long',
+      _meta: { optional: true, description: 'Risk score docs written in this stage' },
+    },
+    deferToPhase2Count: {
+      type: 'long',
+      _meta: { optional: true, description: 'Entities classified as defer_to_phase_2' },
+    },
+    notInStoreCount: {
+      type: 'long',
+      _meta: { optional: true, description: 'Entities classified as not_in_store' },
+    },
+    resetBatchLimitHit: {
+      type: 'boolean',
+      _meta: { optional: true, description: 'Whether reset-to-zero hit per-run batch limit' },
+    },
+    idBasedRiskScoringEnabled: {
+      type: 'boolean',
+      _meta: { description: 'Whether Entity Store dual-write was enabled' },
+    },
+    pipelineVersion: {
+      type: 'keyword',
+      _meta: { description: 'Version identifier for V2 telemetry evolution' },
+    },
+  },
+};
+
 interface AssetCriticalitySystemProcessedAssignmentFileEvent {
   processing: {
     startTime: string;
@@ -1782,6 +1941,8 @@ export const events = [
   RISK_SCORE_EXECUTION_SUCCESS_EVENT,
   RISK_SCORE_EXECUTION_ERROR_EVENT,
   RISK_SCORE_EXECUTION_CANCELLATION_EVENT,
+  RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT,
+  RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT,
   ASSET_CRITICALITY_SYSTEM_PROCESSED_ASSIGNMENT_FILE_EVENT,
   ALERT_SUPPRESSION_EVENT,
   ENDPOINT_RESPONSE_ACTION_SENT_EVENT,
