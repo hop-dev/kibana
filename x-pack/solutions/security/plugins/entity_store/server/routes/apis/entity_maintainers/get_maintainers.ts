@@ -21,6 +21,7 @@ interface EntityMaintainerResponseItem {
   taskStatus: EntityMaintainerTaskStatus;
   interval: string;
   description: string | null;
+  nextRunAt: string | null;
   customState: EntityMaintainerState | null;
   runs: number;
   lastSuccessTimestamp: string | null;
@@ -36,6 +37,7 @@ function toGetMaintainersResponseItem(
     taskStatus: entry.taskStatus,
     interval: entry.interval,
     description: entry.description ?? null,
+    nextRunAt: entry.nextRunAt,
     customState: snapshot?.state ?? null,
     runs: snapshot?.runs ?? 0,
     lastSuccessTimestamp: snapshot?.lastSuccessTimestamp ?? null,
