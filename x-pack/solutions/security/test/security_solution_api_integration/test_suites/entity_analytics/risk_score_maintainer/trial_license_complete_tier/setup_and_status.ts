@@ -32,6 +32,19 @@ export default ({ getService }: FtrProviderContext) => {
   const entityStoreUtils = EntityStoreUtils(getService);
   const entityStoreUtilsCustomSpace = EntityStoreUtils(getService, customSpaceName);
 
+  const enableEntityStoreV2Setting = async (namespace: string = 'default') => {
+    let settingsUrl = '/internal/kibana/settings';
+    if (namespace !== 'default') {
+      settingsUrl = `/s/${namespace}${settingsUrl}`;
+    }
+
+    await supertest
+      .post(settingsUrl)
+      .set('kbn-xsrf', 'true')
+      .set('x-elastic-internal-origin', 'Kibana')
+      .send({ changes: { 'securitySolution:entityStoreEnableV2': true } })
+      .expect(200);
+  };
   const checkAssets = async (
     spaceId: string,
     maintainerRoutesHelper: ReturnType<typeof entityMaintainerRouteHelpersFactory>
@@ -97,6 +110,11 @@ export default ({ getService }: FtrProviderContext) => {
     });
 
     describe('when entityAnalyticsEntityStoreV2 is true', () => {
+      beforeEach(async () => {
+        await enableEntityStoreV2Setting();
+        await enableEntityStoreV2Setting(customSpaceName);
+      });
+
       it('should return 400 for legacy risk engine init api', async () => {
         await riskEngineRoutes.init(400);
       });
