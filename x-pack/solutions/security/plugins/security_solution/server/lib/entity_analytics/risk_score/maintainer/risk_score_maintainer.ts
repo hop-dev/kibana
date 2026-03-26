@@ -33,6 +33,7 @@ import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
 import { scoreBaseEntities } from './score_base_entities';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
+import { withLogContext } from './utils/with_log_context';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -44,6 +45,7 @@ export interface RiskScoreMaintainerDeps {
 }
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
+const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
 
 export const createRiskScoreMaintainer = ({
   getStartServices,
@@ -131,6 +133,12 @@ export const createRiskScoreMaintainer = ({
 
     for (const entityType of entityTypes) {
       const calculationRunId = uuidv4();
+      const runTag = toRunTag(calculationRunId);
+      const runLogger = withLogContext(
+        logger,
+        `[risk_score_maintainer][${entityType}][run:${runTag}]`
+      );
+      runLogger.debug('starting base scoring/reset pass');
 
       // Phase 1 (Base Entity Scoring):
       // - reads alert inputs for this entity type
@@ -145,7 +153,7 @@ export const createRiskScoreMaintainer = ({
         entityType,
         esClient,
         idBasedRiskScoringEnabled,
-        logger,
+        logger: runLogger,
         now: new Date().toISOString(),
         calculationRunId,
         pageSize,
@@ -153,6 +161,7 @@ export const createRiskScoreMaintainer = ({
         watchlistConfigs,
         writer,
       });
+      runLogger.debug('completed base scoring pass');
 
       // Phase 2 (Cross-Entity Aggregation/Resolution) will run here.
       // This is where deferred scores will stop writing "as-is" and instead be
@@ -166,20 +175,22 @@ export const createRiskScoreMaintainer = ({
             dataClient: riskScoreDataClient,
             spaceId: namespace,
             entityType,
-            logger,
+            logger: runLogger,
             idBasedRiskScoringEnabled,
             crudClient,
             watchlistConfigs,
             calculationRunId,
           });
           if (resetResult.scoresWritten > 0) {
-            logger.info(
-              `Reset ${resetResult.scoresWritten} stale ${entityType} risk scores to zero`
-            );
+            runLogger.info(`reset ${resetResult.scoresWritten} stale risk scores to zero`);
+          } else {
+            runLogger.debug('reset_to_zero found no stale scores');
           }
         } catch (error) {
-          logger.warn(`Error resetting ${entityType} risk scores to zero: ${error}`);
+          runLogger.warn(`error resetting risk scores to zero: ${error}`);
         }
+      } else {
+        runLogger.debug('reset_to_zero disabled in configuration');
       }
     }
 

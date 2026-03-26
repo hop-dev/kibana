@@ -8,7 +8,7 @@
 // V2 maintainer copy kept separate from legacy reset-to-zero to avoid
 // optional-dependency branching between pipelines.
 
-import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { ElasticsearchClient } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import {
   EntityIdentifierFields,
@@ -21,13 +21,14 @@ import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_fr
 import { getIndexPatternDataStream } from '../configurations';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
+import type { ScopedLogger } from './utils/with_log_context';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
   dataClient: RiskScoreDataClient;
   spaceId: string;
   entityType: EntityType;
-  logger: Logger;
+  logger: ScopedLogger;
   crudClient: EntityUpdateClient;
   watchlistConfigs: Map<string, WatchlistObject>;
   idBasedRiskScoringEnabled: boolean;
@@ -72,7 +73,7 @@ export const resetToZero = async ({
     | LIMIT 10000
     `;
 
-  logger.debug(`Reset to zero ESQL query:\n${esql}`);
+  logger.debug(`reset_to_zero ESQL query:\n${esql}`);
 
   const response = await esClient.esql.query({ query: esql }).catch((e) => {
     logger.error(
@@ -91,8 +92,11 @@ export const resetToZero = async ({
   }, []);
 
   if (entityIds.length === 0) {
+    logger.debug('reset_to_zero found no stale entities');
     return { scoresWritten: 0 };
   }
+
+  logger.debug(`reset_to_zero found ${entityIds.length} stale entities`);
 
   const buckets: RiskScoreBucket[] = entityIds.map((entity) => ({
     key: { [identifierField]: entity },

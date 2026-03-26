@@ -5,14 +5,14 @@
  * 2.0.
  */
 
-import type { Logger } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { Entity } from '@kbn/entity-store/common';
+import type { ScopedLogger } from './with_log_context';
 
 interface FetchEntitiesByIdsParams {
   crudClient: EntityUpdateClient;
   entityIds: string[];
-  logger: Logger;
+  logger: ScopedLogger;
   errorContext: string;
 }
 

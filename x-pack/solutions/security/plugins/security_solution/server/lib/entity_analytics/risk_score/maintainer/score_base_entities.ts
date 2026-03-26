@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { ElasticsearchClient } from '@kbn/core/server';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../../common/search_strategy';
@@ -18,11 +18,12 @@ import type { ScoredEntityPage } from './pipeline_types';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
+import type { ScopedLogger } from './utils/with_log_context';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
   crudClient: EntityUpdateClient;
-  logger: Logger;
+  logger: ScopedLogger;
   entityType: EntityType;
   alertFilters: QueryDslQueryContainer[];
   alertsIndex: string;
@@ -144,8 +145,10 @@ export const scoreBaseEntities = async ({
   let writeNowCount = 0;
   let deferToPhase2Count = 0;
   let notInStoreCount = 0;
+  let pagesProcessed = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
+    pagesProcessed += 1;
     const categorized = categorizePhase1Entities(page);
 
     writeNowCount += categorized.write_now.length;
@@ -153,7 +156,7 @@ export const scoreBaseEntities = async ({
     notInStoreCount += categorized.not_in_store.length;
 
     params.logger.debug(
-      `Phase 1 categorization for ${params.entityType} page: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
+      `[page:${pagesProcessed}] categorization: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
     );
 
     // Temporary Phase 1 behavior: defer_to_phase_2 scores are still written now.
@@ -178,13 +181,13 @@ export const scoreBaseEntities = async ({
 
       if (categorized.not_in_store.length > 0) {
         params.logger.debug(
-          `Skipped all writes for ${categorized.not_in_store.length} not_in_store ${params.entityType} entities`
+          `[page:${pagesProcessed}] skipped writes for ${categorized.not_in_store.length} not_in_store entities`
         );
       }
     }
   }
 
   params.logger.debug(
-    `Phase 1 categorization totals for ${params.entityType}: write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
+    `categorization totals: pages=${pagesProcessed}, write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
   );
 };
