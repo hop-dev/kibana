@@ -38,6 +38,7 @@ export interface ResetToZeroDependencies {
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
 const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
+const RESET_BATCH_LIMIT = 10000;
 
 export const resetToZero = async ({
   esClient,
@@ -65,7 +66,9 @@ export const resetToZero = async ({
     | WHERE id_value IS NOT NULL AND id_value != ""
     | STATS count = count(id_value) BY id_value
     | KEEP id_value
-    | LIMIT 10000
+    // Intentionally bounded per run; additional stale entities are drained by
+    // subsequent scheduled runs.
+    | LIMIT ${RESET_BATCH_LIMIT}
     `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
@@ -90,6 +93,11 @@ export const resetToZero = async ({
   const entities = (response.values ?? [])
     .map((row: unknown[]) => (row as string[])[0])
     .filter((entity): entity is string => typeof entity === 'string' && entity !== '');
+  if (entities.length === RESET_BATCH_LIMIT) {
+    logger.debug(
+      `Reset to zero reached batch limit (${RESET_BATCH_LIMIT}); remaining stale entities will be reset in subsequent runs`
+    );
+  }
 
   const buckets: RiskScoreBucket[] = entities.map((entity) => {
     const bucket: RiskScoreBucket = {

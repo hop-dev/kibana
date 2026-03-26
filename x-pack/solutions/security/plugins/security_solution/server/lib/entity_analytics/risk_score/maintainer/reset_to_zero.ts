@@ -39,6 +39,7 @@ const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
 const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
 const RISK_SCORE_TYPE_FIELD = 'risk.score_type';
 const RISK_SCORE_RUN_ID_FIELD = 'risk.calculation_run_id';
+const RESET_BATCH_LIMIT = 10000;
 
 export const resetToZero = async ({
   esClient,
@@ -70,7 +71,9 @@ export const resetToZero = async ({
     | WHERE score > 0
     | WHERE calculation_run_id IS NULL OR calculation_run_id != "${calculationRunId}"
     | KEEP id_value
-    | LIMIT 10000
+    // Intentionally bounded per run; additional stale entities are drained by
+    // subsequent scheduled maintainer runs.
+    | LIMIT ${RESET_BATCH_LIMIT}
     `;
 
   logger.debug(`reset_to_zero ESQL query:\n${esql}`);
@@ -97,6 +100,11 @@ export const resetToZero = async ({
   }
 
   logger.debug(`reset_to_zero found ${entityIds.length} stale entities`);
+  if (entityIds.length === RESET_BATCH_LIMIT) {
+    logger.debug(
+      `reset_to_zero reached batch limit (${RESET_BATCH_LIMIT}); remaining stale entities will be reset in subsequent runs`
+    );
+  }
 
   const baseScores: ParsedRiskScore[] = entityIds.map((entityId) => ({
     entity_id: entityId,
