@@ -29,6 +29,14 @@ export interface EntityMaintainerResponse {
   lastErrorTimestamp: string | null;
 }
 
+interface RetryServiceLike {
+  waitForWithTimeout: (
+    label: string,
+    timeout: number,
+    predicate: () => Promise<boolean> | boolean
+  ) => Promise<void>;
+}
+
 export const entityMaintainerRouteHelpersFactory = (
   supertest: SuperTest.Agent,
   namespace?: string
@@ -90,4 +98,30 @@ export const entityMaintainerRouteHelpersFactory = (
       return maintainers.find((m) => m.id === 'risk-score') ?? null;
     },
   };
+};
+
+export const waitForMaintainerRun = async ({
+  retry,
+  routes,
+  minRuns = 1,
+  maintainerId = 'risk-score',
+  timeoutMs = 120_000,
+}: {
+  retry: RetryServiceLike;
+  routes: Pick<ReturnType<typeof entityMaintainerRouteHelpersFactory>, 'getMaintainers'>;
+  minRuns?: number;
+  maintainerId?: string;
+  timeoutMs?: number;
+}): Promise<void> => {
+  await retry.waitForWithTimeout(
+    `Entity maintainer "${maintainerId}" to complete at least ${minRuns} run(s)`,
+    timeoutMs,
+    async () => {
+      const response = await routes.getMaintainers();
+      const maintainer = response.body.maintainers.find(
+        (m: { id: string; runs: number }) => m.id === maintainerId
+      );
+      return maintainer !== undefined && maintainer.runs >= minRuns;
+    }
+  );
 };

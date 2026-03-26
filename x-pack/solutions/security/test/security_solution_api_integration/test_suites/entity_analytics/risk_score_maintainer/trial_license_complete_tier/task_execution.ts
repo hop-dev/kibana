@@ -17,6 +17,7 @@ import {
   normalizeScores,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
+  waitForMaintainerRun,
   deleteAllRiskScores,
   assetCriticalityRouteHelpersFactory,
   cleanAssetCriticality,
@@ -34,24 +35,6 @@ export default ({ getService }: FtrProviderContext): void => {
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
-
-  const waitForMaintainerRun = async (
-    routes: ReturnType<typeof entityMaintainerRouteHelpersFactory>,
-    minRuns: number = 1,
-    maintainerId: string = 'risk-score'
-  ) => {
-    await retry.waitForWithTimeout(
-      `Entity maintainer "${maintainerId}" to complete at least ${minRuns} run(s)`,
-      120_000,
-      async () => {
-        const response = await routes.getMaintainers();
-        const maintainer = response.body.maintainers.find(
-          (m: { id: string; runs: number }) => m.id === maintainerId
-        );
-        return maintainer !== undefined && maintainer.runs >= minRuns;
-      }
-    );
-  };
 
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Task Execution', () => {
     context('with auditbeat data', () => {
@@ -112,7 +95,7 @@ export default ({ getService }: FtrProviderContext): void => {
         describe('installing entity store v2 with maintainer', () => {
           beforeEach(async () => {
             await entityStoreUtils.installEntityStoreV2();
-            await waitForMaintainerRun(maintainerRoutes);
+            await waitForMaintainerRun({ retry, routes: maintainerRoutes });
           });
 
           it('@skipInServerlessMKI calculates and persists risk scores for alert documents', async () => {
@@ -202,7 +185,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
         it('@skipInServerlessMKI calculates and persists risk scores for both types of entities', async () => {
           await entityStoreUtils.installEntityStoreV2();
-          await waitForMaintainerRun(maintainerRoutes);
+          await waitForMaintainerRun({ retry, routes: maintainerRoutes });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
 
           const riskScores = await readRiskScores(es);
@@ -232,7 +215,7 @@ export default ({ getService }: FtrProviderContext): void => {
           it('calculates risk scores with asset criticality data', async () => {
             await waitForAssetCriticalityToBePresent({ es, log });
             await entityStoreUtils.installEntityStoreV2();
-            await waitForMaintainerRun(maintainerRoutes);
+            await waitForMaintainerRun({ retry, routes: maintainerRoutes });
             await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
 
             const riskScores = await readRiskScores(es);

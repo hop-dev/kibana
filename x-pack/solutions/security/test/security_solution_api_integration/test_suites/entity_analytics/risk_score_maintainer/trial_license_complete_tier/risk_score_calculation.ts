@@ -17,6 +17,7 @@ import {
   waitForRiskScoresToBePresent,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
+  waitForMaintainerRun,
   deleteAllRiskScores,
   sanitizeScores,
   assetCriticalityRouteHelpersFactory,
@@ -36,24 +37,6 @@ export default ({ getService }: FtrProviderContext): void => {
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
-
-  const waitForMaintainerRun = async (
-    routes: ReturnType<typeof entityMaintainerRouteHelpersFactory>,
-    minRuns: number = 1,
-    maintainerId: string = 'risk-score'
-  ) => {
-    await retry.waitForWithTimeout(
-      `Entity maintainer "${maintainerId}" to complete at least ${minRuns} run(s)`,
-      120_000,
-      async () => {
-        const response = await routes.getMaintainers();
-        const maintainer = response.body.maintainers.find(
-          (m: { id: string; runs: number }) => m.id === maintainerId
-        );
-        return maintainer !== undefined && maintainer.runs >= minRuns;
-      }
-    );
-  };
 
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
     this.tags(['esGate']);
@@ -101,7 +84,7 @@ export default ({ getService }: FtrProviderContext): void => {
         });
 
         await entityStoreUtils.installEntityStoreV2();
-        await waitForMaintainerRun(maintainerRoutes);
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes });
         await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
         const scores = await readRiskScores(es);
@@ -130,7 +113,7 @@ export default ({ getService }: FtrProviderContext): void => {
         });
 
         await entityStoreUtils.installEntityStoreV2();
-        await waitForMaintainerRun(maintainerRoutes);
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes });
         await waitForRiskScoresToBePresent({ es, log, scoreCount: 2 });
 
         const scores = await readRiskScores(es);
@@ -166,7 +149,7 @@ export default ({ getService }: FtrProviderContext): void => {
           });
 
           await entityStoreUtils.installEntityStoreV2();
-          await waitForMaintainerRun(maintainerRoutes);
+          await waitForMaintainerRun({ retry, routes: maintainerRoutes });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
           const scores = await readRiskScores(es);
@@ -201,7 +184,7 @@ export default ({ getService }: FtrProviderContext): void => {
           });
 
           await entityStoreUtils.installEntityStoreV2();
-          await waitForMaintainerRun(maintainerRoutes);
+          await waitForMaintainerRun({ retry, routes: maintainerRoutes });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
           const scores = await readRiskScores(es);
@@ -244,7 +227,7 @@ export default ({ getService }: FtrProviderContext): void => {
           const watchlistId = createResponse.body.id!;
 
           await entityStoreUtils.installEntityStoreV2();
-          await waitForMaintainerRun(maintainerRoutes);
+          await waitForMaintainerRun({ retry, routes: maintainerRoutes });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
           // Get base risk score (no watchlist modifier yet)
@@ -272,7 +255,7 @@ export default ({ getService }: FtrProviderContext): void => {
           // Delete existing risk scores and re-run maintainer
           await deleteAllRiskScores(log, es);
           await maintainerRoutes.runMaintainer('risk-score');
-          await waitForMaintainerRun(maintainerRoutes, 2);
+          await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 2 });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
           const scores = await readRiskScores(es);

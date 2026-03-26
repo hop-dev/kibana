@@ -97,6 +97,10 @@ interface RiskScoreDocFactoryParams {
 export const riskScoreDocFactory =
   ({ now, identifierField, globalWeight = 1 }: RiskScoreDocFactoryParams) =>
   (
+    // NOTE: This legacy factory intentionally overlaps with the v2 factory in
+    // `modifiers/apply_modifiers_from_entities.ts` while v1 and v2 pipelines
+    // coexist. Once v1 is removed in this release, consolidate duplicated score
+    // math/doc assembly paths as a follow-up cleanup.
     bucket: RiskScoreBucket,
     criticalityModifierFields: Modifier<'asset_criticality'> | undefined,
     watchlistModifiers: Array<Modifier<'watchlist'>>

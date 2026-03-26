@@ -12,6 +12,7 @@ import {
   EntityStoreUtils,
   riskEngineRouteHelpersFactory,
   entityMaintainerRouteHelpersFactory,
+  waitForMaintainerRun,
 } from '../../utils';
 
 export default ({ getService }: FtrProviderContext) => {
@@ -30,23 +31,6 @@ export default ({ getService }: FtrProviderContext) => {
 
   const entityStoreUtils = EntityStoreUtils(getService);
   const entityStoreUtilsCustomSpace = EntityStoreUtils(getService, customSpaceName);
-
-  const waitForMaintainerRun = async (
-    routes: ReturnType<typeof entityMaintainerRouteHelpersFactory>,
-    maintainerId: string = 'risk-score'
-  ) => {
-    await retry.waitForWithTimeout(
-      `Entity maintainer "${maintainerId}" to complete at least one run`,
-      60_000,
-      async () => {
-        const response = await routes.getMaintainers();
-        const maintainer = response.body.maintainers.find(
-          (m: { id: string; runs: number }) => m.id === maintainerId
-        );
-        return maintainer !== undefined && maintainer.runs >= 1;
-      }
-    );
-  };
 
   const checkAssets = async (
     spaceId: string,
@@ -123,14 +107,18 @@ export default ({ getService }: FtrProviderContext) => {
 
       it('should setup risk score assets and configuration when entity store is enabled', async () => {
         await entityStoreUtils.installEntityStoreV2();
-        await waitForMaintainerRun(maintainerRoutes);
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes, timeoutMs: 60_000 });
 
         await checkAssets('default', maintainerRoutes);
       });
 
       it('should setup risk score assets and configuration in custom namespace', async () => {
         await entityStoreUtilsCustomSpace.installEntityStoreV2();
-        await waitForMaintainerRun(maintainerRoutesCustomSpace);
+        await waitForMaintainerRun({
+          retry,
+          routes: maintainerRoutesCustomSpace,
+          timeoutMs: 60_000,
+        });
 
         await checkAssets(customSpaceName, maintainerRoutesCustomSpace);
       });

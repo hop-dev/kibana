@@ -17,6 +17,7 @@ import {
   normalizeScores,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
+  waitForMaintainerRun,
   deleteAllRiskScores,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
@@ -28,24 +29,6 @@ export default ({ getService }: FtrProviderContext): void => {
   const log = getService('log');
   const retry = getService('retry');
   const spaces = getService('spaces');
-
-  const waitForMaintainerRun = async (
-    routes: ReturnType<typeof entityMaintainerRouteHelpersFactory>,
-    minRuns: number = 1,
-    maintainerId: string = 'risk-score'
-  ) => {
-    await retry.waitForWithTimeout(
-      `Entity maintainer "${maintainerId}" to complete at least ${minRuns} run(s)`,
-      120_000,
-      async () => {
-        const response = await routes.getMaintainers();
-        const maintainer = response.body.maintainers.find(
-          (m: { id: string; runs: number }) => m.id === maintainerId
-        );
-        return maintainer !== undefined && maintainer.runs >= minRuns;
-      }
-    );
-  };
 
   describe('@ess Risk Score Maintainer in non-default space', () => {
     describe('with alerts in a non-default space', () => {
@@ -105,7 +88,7 @@ export default ({ getService }: FtrProviderContext): void => {
         });
 
         await entityStoreUtilsCustomSpace.installEntityStoreV2();
-        await waitForMaintainerRun(maintainerRoutesCustomSpace);
+        await waitForMaintainerRun({ retry, routes: maintainerRoutesCustomSpace });
       });
 
       afterEach(async () => {
