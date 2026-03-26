@@ -127,6 +127,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    score_type: {
+                      type: 'keyword',
+                    },
                     modifiers: {
                       properties: {
                         contribution: {
@@ -206,6 +209,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    score_type: {
+                      type: 'keyword',
+                    },
                     inputs: {
                       properties: {
                         category: {
@@ -283,6 +289,9 @@ export default ({ getService }: FtrProviderContext) => {
                       type: 'keyword',
                     },
                     id_value: {
+                      type: 'keyword',
+                    },
+                    score_type: {
                       type: 'keyword',
                     },
                     modifiers: {
@@ -466,6 +475,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    score_type: {
+                      type: 'keyword',
+                    },
                     modifiers: {
                       properties: {
                         contribution: {
@@ -545,6 +557,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    score_type: {
+                      type: 'keyword',
+                    },
                     inputs: {
                       properties: {
                         category: {
@@ -622,6 +637,9 @@ export default ({ getService }: FtrProviderContext) => {
                       type: 'keyword',
                     },
                     id_value: {
+                      type: 'keyword',
+                    },
+                    score_type: {
                       type: 'keyword',
                     },
                     modifiers: {
@@ -767,7 +785,7 @@ export default ({ getService }: FtrProviderContext) => {
             start: 'now-30d',
           },
           _meta: {
-            mappingsVersion: 6,
+            mappingsVersion: 7,
           },
           enableResetToZero: true,
         });

@@ -90,6 +90,9 @@ Object {
               "notes": Object {
                 "type": "keyword",
               },
+              "score_type": Object {
+                "type": "keyword",
+              },
             },
             "type": "object",
           },
@@ -169,6 +172,9 @@ Object {
               "notes": Object {
                 "type": "keyword",
               },
+              "score_type": Object {
+                "type": "keyword",
+              },
             },
             "type": "object",
           },
@@ -246,6 +252,9 @@ Object {
                 "type": "object",
               },
               "notes": Object {
+                "type": "keyword",
+              },
+              "score_type": Object {
                 "type": "keyword",
               },
             },

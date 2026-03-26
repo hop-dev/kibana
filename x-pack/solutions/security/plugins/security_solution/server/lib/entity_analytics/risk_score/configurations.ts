@@ -22,6 +22,11 @@ const commonRiskFields: FieldMap = {
     array: false,
     required: false,
   },
+  score_type: {
+    type: 'keyword',
+    array: false,
+    required: false,
+  },
   calculated_level: {
     type: 'keyword',
     array: false,

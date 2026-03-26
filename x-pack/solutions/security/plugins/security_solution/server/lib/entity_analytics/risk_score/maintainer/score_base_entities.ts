@@ -64,6 +64,7 @@ export const calculateBaseEntityScores = async function* ({
   watchlistConfigs,
 }: ScoreBaseEntitiesParams): AsyncGenerator<ScoredEntityPage> {
   let afterKey: Record<string, string> | undefined;
+  let previousPageUpperBound: string | undefined;
 
   do {
     // Composite paging gives deterministic page bounds for the ES|QL score query.
@@ -86,13 +87,19 @@ export const calculateBaseEntityScores = async function* ({
 
     if (buckets.length === 0) break;
 
-    const lower = buckets[0].key.entity_id;
     const upper = buckets[buckets.length - 1].key.entity_id;
     afterKey = compositeAgg?.after_key;
 
     const esqlResponse = await esClient.esql.query({
-      query: getBaseScoreESQL(entityType, { lower, upper }, sampleSize, pageSize, alertsIndex),
+      query: getBaseScoreESQL(
+        entityType,
+        { lower: previousPageUpperBound, upper },
+        sampleSize,
+        pageSize,
+        alertsIndex
+      ),
     });
+    previousPageUpperBound = upper;
 
     const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
 
@@ -109,6 +116,7 @@ export const calculateBaseEntityScores = async function* ({
       const finalScores = applyScoreModifiersFromEntities({
         now,
         identifierType: entityType,
+        scoreType: 'base',
         weights: [],
         page: {
           scores,

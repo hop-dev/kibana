@@ -127,6 +127,11 @@ Object {
     "required": false,
     "type": "keyword",
   },
+  "host.risk.score_type": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "service.name": Object {
     "array": false,
     "required": false,
@@ -242,6 +247,11 @@ Object {
     "required": false,
     "type": "keyword",
   },
+  "service.risk.score_type": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "user.name": Object {
     "array": false,
     "required": false,
@@ -353,6 +363,11 @@ Object {
     "type": "keyword",
   },
   "user.risk.notes": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
+  "user.risk.score_type": Object {
     "array": false,
     "required": false,
     "type": "keyword",

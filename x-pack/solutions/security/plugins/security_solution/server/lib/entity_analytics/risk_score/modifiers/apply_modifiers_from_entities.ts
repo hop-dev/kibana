@@ -91,6 +91,7 @@ const buildWatchlistModifiers = (
 interface ApplyModifiersFromEntitiesParams {
   now: string;
   identifierType?: EntityType;
+  scoreType?: NonNullable<EntityRiskScoreRecord['score_type']>;
   weights?: RiskScoreWeights;
   page: {
     scores?: ParsedRiskScore[];
@@ -111,6 +112,7 @@ interface ApplyModifiersFromEntitiesParams {
 export const applyScoreModifiersFromEntities = ({
   now,
   identifierType,
+  scoreType = 'base',
   weights,
   page,
   entities,
@@ -149,6 +151,7 @@ export const applyScoreModifiersFromEntities = ({
   const factory = v2RiskScoreDocFactory({
     now,
     identifierField: page.identifierField,
+    scoreType,
     globalWeight,
   });
 
@@ -158,11 +161,12 @@ export const applyScoreModifiersFromEntities = ({
 interface RiskScoreDocFactoryParams {
   now: string;
   identifierField: string;
+  scoreType: NonNullable<EntityRiskScoreRecord['score_type']>;
   globalWeight?: number;
 }
 
 const v2RiskScoreDocFactory =
-  ({ now, identifierField, globalWeight = 1 }: RiskScoreDocFactoryParams) =>
+  ({ now, identifierField, scoreType, globalWeight = 1 }: RiskScoreDocFactoryParams) =>
   (
     score: ParsedRiskScore,
     criticalityModifierFields: Modifier<'asset_criticality'> | undefined,
@@ -219,6 +223,7 @@ const v2RiskScoreDocFactory =
       '@timestamp': now,
       id_field: identifierField,
       id_value: score.entity_id,
+      score_type: scoreType,
       ...finalRiskScoreFields,
       ...alertsRiskScoreFields,
       ...legacyCat2Fields,

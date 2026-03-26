@@ -411,6 +411,31 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(results[0].id_value).toBe('host:h1');
   });
 
+  it('defaults score_type to base', () => {
+    const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
+
+    const results = applyScoreModifiersFromEntities({
+      now,
+      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      entities,
+    });
+
+    expect(results[0].score_type).toBe('base');
+  });
+
+  it('sets explicit score_type when provided', () => {
+    const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
+
+    const results = applyScoreModifiersFromEntities({
+      now,
+      scoreType: 'propagated',
+      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      entities,
+    });
+
+    expect(results[0].score_type).toBe('propagated');
+  });
+
   it('includes modifier contributions that sum to total score change', () => {
     const entities = new Map([
       [

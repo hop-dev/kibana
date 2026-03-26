@@ -180,10 +180,9 @@ export const EntityRiskScoreRecord = z.object({
     )
     .optional(),
   /**
-   * Distinguishes individual scores from aggregated resolution group scores.
-   * Defaults to 'individual' if omitted (backward compatible).
+   * Distinguishes base, propagated, and resolution scores.
    */
-  score_type: z.enum(['individual', 'resolution']).optional(),
+  score_type: z.enum(['base', 'propagated', 'resolution']).optional(),
   /**
    * A list of entities related to this risk score (used by resolution scoring).
    */
