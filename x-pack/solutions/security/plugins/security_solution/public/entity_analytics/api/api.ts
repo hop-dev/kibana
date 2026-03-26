@@ -9,7 +9,9 @@ import { useMemo } from 'react';
 import type { AnonymizationFieldResponse } from '@kbn/elastic-assistant-common';
 import {
   API_VERSIONS as ENTITY_STORE_API_VERSIONS,
+  type EntityMaintainerResponseItem,
   ENTITY_STORE_ROUTES,
+  type GetEntityMaintainersResponse,
 } from '@kbn/entity-store/common';
 import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/public';
 import type { EntityDetailsHighlightsResponse } from '../../../common/api/entity_analytics/entity_details/highlights.gen';
@@ -94,18 +96,6 @@ export interface DeleteAssetCriticalityResponse {
 const ENTITY_SOURCE_NAME = 'User Monitored Indices';
 const RISK_SCORE_MAINTAINER_ID = 'risk-score';
 const ENTITY_STORE_V2_QUERY = { apiVersion: ENTITY_STORE_API_VERSIONS.internal.v2 } as const;
-
-type EntityMaintainerTaskStatus = 'never_started' | 'started' | 'stopped';
-
-interface EntityMaintainerResponseItem {
-  id: string;
-  taskStatus: EntityMaintainerTaskStatus;
-  nextRunAt: string | null;
-}
-
-interface GetEntityMaintainersResponse {
-  maintainers: EntityMaintainerResponseItem[];
-}
 
 const getMaintainerRouteWithId = (route: string, id: string): string =>
   route.replace('{id}', encodeURIComponent(id));
