@@ -22,11 +22,14 @@ describe('risk engine cleanup route', () => {
   let mockTaskManagerStart: ReturnType<typeof taskManagerMock.createStart>;
   let mockRiskEngineDataClient: ReturnType<typeof riskEngineDataClientMock.create>;
   let getStartServicesMock: jest.Mock;
+  let mockUiSettingsClientGet: jest.Mock;
 
   beforeEach(() => {
     server = serverMock.create();
     const { clients } = requestContextMock.createTools();
     mockRiskEngineDataClient = riskEngineDataClientMock.create();
+    mockUiSettingsClientGet = clients.core.uiSettings.client.get as jest.Mock;
+    mockUiSettingsClientGet.mockResolvedValue(false);
     context = requestContextMock.convertContext(
       requestContextMock.create({
         ...clients,
@@ -179,6 +182,55 @@ describe('risk engine cleanup route', () => {
           'User is missing risk engine privileges.  Missing cluster privileges to run the risk engine: manage_transform. Missing cluster privileges to enable the risk engine: manage_index_templates, manage_transform, manage_ingest_pipelines.',
         status_code: 403,
       });
+    });
+  });
+
+  describe('when maintainer feature and Entity Store V2 mode are enabled', () => {
+    beforeEach(() => {
+      mockUiSettingsClientGet.mockResolvedValue(true);
+      getStartServicesMock = jest.fn().mockResolvedValue([
+        {},
+        {
+          taskManager: mockTaskManagerStart,
+          security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
+        },
+      ]);
+      riskEngineCleanupRoute(server.router, getStartServicesMock, true);
+    });
+
+    it('returns a 400 response', async () => {
+      const request = buildRequest();
+      const response = await server.inject(request, context);
+
+      expect(response.status).toEqual(400);
+      expect(response.body).toEqual({
+        message:
+          'This API is not available when Entity Store V2 is enabled. Use the Entity Store APIs instead.',
+        status_code: 400,
+      });
+      expect(mockRiskEngineDataClient.tearDown).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when maintainer feature is enabled but Entity Store V2 mode is disabled', () => {
+    beforeEach(() => {
+      mockUiSettingsClientGet.mockResolvedValue(false);
+      getStartServicesMock = jest.fn().mockResolvedValue([
+        {},
+        {
+          taskManager: mockTaskManagerStart,
+          security: riskEnginePrivilegesMock.createMockSecurityStartWithFullRiskEngineAccess(),
+        },
+      ]);
+      riskEngineCleanupRoute(server.router, getStartServicesMock, true);
+    });
+
+    it('allows the route', async () => {
+      const request = buildRequest();
+      const response = await server.inject(request, context);
+
+      expect(response.status).toBe(200);
+      expect(mockRiskEngineDataClient.tearDown).toHaveBeenCalled();
     });
   });
 });
