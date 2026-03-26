@@ -30,6 +30,7 @@ interface ScoreBaseEntitiesParams {
   sampleSize: number;
   now: string;
   watchlistConfigs: Map<string, WatchlistObject>;
+  calculationRunId: string;
 }
 
 interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
@@ -62,6 +63,7 @@ export const calculateBaseEntityScores = async function* ({
   sampleSize,
   now,
   watchlistConfigs,
+  calculationRunId,
 }: ScoreBaseEntitiesParams): AsyncGenerator<ScoredEntityPage> {
   let afterKey: Record<string, string> | undefined;
   let previousPageUpperBound: string | undefined;
@@ -117,6 +119,7 @@ export const calculateBaseEntityScores = async function* ({
         now,
         identifierType: entityType,
         scoreType: 'base',
+        calculationRunId,
         weights: [],
         page: {
           scores,

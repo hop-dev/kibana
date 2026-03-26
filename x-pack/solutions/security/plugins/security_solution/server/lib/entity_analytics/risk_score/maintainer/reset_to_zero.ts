@@ -32,6 +32,7 @@ export interface ResetToZeroDependencies {
   crudClient: EntityUpdateClient;
   watchlistConfigs: Map<string, WatchlistObject>;
   idBasedRiskScoringEnabled: boolean;
+  calculationRunId: string;
 }
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
@@ -47,6 +48,7 @@ export const resetToZero = async ({
   crudClient,
   watchlistConfigs,
   idBasedRiskScoringEnabled,
+  calculationRunId,
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
@@ -122,6 +124,7 @@ export const resetToZero = async ({
   const scores = applyScoreModifiersFromEntities({
     now: new Date().toISOString(),
     identifierType: entityType,
+    calculationRunId,
     page: {
       buckets,
       identifierField,

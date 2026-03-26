@@ -9,14 +9,15 @@ import type { Entity } from '@kbn/entity-store/common';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { EntityType } from '../../../../../common/entity_analytics/types';
-import type { RiskScoreWeights } from '../../../../../common/api/entity_analytics/common';
-import { getCriticalityModifier } from '../../asset_criticality/helpers';
+import type {
+  EntityRiskScoreRecord,
+  RiskScoreWeights,
+} from '../../../../../common/api/entity_analytics/common';
+import { bayesianUpdate, getCriticalityModifier } from '../../asset_criticality/helpers';
 import type { Modifier } from './types';
 import { getGlobalWeightForIdentifierType, max10DecimalPlaces } from '../helpers';
 import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
-import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
 import { getRiskLevel, RiskCategories } from '../../../../../common/entity_analytics/risk_engine';
-import { bayesianUpdate } from '../../asset_criticality/helpers';
 import { buildLegacyCriticalityFields } from './asset_criticality';
 import { RIEMANN_ZETA_VALUE } from '../constants';
 import { isDefined } from '../../../../../common/utils/nullable';
@@ -92,6 +93,7 @@ interface ApplyModifiersFromEntitiesParams {
   now: string;
   identifierType?: EntityType;
   scoreType?: NonNullable<EntityRiskScoreRecord['score_type']>;
+  calculationRunId?: string;
   weights?: RiskScoreWeights;
   page: {
     scores?: ParsedRiskScore[];
@@ -113,6 +115,7 @@ export const applyScoreModifiersFromEntities = ({
   now,
   identifierType,
   scoreType = 'base',
+  calculationRunId,
   weights,
   page,
   entities,
@@ -125,7 +128,9 @@ export const applyScoreModifiersFromEntities = ({
       return {
         entity_id:
           bucket.key[page.identifierField] ??
-          Object.values(bucket.key).find((identifier): identifier is string => Boolean(identifier)) ??
+          Object.values(bucket.key).find((identifier): identifier is string =>
+            Boolean(identifier)
+          ) ??
           '',
         alert_count: value.category_1_count,
         score: value.score,
@@ -152,6 +157,7 @@ export const applyScoreModifiersFromEntities = ({
     now,
     identifierField: page.identifierField,
     scoreType,
+    calculationRunId,
     globalWeight,
   });
 
@@ -162,11 +168,18 @@ interface RiskScoreDocFactoryParams {
   now: string;
   identifierField: string;
   scoreType: NonNullable<EntityRiskScoreRecord['score_type']>;
+  calculationRunId?: string;
   globalWeight?: number;
 }
 
 const v2RiskScoreDocFactory =
-  ({ now, identifierField, scoreType, globalWeight = 1 }: RiskScoreDocFactoryParams) =>
+  ({
+    now,
+    identifierField,
+    scoreType,
+    calculationRunId,
+    globalWeight = 1,
+  }: RiskScoreDocFactoryParams) =>
   (
     score: ParsedRiskScore,
     criticalityModifierFields: Modifier<'asset_criticality'> | undefined,
@@ -191,8 +204,7 @@ const v2RiskScoreDocFactory =
       score: originalScore,
     });
 
-    const weightedScore =
-      globalWeight !== undefined ? score.score * globalWeight : score.score;
+    const weightedScore = globalWeight !== undefined ? score.score * globalWeight : score.score;
     const finalRiskScoreFields = {
       calculated_level: getRiskLevel(totalScoreWithModifiers),
       calculated_score: max10DecimalPlaces(weightedScore),
@@ -224,6 +236,7 @@ const v2RiskScoreDocFactory =
       id_field: identifierField,
       id_value: score.entity_id,
       score_type: scoreType,
+      ...(calculationRunId !== undefined ? { calculation_run_id: calculationRunId } : {}),
       ...finalRiskScoreFields,
       ...alertsRiskScoreFields,
       ...legacyCat2Fields,

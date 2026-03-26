@@ -63,6 +63,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -72,6 +73,7 @@ describe('resetToZero (maintainer)', () => {
         expect.objectContaining({
           id_field: 'entity.id',
           id_value: 'host:host-1',
+          calculation_run_id: 'run-id-1',
           calculated_score: 0,
           calculated_score_norm: 0,
         }),
@@ -99,6 +101,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -162,6 +165,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs,
     });
 
@@ -192,6 +196,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -224,6 +229,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -245,6 +251,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: ['host:host-1'],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
@@ -271,6 +278,7 @@ describe('resetToZero (maintainer)', () => {
       excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
+      calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 

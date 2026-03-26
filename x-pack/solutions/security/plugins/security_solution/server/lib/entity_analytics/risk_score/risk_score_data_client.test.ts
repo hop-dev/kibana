@@ -287,6 +287,9 @@ const assertIndex = (namespace: string) => {
                   id_value: {
                     type: 'keyword',
                   },
+                  calculation_run_id: {
+                    type: 'keyword',
+                  },
                   score_type: {
                     type: 'keyword',
                   },
@@ -369,6 +372,9 @@ const assertIndex = (namespace: string) => {
                   id_value: {
                     type: 'keyword',
                   },
+                  calculation_run_id: {
+                    type: 'keyword',
+                  },
                   score_type: {
                     type: 'keyword',
                   },
@@ -449,6 +455,9 @@ const assertIndex = (namespace: string) => {
                     type: 'keyword',
                   },
                   id_value: {
+                    type: 'keyword',
+                  },
+                  calculation_run_id: {
                     type: 'keyword',
                   },
                   score_type: {

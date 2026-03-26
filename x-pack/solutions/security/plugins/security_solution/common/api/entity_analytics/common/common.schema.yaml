@@ -186,6 +186,9 @@ components:
           type: string
           example: "example.host"
           description: The identifier value defining this risk score. Coupled with `id_field`, uniquely identifies the entity being scored.
+        calculation_run_id:
+          type: string
+          description: Unique identifier for the scoring run that produced this document.
         calculated_level:
           $ref: "#/components/schemas/EntityRiskLevels"
           example: "Critical"

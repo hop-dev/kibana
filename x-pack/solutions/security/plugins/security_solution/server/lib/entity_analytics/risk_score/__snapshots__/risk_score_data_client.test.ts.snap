@@ -32,6 +32,9 @@ Object {
               "calculated_score_norm": Object {
                 "type": "float",
               },
+              "calculation_run_id": Object {
+                "type": "keyword",
+              },
               "category_1_count": Object {
                 "type": "long",
               },
@@ -114,6 +117,9 @@ Object {
               "calculated_score_norm": Object {
                 "type": "float",
               },
+              "calculation_run_id": Object {
+                "type": "keyword",
+              },
               "category_1_count": Object {
                 "type": "long",
               },
@@ -195,6 +201,9 @@ Object {
               },
               "calculated_score_norm": Object {
                 "type": "float",
+              },
+              "calculation_run_id": Object {
+                "type": "keyword",
               },
               "category_1_count": Object {
                 "type": "long",

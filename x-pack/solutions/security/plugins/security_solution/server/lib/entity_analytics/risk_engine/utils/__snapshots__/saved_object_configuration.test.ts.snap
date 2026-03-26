@@ -37,6 +37,11 @@ Object {
     "required": false,
     "type": "float",
   },
+  "host.risk.calculation_run_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "host.risk.category_1_count": Object {
     "array": false,
     "required": false,
@@ -157,6 +162,11 @@ Object {
     "required": false,
     "type": "float",
   },
+  "service.risk.calculation_run_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "service.risk.category_1_count": Object {
     "array": false,
     "required": false,
@@ -276,6 +286,11 @@ Object {
     "array": false,
     "required": false,
     "type": "float",
+  },
+  "user.risk.calculation_run_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
   },
   "user.risk.category_1_count": Object {
     "array": false,

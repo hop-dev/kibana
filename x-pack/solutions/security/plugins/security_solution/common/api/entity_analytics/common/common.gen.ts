@@ -137,6 +137,10 @@ export const EntityRiskScoreRecord = z.object({
    */
   id_value: z.string(),
   /**
+   * Unique identifier for the scoring run that produced this document.
+   */
+  calculation_run_id: z.string().optional(),
+  /**
    * Lexical description of the entity's risk.
    */
   calculated_level: EntityRiskLevels,

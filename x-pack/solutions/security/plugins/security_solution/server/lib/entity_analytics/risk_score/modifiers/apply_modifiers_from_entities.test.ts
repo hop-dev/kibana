@@ -436,6 +436,19 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(results[0].score_type).toBe('propagated');
   });
 
+  it('sets calculation_run_id when provided', () => {
+    const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
+
+    const results = applyScoreModifiersFromEntities({
+      now,
+      calculationRunId: 'run-id-1',
+      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      entities,
+    });
+
+    expect(results[0].calculation_run_id).toBe('run-id-1');
+  });
+
   it('includes modifier contributions that sum to total score change', () => {
     const entities = new Map([
       [

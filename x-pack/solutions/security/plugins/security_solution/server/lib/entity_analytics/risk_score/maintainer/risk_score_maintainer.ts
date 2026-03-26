@@ -8,6 +8,7 @@
 import type { Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
+import { v4 as uuidv4 } from 'uuid';
 import { ProductFeatureKey } from '@kbn/security-solution-features/keys';
 import type {
   EntityAnalyticsConfig,
@@ -129,6 +130,8 @@ export const createRiskScoreMaintainer = ({
       : getEntityAnalyticsEntityTypes();
 
     for (const entityType of entityTypes) {
+      const calculationRunId = uuidv4();
+
       // Phase 1 (Base Entity Scoring):
       // - reads alert inputs for this entity type
       // - applies modifiers from Entity Store/watchlists
@@ -144,6 +147,7 @@ export const createRiskScoreMaintainer = ({
         idBasedRiskScoringEnabled,
         logger,
         now: new Date().toISOString(),
+        calculationRunId,
         pageSize,
         sampleSize,
         watchlistConfigs,
@@ -167,6 +171,7 @@ export const createRiskScoreMaintainer = ({
             idBasedRiskScoringEnabled,
             crudClient,
             watchlistConfigs,
+            calculationRunId,
           });
           if (resetResult.scoresWritten > 0) {
             logger.info(

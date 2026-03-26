@@ -127,6 +127,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    calculation_run_id: {
+                      type: 'keyword',
+                    },
                     score_type: {
                       type: 'keyword',
                     },
@@ -209,6 +212,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    calculation_run_id: {
+                      type: 'keyword',
+                    },
                     score_type: {
                       type: 'keyword',
                     },
@@ -289,6 +295,9 @@ export default ({ getService }: FtrProviderContext) => {
                       type: 'keyword',
                     },
                     id_value: {
+                      type: 'keyword',
+                    },
+                    calculation_run_id: {
                       type: 'keyword',
                     },
                     score_type: {
@@ -475,6 +484,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    calculation_run_id: {
+                      type: 'keyword',
+                    },
                     score_type: {
                       type: 'keyword',
                     },
@@ -557,6 +569,9 @@ export default ({ getService }: FtrProviderContext) => {
                     id_value: {
                       type: 'keyword',
                     },
+                    calculation_run_id: {
+                      type: 'keyword',
+                    },
                     score_type: {
                       type: 'keyword',
                     },
@@ -637,6 +652,9 @@ export default ({ getService }: FtrProviderContext) => {
                       type: 'keyword',
                     },
                     id_value: {
+                      type: 'keyword',
+                    },
+                    calculation_run_id: {
                       type: 'keyword',
                     },
                     score_type: {
