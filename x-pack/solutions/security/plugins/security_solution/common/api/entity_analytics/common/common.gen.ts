@@ -187,17 +187,6 @@ export const EntityRiskScoreRecord = z.object({
    * Distinguishes base, propagated, and resolution scores.
    */
   score_type: z.enum(['base', 'propagated', 'resolution']).optional(),
-  /**
-   * A list of entities related to this risk score (used by resolution scoring).
-   */
-  related_entities: z
-    .array(
-      z.object({
-        entity_id: z.string(),
-        relationship_type: z.string(),
-      })
-    )
-    .optional(),
 });
 
 export type RiskScoreEntityIdentifierWeights = z.infer<typeof RiskScoreEntityIdentifierWeights>;

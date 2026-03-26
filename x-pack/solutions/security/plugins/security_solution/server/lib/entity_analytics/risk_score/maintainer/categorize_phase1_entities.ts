@@ -18,6 +18,5 @@ export const categorizePhase1Entities = (page: ScoredEntityPage): CategorizedEnt
     write_now: writeNow,
     not_in_store: notInStore,
     defer_to_phase_2: [],
-    lookupDeletes: [],
   };
 };

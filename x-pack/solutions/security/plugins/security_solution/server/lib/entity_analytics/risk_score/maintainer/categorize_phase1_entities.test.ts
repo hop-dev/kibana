@@ -36,7 +36,6 @@ describe('categorizePhase1Entities', () => {
     expect(categorized.write_now).toEqual([score('host:known-1')]);
     expect(categorized.not_in_store).toEqual([score('host:unknown-1')]);
     expect(categorized.defer_to_phase_2).toEqual([]);
-    expect(categorized.lookupDeletes).toEqual([]);
   });
 
   it('classifies all scores as unknown when no entities are found', () => {

@@ -159,10 +159,7 @@ export const scoreBaseEntities = async ({
     // Temporary Phase 1 behavior: defer_to_phase_2 scores are still written now.
     // When Phase 2 aggregation is implemented, this write set will become
     // write_now only and defer_to_phase_2 will be handled in that phase.
-    const riskIndexWrites = [
-      ...categorized.write_now,
-      ...categorized.defer_to_phase_2.map(({ score }) => score),
-    ];
+    const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
     await writer.bulk({ [params.entityType]: riskIndexWrites });
 
     if (idBasedRiskScoringEnabled) {
