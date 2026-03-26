@@ -111,15 +111,18 @@ export const useEntityAnalyticsRoutes = () => {
     isEntityStoreV2UiSettingEnabled && isEntityAnalyticsEntityStoreV2Enabled;
 
   return useMemo(() => {
-    const fetchEntityMaintainers = () =>
+    const fetchEntityMaintainers = (ids?: string[]) =>
       http.fetch<GetEntityMaintainersResponse>(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, {
         method: 'GET',
-        query: ENTITY_STORE_V2_QUERY,
+        query: {
+          ...ENTITY_STORE_V2_QUERY,
+          ...(ids && ids.length > 0 ? { ids } : {}),
+        },
       });
 
     const fetchRiskScoreMaintainer = async (): Promise<EntityMaintainerResponseItem | undefined> => {
-      const maintainers = await fetchEntityMaintainers();
-      return maintainers.maintainers.find(({ id }) => id === RISK_SCORE_MAINTAINER_ID);
+      const maintainers = await fetchEntityMaintainers([RISK_SCORE_MAINTAINER_ID]);
+      return maintainers.maintainers[0];
     };
 
     /**

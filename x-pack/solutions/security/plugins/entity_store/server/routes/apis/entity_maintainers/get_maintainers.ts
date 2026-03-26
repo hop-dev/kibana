@@ -6,12 +6,14 @@
  */
 
 import type { IKibanaResponse } from '@kbn/core-http-server';
+import { buildRouteValidationWithZod } from '@kbn/zod-helpers/v4';
 import type { GetEntityMaintainersResponse, EntityMaintainerResponseItem } from '../../../../common';
 import { API_VERSIONS, ENTITY_STORE_ROUTES } from '../../../../common';
 import { DEFAULT_ENTITY_STORE_PERMISSIONS } from '../../constants';
 import type { EntityStorePluginRouter } from '../../../types';
 import { wrapMiddlewares } from '../../middleware';
 import type { EntityMaintainerListEntry } from '../../../domain/entity_maintainers';
+import { maintainerIdsQuerySchema } from './utils/validator';
 
 function toGetMaintainersResponseItem(
   entry: EntityMaintainerListEntry
@@ -43,7 +45,11 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
     .addVersion(
       {
         version: API_VERSIONS.internal.v2,
-        validate: false,
+        validate: {
+          request: {
+            query: buildRouteValidationWithZod(maintainerIdsQuerySchema),
+          },
+        },
       },
       wrapMiddlewares(
         async (
@@ -53,10 +59,17 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
         ): Promise<IKibanaResponse<GetEntityMaintainersResponse>> => {
           const entityStoreCtx = await ctx.entityStore;
           const { entityMaintainersClient } = entityStoreCtx;
+          const requestedIds = req.query.ids
+            ? Array.isArray(req.query.ids)
+              ? req.query.ids
+              : [req.query.ids]
+            : undefined;
           const clientMaintainers = await entityMaintainersClient.getMaintainers();
-          const formattedMaintainers: EntityMaintainerResponseItem[] = clientMaintainers.map(
-            toGetMaintainersResponseItem
-          );
+          const filteredMaintainers = requestedIds
+            ? clientMaintainers.filter(({ id }) => requestedIds.includes(id))
+            : clientMaintainers;
+          const formattedMaintainers: EntityMaintainerResponseItem[] =
+            filteredMaintainers.map(toGetMaintainersResponseItem);
 
           return res.ok({ body: { maintainers: formattedMaintainers } });
         }
