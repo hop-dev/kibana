@@ -60,7 +60,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
@@ -98,7 +97,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
@@ -162,7 +160,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.user,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
@@ -193,7 +190,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
@@ -226,7 +222,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
@@ -237,7 +232,7 @@ describe('resetToZero (maintainer)', () => {
     expect(writerBulkMock).not.toHaveBeenCalled();
   });
 
-  it('passes exclusion filter for scored entity IDs', async () => {
+  it('queries stale base docs by latest run id', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
       values: [['host:host-2', null]],
     });
@@ -248,20 +243,16 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: ['host:host-1'],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(esClient.esql.query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filter: {
-          bool: { must_not: [{ terms: { 'entity.id': ['host:host-1'] } }] },
-        },
-      })
-    );
+    const query = (esClient.esql.query as jest.Mock).mock.calls[0][0].query as string;
+    expect(query).toContain('WHERE score_type IS NULL OR score_type == "base"');
+    expect(query).toContain('| DEDUP id_value');
+    expect(query).toContain('WHERE calculation_run_id IS NULL OR calculation_run_id != "run-id-1"');
   });
 
   it('writes to entity store when idBasedRiskScoringEnabled is true', async () => {
@@ -275,7 +266,6 @@ describe('resetToZero (maintainer)', () => {
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
-      excludedEntities: [],
       idBasedRiskScoringEnabled: true,
       crudClient,
       calculationRunId: 'run-id-1',

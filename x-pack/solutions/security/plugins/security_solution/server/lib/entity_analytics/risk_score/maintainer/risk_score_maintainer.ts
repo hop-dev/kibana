@@ -138,7 +138,7 @@ export const createRiskScoreMaintainer = ({
       // - categorizes scores into write decisions
       // - persists with temporary behavior for Phase 2 candidates
       const alertFilters = buildAlertFilters(configuration, entityType);
-      const scoredEntityIds = await scoreBaseEntities({
+      await scoreBaseEntities({
         alertFilters,
         alertsIndex,
         crudClient,
@@ -167,7 +167,6 @@ export const createRiskScoreMaintainer = ({
             spaceId: namespace,
             entityType,
             logger,
-            excludedEntities: scoredEntityIds,
             idBasedRiskScoringEnabled,
             crudClient,
             watchlistConfigs,

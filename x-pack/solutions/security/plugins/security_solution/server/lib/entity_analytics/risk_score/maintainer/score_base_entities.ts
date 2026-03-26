@@ -138,16 +138,14 @@ export const scoreBaseEntities = async ({
   writer,
   idBasedRiskScoringEnabled,
   ...params
-}: ScoreAndPersistBaseEntitiesParams): Promise<string[]> => {
+}: ScoreAndPersistBaseEntitiesParams): Promise<void> => {
   // Persists each base-score page in explicit phase-1 categories so phase-2
   // defer/lookup routing can be introduced without reshaping this loop.
-  const scoredEntityIds: string[] = [];
   let writeNowCount = 0;
   let deferToPhase2Count = 0;
   let notInStoreCount = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
-    scoredEntityIds.push(...page.entityIds);
     const categorized = categorizePhase1Entities(page);
 
     writeNowCount += categorized.write_now.length;
@@ -192,6 +190,4 @@ export const scoreBaseEntities = async ({
   params.logger.debug(
     `Phase 1 categorization totals for ${params.entityType}: write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
   );
-
-  return scoredEntityIds;
 };

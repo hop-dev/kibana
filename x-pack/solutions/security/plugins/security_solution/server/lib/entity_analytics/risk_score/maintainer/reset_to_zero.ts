@@ -28,7 +28,6 @@ export interface ResetToZeroDependencies {
   spaceId: string;
   entityType: EntityType;
   logger: Logger;
-  excludedEntities: string[];
   crudClient: EntityUpdateClient;
   watchlistConfigs: Map<string, WatchlistObject>;
   idBasedRiskScoringEnabled: boolean;
@@ -37,6 +36,8 @@ export interface ResetToZeroDependencies {
 
 const RISK_SCORE_FIELD = 'risk.calculated_score_norm';
 const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
+const RISK_SCORE_TYPE_FIELD = 'risk.score_type';
+const RISK_SCORE_RUN_ID_FIELD = 'risk.calculation_run_id';
 
 export const resetToZero = async ({
   esClient,
@@ -44,7 +45,6 @@ export const resetToZero = async ({
   spaceId,
   entityType,
   logger,
-  excludedEntities,
   crudClient,
   watchlistConfigs,
   idBasedRiskScoringEnabled,
@@ -52,35 +52,34 @@ export const resetToZero = async ({
 }: ResetToZeroDependencies): Promise<{ scoresWritten: number }> => {
   const { alias } = await getIndexPatternDataStream(spaceId);
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
+  const scoreField = `${entityType}.${RISK_SCORE_FIELD}`;
+  const scoreTypeField = `${entityType}.${RISK_SCORE_TYPE_FIELD}`;
+  const runIdField = `${entityType}.${RISK_SCORE_RUN_ID_FIELD}`;
   const identifierField = EntityIdentifierFields.generic;
   const esql = /* sql */ `
     FROM ${alias}
-    | WHERE ${entityType}.${RISK_SCORE_FIELD} > 0
     | EVAL id_value = TO_STRING(${entityField})
+    | EVAL score = TO_DOUBLE(${scoreField})
+    | EVAL score_type = TO_STRING(${scoreTypeField})
+    | EVAL calculation_run_id = TO_STRING(${runIdField})
     | WHERE id_value IS NOT NULL AND id_value != ""
-    | STATS count = count(id_value) BY id_value
+    | WHERE score_type IS NULL OR score_type == "base"
+    | SORT @timestamp DESC
+    | DEDUP id_value
+    | WHERE score > 0
+    | WHERE calculation_run_id IS NULL OR calculation_run_id != "${calculationRunId}"
     | KEEP id_value
     | LIMIT 10000
     `;
 
   logger.debug(`Reset to zero ESQL query:\n${esql}`);
 
-  const exclusionFilter =
-    excludedEntities.length > 0
-      ? { bool: { must_not: [{ terms: { [identifierField]: excludedEntities } }] } }
-      : undefined;
-
-  const response = await esClient.esql
-    .query({
-      query: esql,
-      ...(exclusionFilter ? { filter: exclusionFilter } : {}),
-    })
-    .catch((e) => {
-      logger.error(
-        `Error executing ESQL query to reset ${entityType} risk scores to zero: ${e.message}`
-      );
-      throw e;
-    });
+  const response = await esClient.esql.query({ query: esql }).catch((e) => {
+    logger.error(
+      `Error executing ESQL query to reset ${entityType} risk scores to zero: ${e.message}`
+    );
+    throw e;
+  });
 
   const entityIds = response.values.reduce<string[]>((acc, row) => {
     const [entity] = row;
