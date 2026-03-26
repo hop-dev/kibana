@@ -16,12 +16,12 @@ import {
 } from '../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskScoreDataClient } from '../risk_score_data_client';
-import type { RiskScoreBucket } from '../../types';
 import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
 import { getIndexPatternDataStream } from '../configurations';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 import type { ScopedLogger } from './utils/with_log_context';
+import type { ParsedRiskScore } from './parse_esql_row';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
@@ -98,22 +98,12 @@ export const resetToZero = async ({
 
   logger.debug(`reset_to_zero found ${entityIds.length} stale entities`);
 
-  const buckets: RiskScoreBucket[] = entityIds.map((entity) => ({
-    key: { [identifierField]: entity },
-    doc_count: 0,
-    top_inputs: {
-      doc_count: 0,
-      risk_details: {
-        value: {
-          score: 0,
-          normalized_score: 0,
-          notes: [],
-          category_1_score: 0,
-          category_1_count: 0,
-          risk_inputs: [],
-        },
-      },
-    },
+  const baseScores: ParsedRiskScore[] = entityIds.map((entityId) => ({
+    entity_id: entityId,
+    alert_count: 0,
+    score: 0,
+    normalized_score: 0,
+    risk_inputs: [],
   }));
 
   const entities = await fetchEntitiesByIds({
@@ -129,7 +119,7 @@ export const resetToZero = async ({
     identifierType: entityType,
     calculationRunId,
     page: {
-      buckets,
+      scores: baseScores,
       identifierField,
     },
     entities,

@@ -8,7 +8,7 @@
 import type { Entity, AssetCriticalityLevel } from '@kbn/entity-store/common';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { RiskScoreBucket } from '../../types';
+import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
 import {
   extractModifiersFromEntity,
   applyScoreModifiersFromEntities,
@@ -30,36 +30,25 @@ const buildTestEntity = ({
   ...(criticality ? { asset: { criticality } } : {}),
 });
 
-const buildBucket = (
+const buildScore = (
   entityId: string,
-  identifierField: string,
-  overrides?: Partial<RiskScoreBucket['top_inputs']['risk_details']['value']>
-): RiskScoreBucket => ({
-  key: { [identifierField]: entityId },
-  doc_count: 1,
-  top_inputs: {
-    doc_count: 1,
-    risk_details: {
-      value: {
-        score: 85,
-        normalized_score: 75,
-        notes: [],
-        category_1_score: 80,
-        category_1_count: 1,
-        risk_inputs: [
-          {
-            id: 'alert-1',
-            index: '.alerts-security',
-            rule_name: 'Test Rule',
-            time: '2024-01-01T00:00:00.000Z',
-            score: 50,
-            contribution: 25,
-          },
-        ],
-        ...overrides,
-      },
+  overrides?: Partial<ParsedRiskScore>
+): ParsedRiskScore => ({
+  entity_id: entityId,
+  alert_count: 1,
+  score: 85,
+  normalized_score: 75,
+  risk_inputs: [
+    {
+      id: 'alert-1',
+      index: '.alerts-security',
+      rule_name: 'Test Rule',
+      time: '2024-01-01T00:00:00.000Z',
+      score: 50,
+      contribution: 25,
     },
-  },
+  ],
+  ...overrides,
 });
 
 const buildWatchlistConfigs = (
@@ -229,7 +218,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -255,7 +244,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('user:u1', identifierField)], identifierField },
+      page: { scores: [buildScore('user:u1')], identifierField },
       entities,
       watchlistConfigs: defaultWatchlistConfigs,
     });
@@ -282,7 +271,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('user:u1', identifierField)], identifierField },
+      page: { scores: [buildScore('user:u1')], identifierField },
       entities,
       watchlistConfigs: defaultWatchlistConfigs,
     });
@@ -304,7 +293,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -321,7 +310,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('host:unknown', identifierField)], identifierField },
+      page: { scores: [buildScore('host:unknown')], identifierField },
       entities,
     });
 
@@ -331,19 +320,19 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(doc.calculated_score_norm).toBe(75);
   });
 
-  it('returns empty array with empty buckets', () => {
+  it('returns empty array with empty scores', () => {
     const entities = new Map<string, Entity>();
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [], identifierField },
+      page: { scores: [], identifierField },
       entities,
     });
 
     expect(results).toEqual([]);
   });
 
-  it('handles multiple buckets with mixed matches', () => {
+  it('handles multiple scores with mixed matches', () => {
     const entities = new Map([
       ['host:h1', buildTestEntity({ id: 'host:h1', criticality: 'low_impact' })],
       [
@@ -352,15 +341,15 @@ describe('applyScoreModifiersFromEntities', () => {
       ],
     ]);
 
-    const buckets = [
-      buildBucket('host:h1', identifierField),
-      buildBucket('host:h2', identifierField), // not in entity map
-      buildBucket('host:h3', identifierField),
+    const scores = [
+      buildScore('host:h1'),
+      buildScore('host:h2'), // not in entity map
+      buildScore('host:h3'),
     ];
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets, identifierField },
+      page: { scores, identifierField },
       entities,
       watchlistConfigs: defaultWatchlistConfigs,
     });
@@ -378,16 +367,16 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(results[2].modifiers).toHaveLength(2);
   });
 
-  it('empty entity map produces no modifiers for all buckets', () => {
+  it('empty entity map produces no modifiers for all scores', () => {
     const entities = new Map<string, Entity>();
-    const buckets = [
-      buildBucket('host:h1', identifierField),
-      buildBucket('host:h2', identifierField),
+    const scores = [
+      buildScore('host:h1'),
+      buildScore('host:h2'),
     ];
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets, identifierField },
+      page: { scores, identifierField },
       entities,
     });
 
@@ -402,7 +391,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -416,7 +405,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -429,7 +418,7 @@ describe('applyScoreModifiersFromEntities', () => {
     const results = applyScoreModifiersFromEntities({
       now,
       scoreType: 'propagated',
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -442,7 +431,7 @@ describe('applyScoreModifiersFromEntities', () => {
     const results = applyScoreModifiersFromEntities({
       now,
       calculationRunId: 'run-id-1',
-      page: { buckets: [buildBucket('host:h1', identifierField)], identifierField },
+      page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
@@ -459,7 +448,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('user:u1', identifierField)], identifierField },
+      page: { scores: [buildScore('user:u1')], identifierField },
       entities,
       watchlistConfigs: defaultWatchlistConfigs,
     });
@@ -488,7 +477,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('user:u1', identifierField)], identifierField },
+      page: { scores: [buildScore('user:u1')], identifierField },
       entities,
       watchlistConfigs: configs,
     });
@@ -507,7 +496,7 @@ describe('applyScoreModifiersFromEntities', () => {
 
     const results = applyScoreModifiersFromEntities({
       now,
-      page: { buckets: [buildBucket('user:u1', identifierField)], identifierField },
+      page: { scores: [buildScore('user:u1')], identifierField },
       entities,
       watchlistConfigs: defaultWatchlistConfigs,
     });

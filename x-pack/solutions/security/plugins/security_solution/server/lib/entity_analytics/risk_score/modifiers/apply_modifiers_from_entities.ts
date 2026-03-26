@@ -96,8 +96,7 @@ interface ApplyModifiersFromEntitiesParams {
   calculationRunId?: string;
   weights?: RiskScoreWeights;
   page: {
-    scores?: ParsedRiskScore[];
-    buckets?: Array<import('../../types').RiskScoreBucket>;
+    scores: ParsedRiskScore[];
     identifierField: string;
   };
   entities: Map<string, Entity>;
@@ -121,24 +120,7 @@ export const applyScoreModifiersFromEntities = ({
   entities,
   watchlistConfigs,
 }: ApplyModifiersFromEntitiesParams) => {
-  const scores: ParsedRiskScore[] =
-    page.scores ??
-    page.buckets?.map((bucket) => {
-      const value = bucket.top_inputs.risk_details.value;
-      return {
-        entity_id:
-          bucket.key[page.identifierField] ??
-          Object.values(bucket.key).find((identifier): identifier is string =>
-            Boolean(identifier)
-          ) ??
-          '',
-        alert_count: value.category_1_count,
-        score: value.score,
-        normalized_score: value.normalized_score,
-        risk_inputs: value.risk_inputs,
-      };
-    }) ??
-    [];
+  const { scores } = page;
 
   const globalWeight = identifierType
     ? getGlobalWeightForIdentifierType(identifierType, weights)
