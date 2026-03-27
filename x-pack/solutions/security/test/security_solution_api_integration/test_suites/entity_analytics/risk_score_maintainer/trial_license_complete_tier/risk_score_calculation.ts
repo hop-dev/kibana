@@ -18,7 +18,7 @@ import {
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
   waitForMaintainerRun,
-  deleteAllRiskScores,
+  cleanUpRiskScoreMaintainer,
   sanitizeScores,
   assetCriticalityRouteHelpersFactory,
   cleanAssetCriticality,
@@ -33,7 +33,6 @@ export default ({ getService }: FtrProviderContext): void => {
   const es = getService('es');
   const log = getService('log');
   const retry = getService('retry');
-
   const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
@@ -62,14 +61,14 @@ export default ({ getService }: FtrProviderContext): void => {
 
       beforeEach(async () => {
         await entityStoreUtils.cleanEngines();
-        await deleteAllRiskScores(log, es);
+        await cleanUpRiskScoreMaintainer({ log, es });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });
 
       afterEach(async () => {
         await entityStoreUtils.cleanEngines();
-        await deleteAllRiskScores(log, es);
+        await cleanUpRiskScoreMaintainer({ log, es });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });
@@ -253,7 +252,7 @@ export default ({ getService }: FtrProviderContext): void => {
           });
 
           // Delete existing risk scores and re-run maintainer
-          await deleteAllRiskScores(log, es);
+          await cleanUpRiskScoreMaintainer({ log, es });
           await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 2 });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });

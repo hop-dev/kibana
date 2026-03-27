@@ -240,16 +240,34 @@ export const waitForRiskScoresToBePresent = async ({
   log,
   index = ['risk-score.risk-score-default'],
   scoreCount = 1,
+  maxPolls = 150,
 }: {
   es: Client;
   log: ToolingLog;
   index?: string[];
   scoreCount?: number;
+  maxPolls?: number;
 }): Promise<void> => {
+  let pollCount = 0;
   await waitFor(
     async () => {
-      const riskScores = await readRiskScores(es, index, scoreCount + 10);
-      return riskScores.length >= scoreCount;
+      pollCount += 1;
+      if (pollCount > maxPolls) {
+        throw new Error(
+          `waitForRiskScoresToBePresent exceeded max polls (${maxPolls}) for index=${index.join(
+            ','
+          )}; expected at least ${scoreCount} risk score docs`
+        );
+      }
+      try {
+        const riskScores = await readRiskScores(es, index, scoreCount + 10);
+        return riskScores.length >= scoreCount;
+      } catch (e) {
+        if (e?.meta?.statusCode === 404) {
+          return false;
+        }
+        throw e;
+      }
     },
     'waitForRiskScoresToBePresent',
     log

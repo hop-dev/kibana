@@ -18,7 +18,7 @@ import {
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
   waitForMaintainerRun,
-  deleteAllRiskScores,
+  cleanUpRiskScoreMaintainer,
   assetCriticalityRouteHelpersFactory,
   cleanAssetCriticality,
   waitForAssetCriticalityToBePresent,
@@ -58,14 +58,14 @@ export default ({ getService }: FtrProviderContext): void => {
 
       beforeEach(async () => {
         await entityStoreUtils.cleanEngines();
-        await deleteAllRiskScores(log, es);
+        await cleanUpRiskScoreMaintainer({ log, es });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });
 
       afterEach(async () => {
         await entityStoreUtils.cleanEngines();
-        await deleteAllRiskScores(log, es);
+        await cleanUpRiskScoreMaintainer({ log, es });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
       });

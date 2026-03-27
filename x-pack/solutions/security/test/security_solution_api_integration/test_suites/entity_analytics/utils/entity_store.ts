@@ -13,6 +13,7 @@ import type { InitEntityStoreRequestBodyInput } from '@kbn/security-solution-plu
 import { waitFor } from '@kbn/detections-response-ftr-services';
 import type { FtrProviderContext } from '../../../ftr_provider_context';
 import { elasticAssetCheckerFactory } from './elastic_asset_checker';
+import { dataViewRouteHelpersFactory } from './data_view';
 
 export const EntityStoreUtils = (
   getService: FtrProviderContext['getService'],
@@ -22,6 +23,8 @@ export const EntityStoreUtils = (
   const es = getService('es');
   const log = getService('log');
   const retry = getService('retry');
+  const supertest = getService('supertest');
+  const dataView = dataViewRouteHelpersFactory(supertest, namespace);
   const {
     expectTransformExists,
     expectTransformNotFound,
@@ -38,7 +41,6 @@ export const EntityStoreUtils = (
   log.debug(`EntityStoreUtils namespace: ${namespace}`);
 
   const cleanEngines = async () => {
-    const supertest = getService('supertest');
     let settingsUrl = '/internal/kibana/settings';
     if (namespace !== 'default') {
       settingsUrl = `/s/${namespace}${settingsUrl}`;
@@ -49,6 +51,29 @@ export const EntityStoreUtils = (
       .set('x-elastic-internal-origin', 'Kibana')
       .send({ changes: { 'securitySolution:entityStoreEnableV2': null } })
       .expect(200);
+
+    try {
+      await dataView.delete('security-solution');
+    } catch (e) {
+      // Ignore if it doesn't exist
+    }
+
+    // Use the supported uninstall API so maintainers are removed via
+    // entityMaintainersClient.removeAll() and don't leak task state between tests.
+    let uninstallUrl = '/internal/security/entity_store/uninstall?apiVersion=2';
+    if (namespace !== 'default') {
+      uninstallUrl = `/s/${namespace}${uninstallUrl}`;
+    }
+    try {
+      await supertest
+        .post(uninstallUrl)
+        .set('kbn-xsrf', 'true')
+        .set('x-elastic-internal-origin', 'Kibana')
+        .send({ entityTypes: ['user', 'host'] })
+        .expect(200);
+    } catch (e) {
+      log.warning(`Error uninstalling entity store during cleanup: ${e.message}`);
+    }
 
     const { body } = await entityAnalyticsApi.listEntityEngines(namespace).expect(200);
 
@@ -188,7 +213,7 @@ export const EntityStoreUtils = (
   };
 
   const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
-    const supertest = getService('supertest');
+    await dataView.create('security-solution', 'logs-*,ecs_compliant');
 
     let settingsUrl = '/internal/kibana/settings';
     if (namespace !== 'default') {
@@ -215,6 +240,46 @@ export const EntityStoreUtils = (
       log.error(JSON.stringify(res.body));
     }
     expect([200, 201]).to.contain(res.status);
+
+    await retry.waitForWithTimeout(
+      `Engines to start for entity types: ${body.entityTypes.join(', ')}`,
+      60_000,
+      async () => {
+        const { body: enginesBody } = await entityAnalyticsApi
+          .listEntityEngines(namespace)
+          .expect(200);
+        if (enginesBody.engines.every((engine: any) => engine.status === 'started')) {
+          return true;
+        }
+        if (enginesBody.engines.some((engine: any) => engine.status === 'error')) {
+          throw new Error(`Engines not started: ${JSON.stringify(enginesBody)}`);
+        }
+        return false;
+      }
+    );
+
+    const entityTypes: string[] = body.entityTypes;
+    const fromDateISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const toDateISO = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    for (const entityType of entityTypes) {
+      let extractUrl = `/internal/security/entity_store/${entityType}/force_log_extraction`;
+      if (namespace !== 'default') {
+        extractUrl = `/s/${namespace}${extractUrl}`;
+      }
+      log.info(`Force extracting entities for type: ${entityType}`);
+      const extractRes = await supertest
+        .post(extractUrl)
+        .set('kbn-xsrf', 'true')
+        .set('x-elastic-internal-origin', 'Kibana')
+        .set('elastic-api-version', '2')
+        .send({ fromDateISO, toDateISO });
+      log.info(
+        `Force extraction for ${entityType}: status=${extractRes.status}, body=${JSON.stringify(
+          extractRes.body
+        )}`
+      );
+    }
+    await waitForEntityStoreEntities({ es, log, count: 1, namespace });
 
     let maintainersUrl = '/internal/security/entity_store/entity_maintainers/init?apiVersion=2';
     if (namespace !== 'default') {

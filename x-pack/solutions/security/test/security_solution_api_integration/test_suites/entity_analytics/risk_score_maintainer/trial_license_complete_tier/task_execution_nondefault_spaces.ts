@@ -18,7 +18,7 @@ import {
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
   waitForMaintainerRun,
-  deleteAllRiskScores,
+  cleanUpRiskScoreMaintainer,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -93,7 +93,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
       afterEach(async () => {
         await entityStoreUtilsCustomSpace.cleanEngines();
-        await deleteAllRiskScores(log, es, index);
+        await cleanUpRiskScoreMaintainer({ log, es, namespace });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
         await spaces.delete(namespace);
