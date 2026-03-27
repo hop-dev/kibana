@@ -64,6 +64,12 @@ export const euid = {
      * Input: entity type and sample document; output: parenthesized boolean expression or `undefined` if not buildable.
      */
     getEuidFilterBasedOnDocument: euidModule.getEuidEsqlFilterBasedOnDocument,
+
+    /**
+     * ESQL EVAL fragment for all field evaluations of the given entity type.
+     * Input: entity type. Output: ESQL expression string or `undefined` if no field evaluations exist.
+     */
+    getFieldEvaluations: euidModule.getFieldEvaluationsEsql,
   },
 
   /**

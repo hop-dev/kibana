@@ -14,7 +14,7 @@ import {
 const ERROR_MESSAGE_MAX_LENGTH = 500;
 
 type MaintainerStatus = 'success' | 'error' | 'skipped' | 'aborted';
-type GlobalSkipReason = 'feature_disabled' | 'license_insufficient' | 'risk_engine_disabled';
+type GlobalSkipReason = 'feature_disabled' | 'license_insufficient';
 export type MaintainerErrorKind =
   | 'esql_query_failed'
   | 'bulk_write_failed'

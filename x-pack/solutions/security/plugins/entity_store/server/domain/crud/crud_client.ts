@@ -320,7 +320,7 @@ export class CRUDClient {
       index: getLatestEntitiesIndexName(this.namespace),
       query,
       size,
-      sort: [{ _id: 'asc' }],
+      sort: [{ '@timestamp': 'desc' }, { _shard_doc: 'desc' }],
       search_after: searchAfter,
     });
 

@@ -508,6 +508,8 @@ export const getBaseScoreESQL = (
 ): string => {
   const euidEval = euid.esql.getEuidEvaluation(entityType, { withTypeId: true });
   const containsIdFilter = euid.esql.getEuidDocumentsContainsIdFilter(entityType);
+  const fieldEvals = euid.esql.getFieldEvaluations(entityType);
+  const fieldEvalsClause = fieldEvals ? `| EVAL ${fieldEvals}` : '';
 
   if (!bounds.lower && !bounds.upper) {
     throw new Error('Either lower or upper bound must be provided for EUID pagination');
@@ -526,6 +528,7 @@ export const getBaseScoreESQL = (
              kibana.alert.uuid as alert_id,
              event.kind as category,
              @timestamp as time
+    ${fieldEvalsClause}
     | EVAL entity_id = ${euidEval},
            rule_name_b64 = TO_BASE64(rule_name),
            category_b64 = TO_BASE64(category)
