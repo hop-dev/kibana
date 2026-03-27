@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { Entity } from '@kbn/entity-store/common';
+import type { RiskScoreModifierEntity } from '../maintainer/pipeline_types';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { EntityType } from '../../../../../common/entity_analytics/types';
@@ -29,7 +29,7 @@ import { isDefined } from '../../../../../common/utils/nullable';
  * where watchlistModifiers is an array (one per matching watchlist).
  */
 export const extractModifiersFromEntity = (
-  entity: Entity | undefined,
+  entity: RiskScoreModifierEntity | undefined,
   globalWeight?: number,
   watchlistConfigs?: Map<string, WatchlistObject>
 ): [Modifier<'asset_criticality'> | undefined, Array<Modifier<'watchlist'>>] => {
@@ -39,7 +39,7 @@ export const extractModifiersFromEntity = (
 };
 
 const buildCriticalityModifier = (
-  entity: Entity | undefined,
+  entity: RiskScoreModifierEntity | undefined,
   globalWeight?: number
 ): Modifier<'asset_criticality'> | undefined => {
   const criticalityLevel = entity?.asset?.criticality;
@@ -60,7 +60,7 @@ const buildCriticalityModifier = (
 };
 
 const buildWatchlistModifiers = (
-  entity: Entity | undefined,
+  entity: RiskScoreModifierEntity | undefined,
   globalWeight?: number,
   watchlistConfigs?: Map<string, WatchlistObject>
 ): Array<Modifier<'watchlist'>> => {
@@ -99,7 +99,7 @@ interface ApplyModifiersFromEntitiesParams {
     scores: ParsedRiskScore[];
     identifierField: string;
   };
-  entities: Map<string, Entity>;
+  entities: Map<string, RiskScoreModifierEntity>;
   watchlistConfigs?: Map<string, WatchlistObject>;
 }
 

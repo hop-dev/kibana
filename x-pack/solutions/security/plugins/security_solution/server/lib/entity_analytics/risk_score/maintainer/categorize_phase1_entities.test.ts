@@ -5,10 +5,9 @@
  * 2.0.
  */
 
-import type { Entity } from '@kbn/entity-store/common';
+import type { RiskScoreModifierEntity, ScoredEntityPage } from './pipeline_types';
 import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
-import type { ScoredEntityPage } from './pipeline_types';
 
 const score = (id: string): EntityRiskScoreRecord => ({
   '@timestamp': '2026-01-01T00:00:00.000Z',
@@ -28,7 +27,9 @@ describe('categorizePhase1Entities', () => {
     const scoredPage: ScoredEntityPage = {
       entityIds: ['host:known-1', 'host:unknown-1'],
       scores: [score('host:known-1'), score('host:unknown-1')],
-      entities: new Map<string, Entity>([['host:known-1', { entity: { id: 'host:known-1' } } as Entity]]),
+      entities: new Map<string, RiskScoreModifierEntity>([
+        ['host:known-1', { entity: { id: 'host:known-1' } } as RiskScoreModifierEntity],
+      ]),
     };
 
     const categorized = categorizePhase1Entities(scoredPage);
@@ -42,7 +43,7 @@ describe('categorizePhase1Entities', () => {
     const scoredPage: ScoredEntityPage = {
       entityIds: ['user:unknown-1'],
       scores: [score('user:unknown-1')],
-      entities: new Map<string, Entity>(),
+      entities: new Map<string, RiskScoreModifierEntity>(),
     };
 
     const categorized = categorizePhase1Entities(scoredPage);

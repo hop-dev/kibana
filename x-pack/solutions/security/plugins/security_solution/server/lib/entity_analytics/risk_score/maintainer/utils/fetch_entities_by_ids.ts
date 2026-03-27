@@ -6,7 +6,7 @@
  */
 
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { Entity } from '@kbn/entity-store/common';
+import type { RiskScoreModifierEntity } from '../pipeline_types';
 import type { ScopedLogger } from './with_log_context';
 
 interface FetchEntitiesByIdsParams {
@@ -21,8 +21,8 @@ export const fetchEntitiesByIds = async ({
   entityIds,
   logger,
   errorContext,
-}: FetchEntitiesByIdsParams): Promise<Map<string, Entity>> => {
-  const entityMap = new Map<string, Entity>();
+}: FetchEntitiesByIdsParams): Promise<Map<string, RiskScoreModifierEntity>> => {
+  const entityMap = new Map<string, RiskScoreModifierEntity>();
 
   if (entityIds.length === 0) {
     return entityMap;
@@ -35,10 +35,11 @@ export const fetchEntitiesByIds = async ({
         filter: { terms: { 'entity.id': entityIds } },
         size: entityIds.length,
         searchAfter,
+        source: ['entity.id', 'entity.attributes.watchlists', 'asset.criticality'],
       });
       for (const entity of batch) {
         if (entity.entity?.id) {
-          entityMap.set(entity.entity.id, entity);
+          entityMap.set(entity.entity.id, entity as RiskScoreModifierEntity);
         }
       }
       searchAfter = nextSearchAfter;

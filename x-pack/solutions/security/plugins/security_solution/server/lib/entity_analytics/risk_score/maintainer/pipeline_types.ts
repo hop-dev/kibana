@@ -7,7 +7,7 @@
 
 /** Shared types for the active Phase 1 maintainer runtime path. */
 
-import type { Entity } from '@kbn/entity-store/common';
+import type { AssetCriticalityLevel } from '@kbn/entity-store/common';
 import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
 
 /** Output of categorizeEntities() for downstream write/routing decisions. */
@@ -20,9 +20,22 @@ export interface CategorizedEntities {
   defer_to_phase_2: EntityRiskScoreRecord[];
 }
 
+/** Minimal entity fields required for Phase 1 modifier application. */
+export interface RiskScoreModifierEntity {
+  entity?: {
+    id?: string;
+    attributes?: {
+      watchlists?: string[];
+    };
+  };
+  asset?: {
+    criticality?: AssetCriticalityLevel;
+  };
+}
+
 /** Shared scored page shape used across maintainer loops. */
 export interface ScoredEntityPage {
   entityIds: string[];
   scores: EntityRiskScoreRecord[];
-  entities: Map<string, Entity>;
+  entities: Map<string, RiskScoreModifierEntity>;
 }

@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import type { Entity, AssetCriticalityLevel } from '@kbn/entity-store/common';
+import type { AssetCriticalityLevel } from '@kbn/entity-store/common';
+import type { RiskScoreModifierEntity } from '../maintainer/pipeline_types';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
@@ -22,7 +23,7 @@ const buildTestEntity = ({
   id: string;
   criticality?: AssetCriticalityLevel;
   watchlists?: string[];
-}): Entity => ({
+}): RiskScoreModifierEntity => ({
   entity: {
     id,
     ...(watchlists?.length ? { attributes: { watchlists } } : {}),
@@ -30,10 +31,7 @@ const buildTestEntity = ({
   ...(criticality ? { asset: { criticality } } : {}),
 });
 
-const buildScore = (
-  entityId: string,
-  overrides?: Partial<ParsedRiskScore>
-): ParsedRiskScore => ({
+const buildScore = (entityId: string, overrides?: Partial<ParsedRiskScore>): ParsedRiskScore => ({
   entity_id: entityId,
   alert_count: 1,
   score: 85,
@@ -306,7 +304,7 @@ describe('applyScoreModifiersFromEntities', () => {
   });
 
   it('produces base score when entity is not found in map', () => {
-    const entities = new Map<string, Entity>();
+    const entities = new Map<string, RiskScoreModifierEntity>();
 
     const results = applyScoreModifiersFromEntities({
       now,
@@ -321,7 +319,7 @@ describe('applyScoreModifiersFromEntities', () => {
   });
 
   it('returns empty array with empty scores', () => {
-    const entities = new Map<string, Entity>();
+    const entities = new Map<string, RiskScoreModifierEntity>();
 
     const results = applyScoreModifiersFromEntities({
       now,
@@ -368,11 +366,8 @@ describe('applyScoreModifiersFromEntities', () => {
   });
 
   it('empty entity map produces no modifiers for all scores', () => {
-    const entities = new Map<string, Entity>();
-    const scores = [
-      buildScore('host:h1'),
-      buildScore('host:h2'),
-    ];
+    const entities = new Map<string, RiskScoreModifierEntity>();
+    const scores = [buildScore('host:h1'), buildScore('host:h2')];
 
     const results = applyScoreModifiersFromEntities({
       now,
