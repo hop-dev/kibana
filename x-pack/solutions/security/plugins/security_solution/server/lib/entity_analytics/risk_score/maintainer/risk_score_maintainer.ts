@@ -27,7 +27,10 @@ import {
   getConfiguration,
   getDefaultRiskEngineConfiguration,
 } from '../../risk_engine/utils/saved_object_configuration';
-import { buildScopedInternalSavedObjectsClientUnsafe } from '../tasks/helpers';
+import {
+  buildScopedInternalSavedObjectsClientUnsafe,
+  buildInternalSavedObjectsClientUnsafe,
+} from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
 import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
@@ -98,6 +101,7 @@ export const createRiskScoreMaintainer = ({
       const namespace = status.metadata.namespace;
       const esClient = coreStart.elasticsearch.client.asInternalUser;
       const soClient = buildScopedInternalSavedObjectsClientUnsafe({ coreStart, namespace });
+      const internalSoClient = buildInternalSavedObjectsClientUnsafe({ coreStart });
       const riskScoreDataClient = new RiskScoreDataClient({
         logger,
         kibanaVersion,
@@ -138,7 +142,7 @@ export const createRiskScoreMaintainer = ({
 
       // Build once per run to avoid repeated SO reads in the scoring loop.
       const watchlistConfigs = await fetchWatchlistConfigs({
-        soClient,
+        soClient: internalSoClient,
         esClient,
         namespace,
         logger,

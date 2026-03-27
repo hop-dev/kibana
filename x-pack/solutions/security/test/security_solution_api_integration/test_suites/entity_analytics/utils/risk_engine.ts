@@ -81,10 +81,12 @@ export const createAndSyncRuleAndAlertsFactory =
     supertest,
     log,
     namespace,
+    indices = ['ecs_compliant'],
   }: {
     supertest: SuperTest.Agent;
     log: ToolingLog;
     namespace?: string;
+    indices?: string[];
   }) =>
   async ({
     alerts = 1,
@@ -99,7 +101,7 @@ export const createAndSyncRuleAndAlertsFactory =
     query: string;
     riskScoreOverride?: string;
   }): Promise<void> => {
-    const rule = getRuleForAlertTesting(['ecs_compliant'], uuidv4());
+    const rule = getRuleForAlertTesting(indices, uuidv4());
     const { id } = await createRule(
       supertest,
       log,
@@ -272,6 +274,83 @@ export const waitForRiskScoresToBePresent = async ({
     'waitForRiskScoresToBePresent',
     log
   );
+};
+
+/**
+ * Waits for a risk score document for a specific id_value and optional score condition.
+ * Useful in rerunnable tests where multiple docs for the same entity can exist in the stream.
+ */
+export const waitForRiskScoreForId = async ({
+  es,
+  log,
+  idValue,
+  index = ['risk-score.risk-score-default'],
+  maxPolls = 150,
+  expectedCalculatedScore,
+  minCalculatedScore,
+}: {
+  es: Client;
+  log: ToolingLog;
+  idValue: string;
+  index?: string[];
+  maxPolls?: number;
+  expectedCalculatedScore?: number;
+  minCalculatedScore?: number;
+}): Promise<Partial<EntityRiskScoreRecord>> => {
+  let pollCount = 0;
+  let bestMatch: Partial<EntityRiskScoreRecord> | undefined;
+
+  await waitFor(
+    async () => {
+      pollCount += 1;
+      if (pollCount > maxPolls) {
+        throw new Error(
+          `waitForRiskScoreForId exceeded max polls (${maxPolls}) for id_value=${idValue} index=${index.join(
+            ','
+          )}`
+        );
+      }
+
+      try {
+        const riskScores = await readRiskScores(es, index, 1000);
+        const normalized = sanitizeScores(normalizeScores(riskScores));
+        const matches = normalized.filter(({ id_value: candidateId }) => candidateId === idValue);
+
+        if (matches.length === 0) {
+          return false;
+        }
+
+        bestMatch = matches.reduce((best, candidate) => {
+          const bestValue = typeof best.calculated_score === 'number' ? best.calculated_score : -1;
+          const candidateValue =
+            typeof candidate.calculated_score === 'number' ? candidate.calculated_score : -1;
+          return candidateValue > bestValue ? candidate : best;
+        });
+
+        const calculatedScore = bestMatch.calculated_score;
+        if (typeof expectedCalculatedScore === 'number') {
+          return calculatedScore === expectedCalculatedScore;
+        }
+        if (typeof minCalculatedScore === 'number') {
+          return typeof calculatedScore === 'number' && calculatedScore >= minCalculatedScore;
+        }
+        return true;
+      } catch (e) {
+        if (e?.meta?.statusCode === 404) {
+          return false;
+        }
+        throw e;
+      }
+    },
+    'waitForRiskScoreForId',
+    log
+  );
+
+  if (!bestMatch) {
+    throw new Error(`waitForRiskScoreForId failed to find a score for id_value=${idValue}`);
+  }
+
+  return bestMatch;
 };
 
 /**

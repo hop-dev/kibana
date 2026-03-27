@@ -59,7 +59,18 @@ export const resetToZero = async ({
   calculationRunId,
   now,
 }: ResetToZeroDependencies): Promise<ResetToZeroSummary> => {
+  if (entityType !== 'host' && entityType !== 'user') {
+    logger.debug(`reset_to_zero skipped for unsupported entity type "${entityType}"`);
+    return { scoresWritten: 0, resetBatchLimitHit: false };
+  }
+
   const { alias } = await getIndexPatternDataStream(spaceId);
+  const indexExists = await esClient.indices.exists({ index: alias });
+  if (!indexExists) {
+    logger.debug(`reset_to_zero skipped because index "${alias}" does not exist yet`);
+    return { scoresWritten: 0, resetBatchLimitHit: false };
+  }
+
   const entityField = `${entityType}.${RISK_SCORE_ID_VALUE_FIELD}`;
   const scoreField = `${entityType}.${RISK_SCORE_FIELD}`;
   const scoreTypeField = `${entityType}.${RISK_SCORE_TYPE_FIELD}`;
@@ -73,8 +84,10 @@ export const resetToZero = async ({
     | EVAL calculation_run_id = TO_STRING(${runIdField})
     | WHERE id_value IS NOT NULL AND id_value != ""
     | WHERE score_type IS NULL OR score_type == "base"
-    | SORT @timestamp DESC
-    | DEDUP id_value
+    | STATS
+        score = LAST(score, @timestamp),
+        calculation_run_id = LAST(calculation_run_id, @timestamp)
+      BY id_value
     | WHERE score > 0
     | WHERE calculation_run_id IS NULL OR calculation_run_id != "${calculationRunId}"
     | KEEP id_value

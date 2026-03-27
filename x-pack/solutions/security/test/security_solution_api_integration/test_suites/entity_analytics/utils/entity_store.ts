@@ -213,7 +213,9 @@ export const EntityStoreUtils = (
   };
 
   const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
-    await dataView.create('security-solution', 'logs-*,ecs_compliant');
+    // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
+    const dataViewPattern = body.dataViewPattern ?? 'logs-*';
+    await dataView.create('security-solution', dataViewPattern);
 
     let settingsUrl = '/internal/kibana/settings';
     if (namespace !== 'default') {

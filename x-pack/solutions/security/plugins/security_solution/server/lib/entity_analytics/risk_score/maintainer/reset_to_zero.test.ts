@@ -37,6 +37,7 @@ describe('resetToZero (maintainer)', () => {
     writerBulkMock = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
     (dataClient.getWriter as jest.Mock).mockResolvedValue({ bulk: writerBulkMock });
     (persistRiskScoresToEntityStore as jest.Mock).mockResolvedValue([]);
+    (esClient.indices.exists as jest.Mock).mockResolvedValue(true);
     crudClient = {
       createEntity: jest.fn(),
       updateEntity: jest.fn(),
@@ -238,6 +239,27 @@ describe('resetToZero (maintainer)', () => {
     expect(writerBulkMock).not.toHaveBeenCalled();
   });
 
+  it('returns zero when risk score index does not exist yet', async () => {
+    (esClient.indices.exists as jest.Mock).mockResolvedValue(false);
+
+    const result = await resetToZero({
+      esClient,
+      dataClient,
+      spaceId: 'default',
+      entityType: EntityType.host,
+      logger,
+      idBasedRiskScoringEnabled: true,
+      crudClient,
+      calculationRunId: 'run-id-1',
+      now,
+      watchlistConfigs: emptyWatchlistConfigs,
+    });
+
+    expect(result).toEqual({ scoresWritten: 0, resetBatchLimitHit: false });
+    expect(esClient.esql.query).not.toHaveBeenCalled();
+    expect(writerBulkMock).not.toHaveBeenCalled();
+  });
+
   it('queries stale base docs by latest run id', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
       values: [['host:host-2', null]],
@@ -258,7 +280,7 @@ describe('resetToZero (maintainer)', () => {
 
     const query = (esClient.esql.query as jest.Mock).mock.calls[0][0].query as string;
     expect(query).toContain('WHERE score_type IS NULL OR score_type == "base"');
-    expect(query).toContain('| DEDUP id_value');
+    expect(query).toContain('score = LAST(score, @timestamp)');
     expect(query).toContain('WHERE calculation_run_id IS NULL OR calculation_run_id != "run-id-1"');
   });
 

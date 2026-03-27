@@ -15,3 +15,4 @@ export * from './entity_analytics';
 export * from './privilege_monitoring';
 export * from './data_view';
 export * from './watchlist';
+export * from './risk_score_maintainer';

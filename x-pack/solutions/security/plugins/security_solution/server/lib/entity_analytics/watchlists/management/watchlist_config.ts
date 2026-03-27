@@ -124,11 +124,8 @@ export class WatchlistConfigClient {
         namespaces: [this.deps.namespace],
         perPage: limit,
       })
-
       .then((response) => {
-        return response.saved_objects.map(
-          (so) => toWatchlistObject(so) as WatchlistObjectWithId
-        );
+        return response.saved_objects.map((so) => toWatchlistObject(so) as WatchlistObjectWithId);
       });
   }
 
