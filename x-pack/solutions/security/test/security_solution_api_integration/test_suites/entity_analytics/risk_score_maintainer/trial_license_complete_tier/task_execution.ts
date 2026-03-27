@@ -166,7 +166,7 @@ export default ({ getService }: FtrProviderContext): void => {
           );
 
           userId = uuidv4();
-          const userEvent = buildDocument({ user: { name: 'user-1' } }, userId);
+          const userEvent = buildDocument({ user: { name: 'user-1' }, event: { kind: 'asset' } }, userId);
           await indexListOfDocuments(
             Array(10)
               .fill(userEvent)

@@ -103,7 +103,7 @@ export default ({ getService }: FtrProviderContext): void => {
         const userDocId = uuidv4();
         await indexListOfDocuments([
           buildDocument({ host: { name: 'host-1' } }, hostDocId),
-          buildDocument({ user: { name: 'user-1' } }, userDocId),
+          buildDocument({ user: { name: 'user-1' }, event: { kind: 'asset' } }, userDocId),
         ]);
         await createAndSyncRuleAndAlerts({
           query: `id: ${hostDocId} or id: ${userDocId}`,
@@ -120,7 +120,7 @@ export default ({ getService }: FtrProviderContext): void => {
         const idValues = normalized.map(({ id_value: idValue }) => idValue).sort();
 
         expect(idValues).to.contain('host:host-1');
-        expect(idValues).to.contain('user:user-1');
+        expect(idValues).to.contain('user:user-1@unknown');
       });
 
       describe('@skipInServerless with asset criticality data', () => {
@@ -210,7 +210,9 @@ export default ({ getService }: FtrProviderContext): void => {
 
         it('calculates risk scores with watchlist modifiers', async () => {
           const documentId = uuidv4();
-          await indexListOfDocuments([buildDocument({ user: { name: 'user-1' } }, documentId)]);
+          await indexListOfDocuments([
+            buildDocument({ user: { name: 'user-1' }, event: { kind: 'asset' } }, documentId),
+          ]);
 
           await createAndSyncRuleAndAlerts({
             query: `id: ${documentId}`,
@@ -237,7 +239,7 @@ export default ({ getService }: FtrProviderContext): void => {
           // Update the entity in the entity store to add watchlist membership
           await es.updateByQuery({
             index: '.entities.v2.latest.security_default',
-            query: { term: { 'entity.id': 'user:user-1' } },
+            query: { term: { 'entity.id': 'user:user-1@unknown' } },
             script: {
               source: `
                 if (!ctx._source.entity.containsKey('attributes')) {
@@ -265,7 +267,7 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(score.modifiers![0].subtype).to.eql('high-risk-vendors');
           expect(score.modifiers![0].modifier_value).to.eql(1.8);
           expect(score.calculated_score_norm).to.be.greaterThan(baseNormScore);
-          expect(score.id_value).to.eql('user:user-1');
+          expect(score.id_value).to.eql('user:user-1@unknown');
         });
       });
     });
