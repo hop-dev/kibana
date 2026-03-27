@@ -153,17 +153,6 @@ export const createRiskScoreMaintainer = ({
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
 
-      if (configuration.enabled === false) {
-        telemetryReporter.reportGlobalSkipIfChanged({
-          namespace,
-          skipReason: 'risk_engine_disabled',
-          idBasedRiskScoringEnabled,
-          calculationRunId: uuidv4(),
-        });
-        logger.debug('Risk score maintainer run skipped because risk engine is disabled');
-        return status.state;
-      }
-
       telemetryReporter.clearGlobalSkipReason();
 
       for (const entityType of entityTypes) {
