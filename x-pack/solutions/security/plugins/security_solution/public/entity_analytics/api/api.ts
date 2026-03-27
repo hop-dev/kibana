@@ -183,11 +183,17 @@ export const useEntityAnalyticsRoutes = () => {
           : 'NOT_INSTALLED';
         const runAt = riskScoreMaintainer?.nextRunAt;
 
+        // The maintainer API doesn't expose the underlying TaskManager status directly,
+        // so we infer 'running' vs 'idle' based on whether nextRunAt is in the past.
+        // This is a heuristic, but it avoids leaking TaskManager internals into the maintainer API.
+        const isRunning = runAt ? new Date(runAt).getTime() <= Date.now() : false;
+        const status = isRunning ? 'running' : 'idle';
+
         return {
           risk_engine_status: riskEngineStatus,
           risk_engine_task_status: runAt
             ? {
-                status: 'idle',
+                status,
                 runAt,
               }
             : undefined,
