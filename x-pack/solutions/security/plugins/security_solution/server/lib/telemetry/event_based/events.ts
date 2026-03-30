@@ -314,29 +314,27 @@ export const RISK_SCORE_EXECUTION_CANCELLATION_EVENT: EventTypeOpts<{
   },
 };
 
-type RiskScoreMaintainerStatus = 'success' | 'error' | 'skipped' | 'aborted';
-type RiskScoreMaintainerSkipReason =
+export type RiskScoreMaintainerStatus = 'success' | 'error' | 'skipped' | 'aborted';
+export type RiskScoreMaintainerSkipReason =
   | 'license_insufficient'
   | 'feature_disabled'
   | 'risk_engine_disabled'
   | 'reset_to_zero_disabled'
   | 'phase_not_available';
-type RiskScoreMaintainerErrorKind =
+export type RiskScoreMaintainerErrorKind =
   | 'esql_query_failed'
   | 'bulk_write_failed'
   | 'entity_store_write_failed'
   | 'entity_fetch_failed'
   | 'unexpected';
-type RiskScoreMaintainerStage = 'phase1_base_scoring' | 'reset_to_zero';
+export type RiskScoreMaintainerStage = 'phase1_base_scoring' | 'reset_to_zero';
 
 export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
   namespace: string;
   entityType: string;
-  calculationRunId: string;
   status: RiskScoreMaintainerStatus;
   skipReason?: RiskScoreMaintainerSkipReason;
   errorKind?: RiskScoreMaintainerErrorKind;
-  errorMessage?: string;
   durationMs: number;
   scoresWrittenTotal: number;
   scoresWrittenBase: number;
@@ -351,10 +349,6 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
   schema: {
     namespace: { type: 'keyword', _meta: { description: 'Kibana space where scoring ran' } },
     entityType: { type: 'keyword', _meta: { description: 'Entity type scored (e.g. host, user)' } },
-    calculationRunId: {
-      type: 'keyword',
-      _meta: { description: 'Correlation ID for one maintainer run and entity type' },
-    },
     status: { type: 'keyword', _meta: { description: 'Run outcome status' } },
     skipReason: {
       type: 'keyword',
@@ -363,10 +357,6 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
     errorKind: {
       type: 'keyword',
       _meta: { optional: true, description: 'Bounded error category when status is error' },
-    },
-    errorMessage: {
-      type: 'keyword',
-      _meta: { optional: true, description: 'Capped error message for diagnostics' },
     },
     durationMs: { type: 'long', _meta: { description: 'Run duration in milliseconds' } },
     scoresWrittenTotal: { type: 'long', _meta: { description: 'Total risk score docs written' } },
@@ -404,12 +394,10 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
 export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
   namespace: string;
   entityType: string;
-  calculationRunId: string;
   stage: RiskScoreMaintainerStage;
   status: RiskScoreMaintainerStatus;
   skipReason?: RiskScoreMaintainerSkipReason;
   errorKind?: RiskScoreMaintainerErrorKind;
-  errorMessage?: string;
   durationMs: number;
   pagesProcessed?: number;
   scoresWritten?: number;
@@ -423,10 +411,6 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
   schema: {
     namespace: { type: 'keyword', _meta: { description: 'Kibana space where scoring ran' } },
     entityType: { type: 'keyword', _meta: { description: 'Entity type scored (e.g. host, user)' } },
-    calculationRunId: {
-      type: 'keyword',
-      _meta: { description: 'Correlation ID for one maintainer run and entity type' },
-    },
     stage: { type: 'keyword', _meta: { description: 'Phase-1 stage identifier' } },
     status: { type: 'keyword', _meta: { description: 'Stage outcome status' } },
     skipReason: {
@@ -436,10 +420,6 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
     errorKind: {
       type: 'keyword',
       _meta: { optional: true, description: 'Bounded error category when status is error' },
-    },
-    errorMessage: {
-      type: 'keyword',
-      _meta: { optional: true, description: 'Capped error message for diagnostics' },
     },
     durationMs: { type: 'long', _meta: { description: 'Stage duration in milliseconds' } },
     pagesProcessed: {
