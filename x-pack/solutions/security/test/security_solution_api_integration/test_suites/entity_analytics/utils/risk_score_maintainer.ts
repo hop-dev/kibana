@@ -8,7 +8,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Client } from '@elastic/elasticsearch';
 import type { ToolingLog } from '@kbn/tooling-log';
-import { buildDocument } from './risk_engine';
+import type { EntityRiskScoreRecord } from '@kbn/security-solution-plugin/common/api/entity_analytics/common';
+import { buildDocument, readRiskScores, normalizeScores } from './risk_engine';
 import { waitForMaintainerRun } from './entity_maintainers';
 
 type IndexListOfDocuments = (docs: Array<Record<string, unknown>>) => Promise<void>;
@@ -400,4 +401,41 @@ export const riskScoreMaintainerEntityBuilders = {
     kind: 'service',
     ...params,
   }),
+};
+
+/**
+ * Returns the normalized score for a specific test entity from a pre-fetched scores array,
+ * or undefined if no score exists for that entity yet.
+ */
+export const findScoreForEntity = (
+  normalizedScores: Array<Partial<EntityRiskScoreRecord>>,
+  entity: TestMaintainerEntity
+): Partial<EntityRiskScoreRecord> | undefined =>
+  normalizedScores.find((s) => s.id_value === entity.expectedEuid);
+
+/**
+ * Polls until the risk score data stream contains a zero-score document for the given entity ID.
+ * Used to assert that reset-to-zero has run for a stale entity.
+ */
+export const waitForEntityScoreResetToZero = async ({
+  es,
+  retry,
+  entityId,
+  timeoutMs = 60_000,
+}: {
+  es: Client;
+  retry: RetryServiceLike;
+  entityId: string;
+  timeoutMs?: number;
+}): Promise<void> => {
+  await retry.waitForWithTimeout(
+    `risk score reset to zero for ${entityId}`,
+    timeoutMs,
+    async () => {
+      const scores = normalizeScores(await readRiskScores(es));
+      return scores
+        .filter((s) => s.id_value === entityId)
+        .some((s) => s.calculated_score_norm === 0);
+    }
+  );
 };

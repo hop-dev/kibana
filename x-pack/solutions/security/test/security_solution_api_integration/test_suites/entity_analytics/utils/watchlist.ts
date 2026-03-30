@@ -16,6 +16,20 @@ import type { CreateWatchlistRequestBody } from '@kbn/security-solution-plugin/c
 import type { WatchlistObject } from '@kbn/security-solution-plugin/common/api/entity_analytics/watchlists/management/common.gen';
 import { routeWithNamespace } from '@kbn/detections-response-ftr-services';
 
+export type WatchlistRouteHelpers = ReturnType<typeof watchlistRouteHelpersFactory>;
+
+export const cleanUpWatchlists = async (watchlistRoutes: WatchlistRouteHelpers): Promise<void> => {
+  const listResponse = await watchlistRoutes.list().catch(() => undefined);
+  if (!listResponse) {
+    return;
+  }
+  for (const watchlist of listResponse.body) {
+    if (watchlist.id) {
+      await watchlistRoutes.delete(watchlist.id).catch(() => undefined);
+    }
+  }
+};
+
 export const watchlistRouteHelpersFactory = (supertest: SuperTest.Agent, namespace?: string) => ({
   create: async (
     body: CreateWatchlistRequestBody,

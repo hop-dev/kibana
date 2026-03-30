@@ -22,8 +22,11 @@ import {
   cleanAssetCriticality,
   getAssetCriticalityEsDocument,
   watchlistRouteHelpersFactory,
+  cleanUpWatchlists,
   riskScoreMaintainerScenarioFactory,
   riskScoreMaintainerEntityBuilders,
+  findScoreForEntity,
+  waitForEntityScoreResetToZero,
   waitForEntityStoreEntities,
   indexListOfDocumentsFactory,
   waitForEntityStoreDoc,
@@ -168,14 +171,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
         afterEach(async () => {
           await cleanAssetCriticality({ log, es });
-          const listResponse = await watchlistRoutes.list().catch(() => undefined);
-          if (listResponse) {
-            for (const watchlist of listResponse.body) {
-              if (watchlist.id) {
-                await watchlistRoutes.delete(watchlist.id).catch(() => undefined);
-              }
-            }
-          }
+          await cleanUpWatchlists(watchlistRoutes);
         });
 
         it('persists a complete base score document with expected shape', async () => {
@@ -487,15 +483,7 @@ export default ({ getService }: FtrProviderContext): void => {
         const watchlistRoutes = watchlistRouteHelpersFactory(supertest);
 
         afterEach(async () => {
-          const listResponse = await watchlistRoutes.list().catch(() => undefined);
-          if (!listResponse) {
-            return;
-          }
-          for (const watchlist of listResponse.body) {
-            if (watchlist.id) {
-              await watchlistRoutes.delete(watchlist.id).catch(() => undefined);
-            }
-          }
+          await cleanUpWatchlists(watchlistRoutes);
         });
 
         it('calculates risk scores with watchlist modifiers', async () => {
@@ -633,7 +621,7 @@ export default ({ getService }: FtrProviderContext): void => {
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 2 });
 
           const firstRunScores = normalizeScores(await readRiskScores(es));
-          const staleFirstScore = firstRunScores.find((s) => s.id_value === staleHost.expectedEuid);
+          const staleFirstScore = findScoreForEntity(firstRunScores, staleHost);
           expect(staleFirstScore).to.not.be(undefined);
           expect(staleFirstScore!.calculated_score_norm).to.be.greaterThan(0);
 
@@ -655,15 +643,7 @@ export default ({ getService }: FtrProviderContext): void => {
           await maintainerRoutes.startMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
-          await retry.waitForWithTimeout(
-            `stale entity ${staleHost.expectedEuid} reset to zero`,
-            60_000,
-            async () => {
-              const scores = normalizeScores(await readRiskScores(es));
-              const staleScores = scores.filter((s) => s.id_value === staleHost.expectedEuid);
-              return staleScores.some((s) => s.calculated_score_norm === 0);
-            }
-          );
+          await waitForEntityScoreResetToZero({ es, retry, entityId: staleHost.expectedEuid });
 
           // Verify the entity store also reflects the zero risk score
           await retry.waitForWithTimeout(
@@ -733,14 +713,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
         afterEach(async () => {
           await cleanAssetCriticality({ log, es });
-          const listResponse = await watchlistRoutesScale.list().catch(() => undefined);
-          if (listResponse) {
-            for (const watchlist of listResponse.body) {
-              if (watchlist.id) {
-                await watchlistRoutesScale.delete(watchlist.id).catch(() => undefined);
-              }
-            }
-          }
+          await cleanUpWatchlists(watchlistRoutesScale);
         });
 
         it('scores many entities with asset criticality and watchlist modifiers', async () => {
@@ -825,14 +798,14 @@ export default ({ getService }: FtrProviderContext): void => {
 
           // Entities with criticality should have the modifier applied
           for (const entity of criticalEntities) {
-            const entityScore = scores.find((s) => s.id_value === entity.expectedEuid);
+            const entityScore = findScoreForEntity(scores, entity);
             expect(entityScore?.criticality_level).to.eql('high_impact');
             expect(entityScore?.criticality_modifier).to.eql(1.5);
           }
 
           // Entities with watchlist membership should have a watchlist modifier
           for (const entity of watchlistEntities) {
-            const entityScore = scores.find((s) => s.id_value === entity.expectedEuid);
+            const entityScore = findScoreForEntity(scores, entity);
             const hasWatchlistMod = entityScore?.modifiers?.some(
               (m) =>
                 m.type === 'watchlist' &&
@@ -847,7 +820,7 @@ export default ({ getService }: FtrProviderContext): void => {
             (e) => !criticalEntities.includes(e) && !watchlistEntities.includes(e)
           );
           for (const entity of plainEntities) {
-            const entityScore = scores.find((s) => s.id_value === entity.expectedEuid);
+            const entityScore = findScoreForEntity(scores, entity);
             expect(entityScore?.criticality_level).to.be(undefined);
           }
         });
