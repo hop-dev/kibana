@@ -313,10 +313,12 @@ export class Plugin implements ISecuritySolutionPlugin {
       registerRiskScoreMaintainer({
         entityStore: plugins.entityStore,
         getStartServices: core.getStartServices,
+        entityAnalyticsConfig: config.entityAnalytics,
         kibanaVersion: pluginContext.env.packageInfo.version,
         logger: this.logger,
         auditLogger: plugins.security?.audit.withoutRequest,
         productFeaturesService,
+        telemetry: core.analytics,
       });
     } else {
       registerRiskScoringTask({
