@@ -7,56 +7,138 @@
 
 import expect from '@kbn/expect';
 import { v4 as uuidv4 } from 'uuid';
-import { deleteAllRules, deleteAllAlerts } from '@kbn/detections-response-ftr-services';
-import { dataGeneratorFactory } from '../../../detections_response/utils';
+import { deleteAllAlerts, deleteAllRules } from '@kbn/detections-response-ftr-services';
 import {
-  buildDocument,
   createAndSyncRuleAndAlertsFactory,
   readRiskScores,
-  waitForRiskScoresToBePresent,
   normalizeScores,
+  waitForRiskScoresToBePresent,
+  waitForRiskScoreForId,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
   waitForMaintainerRun,
   cleanUpRiskScoreMaintainer,
-  assetCriticalityRouteHelpersFactory,
-  cleanAssetCriticality,
-  waitForAssetCriticalityToBePresent,
+  riskScoreMaintainerScenarioFactory,
+  riskScoreMaintainerEntityBuilders,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
-  const esArchiver = getService('esArchiver');
   const es = getService('es');
   const log = getService('log');
   const retry = getService('retry');
-
-  const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({ supertest, log });
+  const testLogsIndex = 'logs-testlogs-default';
+  const testLogsTemplate = 'logs-testlogs-default-template';
+  const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({
+    supertest,
+    log,
+    indices: [testLogsIndex],
+  });
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
 
-  describe('@ess @serverless @serverlessQA Risk Score Maintainer Task Execution', () => {
+  describe('@ess @serverless @serverlessQA Risk Score Maintainer Task Lifecycle', function () {
+    this.tags(['esGate']);
+
     context('with auditbeat data', () => {
-      const { indexListOfDocuments } = dataGeneratorFactory({
-        es,
-        index: 'ecs_compliant',
-        log,
+      const indexListOfDocuments = async (documents: Array<Record<string, unknown>>) => {
+        const operations = documents.flatMap((document) => {
+          const { _id, ...source } = document as Record<string, unknown> & { _id?: string };
+          const existingDataStream =
+            typeof source.data_stream === 'object' && source.data_stream !== null
+              ? (source.data_stream as Record<string, unknown>)
+              : {};
+
+          const enrichedSource = {
+            ...source,
+            data_stream: {
+              type: (existingDataStream.type as string) ?? 'logs',
+              dataset: (existingDataStream.dataset as string) ?? 'testlogs.default',
+              namespace: (existingDataStream.namespace as string) ?? 'default',
+            },
+          };
+
+          return [{ create: { _index: testLogsIndex, _id: _id ?? uuidv4() } }, enrichedSource];
+        });
+
+        const response = await es.bulk({ refresh: true, operations });
+        const firstError = response.items.find((item) => item.create?.error)?.create?.error;
+        if (firstError) {
+          log.error(`Failed to index maintainer test document: "${firstError.reason}"`);
+          throw new Error(firstError.reason ?? firstError.type ?? 'bulk_create_error');
+        }
+
+        return { documents, response };
+      };
+      const maintainerScenario = riskScoreMaintainerScenarioFactory({
+        indexListOfDocuments,
+        createAndSyncRuleAndAlerts,
+        entityStoreUtils,
+        retry,
+        routes: maintainerRoutes,
       });
 
       before(async () => {
-        await esArchiver.load(
-          'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
-        );
+        await es.indices.deleteIndexTemplate({ name: testLogsTemplate }, { ignore: [404] });
+        await es.indices.putIndexTemplate({
+          name: testLogsTemplate,
+          index_patterns: [testLogsIndex],
+          data_stream: {},
+          template: {
+            mappings: {
+              properties: {
+                '@timestamp': { type: 'date' },
+                data_stream: {
+                  properties: {
+                    type: { type: 'keyword' },
+                    dataset: { type: 'keyword' },
+                    namespace: { type: 'keyword' },
+                  },
+                },
+                event: {
+                  properties: {
+                    kind: { type: 'keyword' },
+                    category: { type: 'keyword' },
+                    type: { type: 'keyword' },
+                    outcome: { type: 'keyword' },
+                    module: { type: 'keyword' },
+                  },
+                },
+                host: {
+                  properties: {
+                    id: { type: 'keyword' },
+                    name: { type: 'keyword' },
+                  },
+                },
+                user: {
+                  properties: {
+                    id: { type: 'keyword' },
+                    name: { type: 'keyword' },
+                    email: { type: 'keyword' },
+                    domain: { type: 'keyword' },
+                  },
+                },
+              },
+            },
+          },
+        });
+        await es.indices.deleteDataStream({ name: testLogsIndex }, { ignore: [404] });
+        await es.indices.createDataStream({ name: testLogsIndex });
       });
 
       after(async () => {
-        await esArchiver.unload(
-          'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
-        );
+        await es.indices.deleteDataStream({ name: testLogsIndex }, { ignore: [404] });
+        await es.indices.deleteIndexTemplate({ name: testLogsTemplate }, { ignore: [404] });
       });
 
       beforeEach(async () => {
+        await es.deleteByQuery({
+          index: testLogsIndex,
+          query: { match_all: {} },
+          refresh: true,
+          ignore_unavailable: true,
+        });
         await entityStoreUtils.cleanEngines();
         await cleanUpRiskScoreMaintainer({ log, es });
         await deleteAllAlerts(supertest, log, es);
@@ -70,175 +152,73 @@ export default ({ getService }: FtrProviderContext): void => {
         await deleteAllRules(supertest, log);
       });
 
-      describe('with some alerts containing hosts', () => {
-        let documentId: string;
+      it('@skipInServerlessMKI produces additional scores after stop and restart', async () => {
+        const hostName = `host-lifecycle-${uuidv4().slice(0, 8)}`;
+        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
+          riskScoreMaintainerEntityBuilders.host({ hostName }),
+        ]);
+        const [host] = testEntities;
 
-        beforeEach(async () => {
-          documentId = uuidv4();
-          const baseEvent = buildDocument({ host: { name: 'host-1' } }, documentId);
-          await indexListOfDocuments(
-            Array(10)
-              .fill(baseEvent)
-              .map((_baseEvent, index) => ({
-                ..._baseEvent,
-                'host.name': `host-${index}`,
-              }))
-          );
-
-          await createAndSyncRuleAndAlerts({
-            query: `id: ${documentId}`,
-            alerts: 10,
-            riskScore: 40,
-          });
+        await maintainerScenario.createAlertsForDocumentIds({
+          documentIds,
+          alerts: 1,
+          riskScore: 40,
         });
 
-        describe('installing entity store v2 with maintainer', () => {
-          beforeEach(async () => {
-            await entityStoreUtils.installEntityStoreV2();
-            await waitForMaintainerRun({ retry, routes: maintainerRoutes });
-          });
-
-          it('@skipInServerlessMKI calculates and persists risk scores for alert documents', async () => {
-            await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
-
-            const scores = await readRiskScores(es);
-            const normalized = normalizeScores(scores);
-            expect(normalized.length).to.eql(10);
-
-            const idValues = normalized.map(({ id_value: idValue }) => idValue).sort();
-            // In the maintainer pipeline, id_value is the EUID (e.g., 'host:host-0')
-            const expectedEuids = Array(10)
-              .fill(0)
-              .map((_, index) => `host:host-${index}`)
-              .sort();
-            expect(idValues).to.eql(expectedEuids);
-          });
-
-          describe('@skipInServerlessMKI stopping and re-starting the maintainer', () => {
-            beforeEach(async () => {
-              await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
-              await maintainerRoutes.stopMaintainer('risk-score');
-              await maintainerRoutes.startMaintainer('risk-score');
-            });
-
-            it('calculates another round of scores after restart', async () => {
-              await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
-
-              const scores = await readRiskScores(es);
-              expect(scores.length).to.be.greaterThan(10);
-
-              const expectedEuids = Array(10)
-                .fill(0)
-                .map((_, index) => `host:host-${index}`);
-              const actualIds = normalizeScores(scores).map(({ id_value: idValue }) => idValue);
-
-              expect(actualIds.sort()).to.eql([...expectedEuids, ...expectedEuids].sort());
-            });
-          });
-
-          describe('@skipInServerlessMKI triggering a manual run', () => {
-            it('produces additional risk scores', async () => {
-              await waitForRiskScoresToBePresent({ es, log, scoreCount: 10 });
-              await maintainerRoutes.runMaintainer('risk-score');
-              await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
-
-              const scores = await readRiskScores(es);
-              expect(scores.length).to.be.greaterThan(10);
-            });
-          });
+        await maintainerScenario.installAndRunMaintainer({ dataViewPattern: testLogsIndex });
+        await waitForRiskScoreForId({
+          es,
+          log,
+          idValue: host.expectedEuid,
+          expectedCalculatedScore: 40,
         });
+
+        const preRestartScores = await readRiskScores(es);
+        const preRestartCount = preRestartScores.length;
+
+        await maintainerRoutes.stopMaintainer('risk-score');
+        await maintainerRoutes.startMaintainer('risk-score');
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
+
+        await waitForRiskScoresToBePresent({ es, log, scoreCount: preRestartCount + 1 });
+        const postRestartScores = await readRiskScores(es);
+        expect(postRestartScores.length).to.be.greaterThan(preRestartCount);
+
+        const normalized = normalizeScores(postRestartScores);
+        const hostScores = normalized.filter((s) => s.id_value === host.expectedEuid);
+        expect(hostScores.length).to.be.greaterThan(1);
       });
 
-      describe('with some alerts containing hosts and others containing users', () => {
-        let hostId: string;
-        let userId: string;
+      it('@skipInServerlessMKI produces additional scores after manual trigger', async () => {
+        const hostName = `host-manual-${uuidv4().slice(0, 8)}`;
+        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
+          riskScoreMaintainerEntityBuilders.host({ hostName }),
+        ]);
+        const [host] = testEntities;
 
-        beforeEach(async () => {
-          hostId = uuidv4();
-          const hostEvent = buildDocument({ host: { name: 'host-1' } }, hostId);
-          await indexListOfDocuments(
-            Array(10)
-              .fill(hostEvent)
-              .map((event, index) => ({
-                ...event,
-                'host.name': `host-${index}`,
-              }))
-          );
-
-          userId = uuidv4();
-          const userEvent = buildDocument(
-            {
-              user: { name: 'user-1' },
-              event: { kind: ['asset'], category: ['iam'], type: ['user'] },
-            },
-            userId
-          );
-          await indexListOfDocuments(
-            Array(10)
-              .fill(userEvent)
-              .map((event, index) => ({
-                ...event,
-                'user.name': `user-${index}`,
-              }))
-          );
-
-          await createAndSyncRuleAndAlerts({
-            query: `id: ${userId} or id: ${hostId}`,
-            alerts: 20,
-            riskScore: 40,
-          });
+        await maintainerScenario.createAlertsForDocumentIds({
+          documentIds,
+          alerts: 1,
+          riskScore: 40,
         });
 
-        it('@skipInServerlessMKI calculates and persists risk scores for both types of entities', async () => {
-          await entityStoreUtils.installEntityStoreV2();
-          await waitForMaintainerRun({ retry, routes: maintainerRoutes });
-          await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
-
-          const riskScores = await readRiskScores(es);
-          expect(riskScores.length).to.be.greaterThan(0);
-
-          const scoredIds = normalizeScores(riskScores).map(({ id_value: idValue }) => idValue);
-          // Both host: and user: prefixed EUIDs should be present
-          expect(scoredIds.some((id) => id?.startsWith('host:'))).to.be(true);
-          expect(scoredIds.some((id) => id?.startsWith('user:'))).to.be(true);
+        await maintainerScenario.installAndRunMaintainer({ dataViewPattern: testLogsIndex });
+        await waitForRiskScoreForId({
+          es,
+          log,
+          idValue: host.expectedEuid,
+          expectedCalculatedScore: 40,
         });
 
-        context('@skipInServerless with asset criticality data', () => {
-          const assetCriticalityRoutes = assetCriticalityRouteHelpersFactory(supertest);
+        const preManualScores = await readRiskScores(es);
+        const preManualCount = preManualScores.length;
 
-          beforeEach(async () => {
-            await assetCriticalityRoutes.upsert({
-              id_field: 'host.name',
-              id_value: 'host-1',
-              criticality_level: 'extreme_impact',
-            });
-          });
+        await maintainerRoutes.runMaintainer('risk-score');
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
-          afterEach(async () => {
-            await cleanAssetCriticality({ log, es });
-          });
-
-          it('calculates risk scores with asset criticality data', async () => {
-            await waitForAssetCriticalityToBePresent({ es, log });
-            await entityStoreUtils.installEntityStoreV2();
-            await waitForMaintainerRun({ retry, routes: maintainerRoutes });
-            await waitForRiskScoresToBePresent({ es, log, scoreCount: 20 });
-
-            const riskScores = await readRiskScores(es);
-            expect(riskScores.length).to.be.greaterThan(0);
-
-            // At least one score should have criticality applied
-            const assetCriticalityLevels = riskScores.map(
-              (riskScore) => riskScore.host?.risk.criticality_level
-            );
-            const assetCriticalityModifiers = riskScores.map(
-              (riskScore) => riskScore.host?.risk.criticality_modifier
-            );
-
-            expect(assetCriticalityLevels).to.contain('extreme_impact');
-            expect(assetCriticalityModifiers).to.contain(2);
-          });
-        });
+        await waitForRiskScoresToBePresent({ es, log, scoreCount: preManualCount + 1 });
+        const postManualScores = await readRiskScores(es);
+        expect(postManualScores.length).to.be.greaterThan(preManualCount);
       });
     });
   });
