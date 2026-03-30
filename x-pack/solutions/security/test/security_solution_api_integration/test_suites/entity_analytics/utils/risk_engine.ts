@@ -61,7 +61,9 @@ export const sanitizeScores = (
 export const normalizeScores = (
   scores: Array<Partial<EcsRiskScore>>
 ): Array<Partial<EntityRiskScoreRecord>> =>
-  scores.map((score) => sanitizeScore(score.host?.risk ?? score.user?.risk ?? {}));
+  scores.map((score) =>
+    sanitizeScore(score.host?.risk ?? score.user?.risk ?? score.service?.risk ?? {})
+  );
 
 export const buildDocument = (body: object, id?: string) => {
   const firstTimestamp = Date.now();

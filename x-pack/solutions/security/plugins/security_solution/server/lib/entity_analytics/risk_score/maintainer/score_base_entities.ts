@@ -172,8 +172,19 @@ export const scoreBaseEntities = async ({
     // When Phase 2 aggregation is implemented, this write set will become
     // write_now only and defer_to_phase_2 will be handled in that phase.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
-    await writer.bulk({ [params.entityType]: riskIndexWrites });
-    scoresWritten += riskIndexWrites.length;
+    const bulkResponse = await writer.bulk({ [params.entityType]: riskIndexWrites });
+    scoresWritten += bulkResponse.docs_written;
+    if (bulkResponse.errors.length > 0) {
+      params.logger.warn(
+        `[page:${pagesProcessed}] risk score bulk write had ${bulkResponse.errors.length} error(s): ${bulkResponse.errors.join(
+          '; '
+        )}`
+      );
+    } else {
+      params.logger.info(
+        `[page:${pagesProcessed}] risk score bulk write succeeded: attempted=${riskIndexWrites.length}, written=${bulkResponse.docs_written}, took=${bulkResponse.took}ms`
+      );
+    }
 
     if (idBasedRiskScoringEnabled) {
       const entityStoreErrors = await persistRiskScoresToEntityStore({

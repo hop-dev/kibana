@@ -20,6 +20,7 @@ import {
   cleanUpRiskScoreMaintainer,
   riskScoreMaintainerScenarioFactory,
   riskScoreMaintainerEntityBuilders,
+  indexListOfDocumentsFactory,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -42,35 +43,7 @@ export default ({ getService }: FtrProviderContext): void => {
     this.tags(['esGate']);
 
     context('with auditbeat data', () => {
-      const indexListOfDocuments = async (documents: Array<Record<string, unknown>>) => {
-        const operations = documents.flatMap((document) => {
-          const { _id, ...source } = document as Record<string, unknown> & { _id?: string };
-          const existingDataStream =
-            typeof source.data_stream === 'object' && source.data_stream !== null
-              ? (source.data_stream as Record<string, unknown>)
-              : {};
-
-          const enrichedSource = {
-            ...source,
-            data_stream: {
-              type: (existingDataStream.type as string) ?? 'logs',
-              dataset: (existingDataStream.dataset as string) ?? 'testlogs.default',
-              namespace: (existingDataStream.namespace as string) ?? 'default',
-            },
-          };
-
-          return [{ create: { _index: testLogsIndex, _id: _id ?? uuidv4() } }, enrichedSource];
-        });
-
-        const response = await es.bulk({ refresh: true, operations });
-        const firstError = response.items.find((item) => item.create?.error)?.create?.error;
-        if (firstError) {
-          log.error(`Failed to index maintainer test document: "${firstError.reason}"`);
-          throw new Error(firstError.reason ?? firstError.type ?? 'bulk_create_error');
-        }
-
-        return { documents, response };
-      };
+      const indexListOfDocuments = indexListOfDocumentsFactory({ es, log, index: testLogsIndex });
       const maintainerScenario = riskScoreMaintainerScenarioFactory({
         indexListOfDocuments,
         createAndSyncRuleAndAlerts,

@@ -6,6 +6,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import type { Client } from '@elastic/elasticsearch';
+import type { ToolingLog } from '@kbn/tooling-log';
 import { buildDocument } from './risk_engine';
 import { waitForMaintainerRun } from './entity_maintainers';
 
@@ -23,26 +25,67 @@ interface RetryServiceLike {
   waitForWithTimeout: (
     label: string,
     timeout: number,
-    predicate: () => Promise<boolean> | boolean
+    predicate: () => Promise<boolean>
   ) => Promise<void>;
 }
 
 type EntityStoreEntityType = 'user' | 'host' | 'service' | 'generic';
 type CriticalityLevel = 'low_impact' | 'medium_impact' | 'high_impact' | 'extreme_impact';
 
-type MaintainerRoutesLike = {
+interface MaintainerRoutesLike {
   getMaintainers: () => Promise<{
     body: { maintainers: Array<{ id: string; runs: number }> };
   }>;
   runMaintainer: (id: string) => Promise<unknown>;
-};
+}
 
-type EntityStoreUtilsLike = {
-  installEntityStoreV2: (body?: { entityTypes: string[]; dataViewPattern?: string }) => Promise<unknown>;
+interface EntityStoreUtilsLike {
+  installEntityStoreV2: (body?: {
+    entityTypes: string[];
+    dataViewPattern?: string;
+  }) => Promise<unknown>;
   forceUpdateEntityViaCrud: (params: {
     entityType: EntityStoreEntityType;
     body: Record<string, unknown>;
   }) => Promise<unknown>;
+}
+
+export const indexListOfDocumentsFactory = ({
+  es,
+  log,
+  index,
+}: {
+  es: Client;
+  log: ToolingLog;
+  index: string;
+}) => {
+  return async (documents: Array<Record<string, unknown>>): Promise<void> => {
+    const operations = documents.flatMap((document) => {
+      const { _id, ...source } = document as Record<string, unknown> & { _id?: string };
+      const existingDataStream =
+        typeof source.data_stream === 'object' && source.data_stream !== null
+          ? (source.data_stream as Record<string, unknown>)
+          : {};
+
+      const enrichedSource = {
+        ...source,
+        data_stream: {
+          type: (existingDataStream.type as string) ?? 'logs',
+          dataset: (existingDataStream.dataset as string) ?? 'testlogs.default',
+          namespace: (existingDataStream.namespace as string) ?? 'default',
+        },
+      };
+
+      return [{ create: { _index: index, _id: _id ?? uuidv4() } }, enrichedSource];
+    });
+
+    const response = await es.bulk({ refresh: true, operations });
+    const firstError = response.items.find((item) => item.create?.error)?.create?.error;
+    if (firstError) {
+      log.error(`Failed to index maintainer test document: "${firstError.reason}"`);
+      throw new Error(firstError.reason ?? firstError.type ?? 'bulk_create_error');
+    }
+  };
 };
 
 export type MaintainerEntitySeed =
@@ -67,6 +110,12 @@ export type MaintainerEntitySeed =
       userName: string;
       hostId: string;
       hostName?: string;
+      documentId?: string;
+      extraFields?: Record<string, unknown>;
+    }
+  | {
+      kind: 'service';
+      serviceName: string;
       documentId?: string;
       extraFields?: Record<string, unknown>;
     };
@@ -117,6 +166,22 @@ const buildTestEntity = (seed: MaintainerEntitySeed): TestMaintainerEntity => {
         documentId
       ),
       expectedEuid: `user:${seed.userName}@${expectedNamespace}`,
+    };
+  }
+
+  if (seed.kind === 'service') {
+    return {
+      seed,
+      documentId,
+      document: buildDocument(
+        {
+          service: { name: seed.serviceName },
+          event: { kind: 'event', category: 'network', outcome: 'success' },
+          ...(seed.extraFields ?? {}),
+        },
+        documentId
+      ),
+      expectedEuid: `service:${seed.serviceName}`,
     };
   }
 
@@ -219,6 +284,9 @@ export const riskScoreMaintainerScenarioFactory = ({
     if (testEntity.seed.kind === 'host') {
       return 'host';
     }
+    if (testEntity.seed.kind === 'service') {
+      return 'service';
+    }
     return 'user';
   };
 
@@ -308,7 +376,9 @@ export const riskScoreMaintainerScenarioFactory = ({
 };
 
 export const riskScoreMaintainerEntityBuilders = {
-  host: (params: Omit<Extract<MaintainerEntitySeed, { kind: 'host' }>, 'kind'>): MaintainerEntitySeed => ({
+  host: (
+    params: Omit<Extract<MaintainerEntitySeed, { kind: 'host' }>, 'kind'>
+  ): MaintainerEntitySeed => ({
     kind: 'host',
     ...params,
   }),
@@ -324,5 +394,10 @@ export const riskScoreMaintainerEntityBuilders = {
     kind: 'local_user',
     ...params,
   }),
+  service: (
+    params: Omit<Extract<MaintainerEntitySeed, { kind: 'service' }>, 'kind'>
+  ): MaintainerEntitySeed => ({
+    kind: 'service',
+    ...params,
+  }),
 };
-
