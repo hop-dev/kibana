@@ -7,6 +7,8 @@
 
 import { z } from '@kbn/zod/v4';
 
+const LicenseType = z.enum(['basic', 'standard', 'gold', 'platinum', 'enterprise', 'trial']);
+
 export type EntityMaintainerTaskStatus = z.infer<typeof EntityMaintainerTaskStatus>;
 export const EntityMaintainerTaskStatus = z.enum(['never_started', 'started', 'stopped']);
 
@@ -17,6 +19,7 @@ export const EntityMaintainerResponseItem = z.object({
   interval: z.string(),
   description: z.string().nullable(),
   nextRunAt: z.string().nullable(),
+  minLicense: LicenseType,
   customState: z.record(z.string(), z.unknown()).nullable(),
   runs: z.number(),
   lastSuccessTimestamp: z.string().nullable(),

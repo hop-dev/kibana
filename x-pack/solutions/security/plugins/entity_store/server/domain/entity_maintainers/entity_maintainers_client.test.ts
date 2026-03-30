@@ -10,6 +10,7 @@ import { loggerMock } from '@kbn/logging-mocks';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { KibanaRequest } from '@kbn/core/server';
 import { SavedObjectsErrorHelpers } from '@kbn/core/server';
+import { DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE } from '../../tasks/entity_maintainers';
 import { EntityMaintainerTaskStatus } from '../../tasks/entity_maintainers/types';
 import type { EntityMaintainerTaskEntry } from '../../tasks/entity_maintainers/types';
 
@@ -180,8 +181,18 @@ describe('EntityMaintainersClient', () => {
   describe('init', () => {
     it('should schedule only maintainers without an existing task', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
-        { id: 'm1', interval: '5m', description: 'M1' },
-        { id: 'm2', interval: '1h', description: 'M2' },
+        {
+          id: 'm1',
+          interval: '5m',
+          description: 'M1',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
+        {
+          id: 'm2',
+          interval: '1h',
+          description: 'M2',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
       ]);
       const taskManager = {
         get: jest.fn().mockImplementation((taskId: string) => {
@@ -211,7 +222,12 @@ describe('EntityMaintainersClient', () => {
 
     it('should not schedule when all maintainers already have tasks', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
-        { id: 'm1', interval: '5m', description: 'M1' },
+        {
+          id: 'm1',
+          interval: '5m',
+          description: 'M1',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
       ]);
       const taskManager = {
         get: jest.fn().mockResolvedValue({
@@ -232,7 +248,12 @@ describe('EntityMaintainersClient', () => {
 
     it('should propagate error when scheduleEntityMaintainerTask rejects', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
-        { id: 'm1', interval: '5m', description: 'M1' },
+        {
+          id: 'm1',
+          interval: '5m',
+          description: 'M1',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
       ]);
       const taskManager = {
         get: jest.fn().mockRejectedValue(new Error('Not found')),
@@ -288,8 +309,8 @@ describe('EntityMaintainersClient', () => {
   describe('removeAll', () => {
     it('should remove all registered tasks', async () => {
       const entries: EntityMaintainerTaskEntry[] = [
-        { id: 'm1', interval: '5m' },
-        { id: 'm2', interval: '1h' },
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+        { id: 'm2', interval: '1h', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
       ];
       entityMaintainersRegistry.getAll.mockReturnValue(entries);
       const client = createClient();
@@ -308,8 +329,8 @@ describe('EntityMaintainersClient', () => {
 
     it('should propagate error when any remove fails', async () => {
       const entries: EntityMaintainerTaskEntry[] = [
-        { id: 'm1', interval: '5m' },
-        { id: 'm2', interval: '1h' },
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+        { id: 'm2', interval: '1h', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
       ];
       entityMaintainersRegistry.getAll.mockReturnValue(entries);
       (removeEntityMaintainer as jest.Mock)
@@ -324,8 +345,8 @@ describe('EntityMaintainersClient', () => {
   describe('getMaintainers', () => {
     it('should only return requested maintainers when ids filter is provided', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
-        { id: 'm1', interval: '5m' },
-        { id: 'm2', interval: '10m' },
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+        { id: 'm2', interval: '10m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
       ]);
       const taskManagerGet = jest.fn().mockRejectedValue(new Error('Not found'));
       const client = createClient({ taskManager: { get: taskManagerGet } });
@@ -345,6 +366,7 @@ describe('EntityMaintainersClient', () => {
           id: 'm1',
           interval: '5m',
           description: 'Maintainer one',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
         },
       ]);
       const taskManagerGet = jest.fn().mockRejectedValue(new Error('Not found'));
@@ -360,6 +382,7 @@ describe('EntityMaintainersClient', () => {
         interval: '5m',
         description: 'Maintainer one',
         nextRunAt: null,
+        minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
         taskSnapshot: undefined,
       });
       expect(getTaskId).toHaveBeenCalledWith('m1', 'default');
@@ -367,7 +390,9 @@ describe('EntityMaintainersClient', () => {
     });
 
     it('should return entries with taskSnapshot and taskStatus from task state when task exists', async () => {
-      entityMaintainersRegistry.getAll.mockReturnValue([{ id: 'm1', interval: '5m' }]);
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        { id: 'm1', interval: '5m', minLicense: 'gold' },
+      ]);
       const taskManagerGet = jest.fn().mockResolvedValue({
         state: {
           taskStatus: EntityMaintainerTaskStatus.STARTED,
@@ -389,6 +414,7 @@ describe('EntityMaintainersClient', () => {
         taskStatus: EntityMaintainerTaskStatus.STARTED,
         interval: '5m',
         nextRunAt: null,
+        minLicense: 'gold',
         taskSnapshot: {
           runs: 10,
           lastSuccessTimestamp: '2024-01-15T12:00:00.000Z',
@@ -400,7 +426,12 @@ describe('EntityMaintainersClient', () => {
 
     it('should return taskStatus from task state', async () => {
       entityMaintainersRegistry.getAll.mockReturnValue([
-        { id: 'm1', interval: '5m', description: 'Registry says stopped' },
+        {
+          id: 'm1',
+          interval: '5m',
+          description: 'Registry says stopped',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
       ]);
       const taskManagerGet = jest.fn().mockResolvedValue({
         state: {
@@ -429,7 +460,9 @@ describe('EntityMaintainersClient', () => {
     });
 
     it('should propagate non-not-found errors from taskManager.get', async () => {
-      entityMaintainersRegistry.getAll.mockReturnValue([{ id: 'm1', interval: '5m' }]);
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+      ]);
       const taskManagerGet = jest.fn().mockRejectedValue(new Error('ES connection failed'));
       const client = createClient({ taskManager: { get: taskManagerGet } });
       mockSavedObjectsErrorHelpers.isNotFoundError.mockReturnValue(false);
@@ -438,7 +471,9 @@ describe('EntityMaintainersClient', () => {
     });
 
     it('should use default runs and timestamps when task state metadata is missing', async () => {
-      entityMaintainersRegistry.getAll.mockReturnValue([{ id: 'm1', interval: '5m' }]);
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+      ]);
       const taskManagerGet = jest.fn().mockResolvedValue({
         state: {
           taskStatus: EntityMaintainerTaskStatus.STARTED,
@@ -461,7 +496,9 @@ describe('EntityMaintainersClient', () => {
     });
 
     it('should include nextRunAt when task manager returns runAt', async () => {
-      entityMaintainersRegistry.getAll.mockReturnValue([{ id: 'm1', interval: '5m' }]);
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        { id: 'm1', interval: '5m', minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE },
+      ]);
       const runAt = new Date('2024-03-02T10:00:00.000Z');
       const taskManagerGet = jest.fn().mockResolvedValue({
         state: {

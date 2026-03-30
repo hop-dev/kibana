@@ -28,6 +28,7 @@ function toGetMaintainersResponseItem(
     interval: entry.interval,
     description: entry.description ?? null,
     nextRunAt: entry.nextRunAt,
+    minLicense: entry.minLicense,
     customState: snapshot?.state ?? null,
     runs: snapshot?.runs ?? 0,
     lastSuccessTimestamp: snapshot?.lastSuccessTimestamp ?? null,
