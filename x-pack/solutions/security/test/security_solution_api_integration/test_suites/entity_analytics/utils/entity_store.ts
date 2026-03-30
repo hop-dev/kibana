@@ -6,14 +6,12 @@
  */
 
 import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/common.gen';
-import type { Client } from '@elastic/elasticsearch';
-import type { ToolingLog } from '@kbn/tooling-log';
 import expect from '@kbn/expect';
 import type { InitEntityStoreRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/enable.gen';
-import { waitFor } from '@kbn/detections-response-ftr-services';
 import type { FtrProviderContext } from '../../../ftr_provider_context';
 import { elasticAssetCheckerFactory } from './elastic_asset_checker';
 import { dataViewRouteHelpersFactory } from './data_view';
+import { waitForEntityStoreEntities } from './entity_analytics';
 
 export const EntityStoreUtils = (
   getService: FtrProviderContext['getService'],
@@ -212,11 +210,52 @@ export const EntityStoreUtils = (
     await expectEntitiesIndexNotFound(entityType, namespace);
   };
 
-  const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
-    // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
-    const dataViewPattern = body.dataViewPattern ?? 'logs-*';
-    await dataView.create('security-solution', dataViewPattern);
+  const searchEntitiesV2 = async (
+    filter: string,
+    opts: { size?: number; source?: string[] } = {}
+  ) => {
+    let url = '/internal/security/entity_store/entities';
+    if (namespace !== 'default') {
+      url = `/s/${namespace}${url}`;
+    }
+    const res = await supertest
+      .get(url)
+      .set('kbn-xsrf', 'true')
+      .set('x-elastic-internal-origin', 'Kibana')
+      .set('elastic-api-version', '2')
+      .query({
+        filter,
+        ...(opts.size !== undefined ? { size: opts.size } : {}),
+        ...(opts.source ? { source: opts.source } : {}),
+      });
+    if (res.status !== 200) {
+      log.error(`Failed to search entities`);
+      log.error(JSON.stringify(res.body));
+    }
+    expect(res.status).to.eql(200);
+    return res;
+  };
 
+  const deleteEntityV2 = async (entityId: string) => {
+    let url = '/internal/security/entity_store/entities/';
+    if (namespace !== 'default') {
+      url = `/s/${namespace}${url}`;
+    }
+    const res = await supertest
+      .delete(url)
+      .set('kbn-xsrf', 'true')
+      .set('x-elastic-internal-origin', 'Kibana')
+      .set('elastic-api-version', '2')
+      .send({ entityId });
+    if (res.status !== 200) {
+      log.error(`Failed to delete entity ${entityId}`);
+      log.error(JSON.stringify(res.body));
+    }
+    expect(res.status).to.eql(200);
+    return res;
+  };
+
+  const enableEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
     let settingsUrl = '/internal/kibana/settings';
     if (namespace !== 'default') {
       settingsUrl = `/s/${namespace}${settingsUrl}`;
@@ -242,6 +281,16 @@ export const EntityStoreUtils = (
       log.error(JSON.stringify(res.body));
     }
     expect([200, 201]).to.contain(res.status);
+
+    return res;
+  };
+
+  const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
+    // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
+    const { dataViewPattern = 'logs-*', ...installBody } = body;
+    await dataView.create('security-solution', dataViewPattern);
+
+    const res = await enableEntityStoreV2(installBody);
 
     await retry.waitForWithTimeout(
       `Engines to start for entity types: ${body.entityTypes.join(', ')}`,
@@ -280,6 +329,7 @@ export const EntityStoreUtils = (
           extractRes.body
         )}`
       );
+      expect([200, 202]).to.contain(extractRes.status);
     }
     await waitForEntityStoreEntities({ es, log, count: 1, namespace });
 
@@ -287,13 +337,14 @@ export const EntityStoreUtils = (
     if (namespace !== 'default') {
       maintainersUrl = `/s/${namespace}${maintainersUrl}`;
     }
-    await supertest
+
+    const maintainersRes = await supertest
       .post(maintainersUrl)
       .set('kbn-xsrf', 'true')
       .set('x-elastic-internal-origin', 'Kibana')
-      .send({})
-      .expect(200);
+      .send({});
 
+    expect([200, 201]).to.contain(maintainersRes.status);
     return res;
   };
 
@@ -325,141 +376,17 @@ export const EntityStoreUtils = (
 
   return {
     cleanEngines,
+    deleteEntityV2,
+    searchEntitiesV2,
     initEntityEngineForEntityTypesAndWait,
     expectTransformStatus,
     expectEngineAssetsExist,
     expectEngineAssetsDoNotExist,
     enableEntityStore,
+    enableEntityStoreV2,
     installEntityStoreV2,
     forceUpdateEntityViaCrud,
     waitForEngineStatus,
     initEntityEngineForEntityType,
   };
-};
-
-/**
- * Reads entities from the Entity Store V2 latest index.
- */
-export const readEntityStoreEntities = async (
-  es: Client,
-  namespace: string = 'default'
-): Promise<Array<{ entity: { id: string; risk?: Record<string, unknown> } }>> => {
-  const index = `.entities.v2.latest.security_${namespace}`;
-  try {
-    const results = await es.search({ index, size: 1000 });
-    return results.hits.hits.map(
-      (hit) => hit._source as { entity: { id: string; risk?: Record<string, unknown> } }
-    );
-  } catch (e) {
-    if (e.meta?.statusCode === 404) {
-      return [];
-    }
-    throw e;
-  }
-};
-
-/**
- * Waits for at least `count` entities to be present in the Entity Store V2 latest index.
- */
-export const waitForEntityStoreEntities = async ({
-  es,
-  log,
-  count = 1,
-  namespace = 'default',
-}: {
-  es: Client;
-  log: ToolingLog;
-  count?: number;
-  namespace?: string;
-}): Promise<void> => {
-  await waitFor(
-    async () => {
-      const entities = await readEntityStoreEntities(es, namespace);
-      return entities.length >= count;
-    },
-    'waitForEntityStoreEntities',
-    log
-  );
-};
-
-/**
- * Asserts that risk scores have been dual-written to the Entity Store.
- * Checks that entities in the store have `entity.risk` fields populated.
- */
-export const assertRiskScoresWrittenToEntityStore = async ({
-  es,
-  log,
-  expectedEntityCount,
-  namespace = 'default',
-}: {
-  es: Client;
-  log: ToolingLog;
-  expectedEntityCount: number;
-  namespace?: string;
-}): Promise<void> => {
-  const entities = await readEntityStoreEntities(es, namespace);
-  const entitiesWithRisk = entities.filter(
-    (entity) => entity.entity?.risk && entity.entity.risk.calculated_score_norm !== undefined
-  );
-  log.info(
-    `Entity store dual-write check: ${entitiesWithRisk.length}/${entities.length} entities have risk scores (expected ${expectedEntityCount})`
-  );
-  expect(entitiesWithRisk.length).to.eql(expectedEntityCount);
-};
-
-export const waitForEntityStoreDoc = async ({
-  es,
-  retry,
-  entityId,
-  timeoutMs = 60_000,
-  requireCriticality,
-  requiredWatchlistId,
-  namespace = 'default',
-}: {
-  es: Client;
-  retry: {
-    waitForWithTimeout: (
-      label: string,
-      timeout: number,
-      predicate: () => Promise<boolean>
-    ) => Promise<void>;
-  };
-  entityId: string;
-  timeoutMs?: number;
-  requireCriticality?: 'high_impact' | 'absent';
-  requiredWatchlistId?: string;
-  namespace?: string;
-}): Promise<void> => {
-  const index = `.entities.v2.latest.security_${namespace}`;
-  await retry.waitForWithTimeout(
-    `entity store doc present for ${entityId}`,
-    timeoutMs,
-    async () => {
-      const response = await es.search({
-        index,
-        size: 1,
-        query: { term: { 'entity.id': entityId } },
-      });
-      const hit = response.hits.hits[0]?._source as
-        | {
-            asset?: { criticality?: string };
-            entity?: { attributes?: { watchlists?: string[] } };
-          }
-        | undefined;
-      if (!hit) {
-        return false;
-      }
-
-      if (requireCriticality === 'high_impact') {
-        return hit.asset?.criticality === 'high_impact';
-      }
-      if (requireCriticality === 'absent') {
-        return hit.asset?.criticality == null;
-      }
-      if (requiredWatchlistId) {
-        return hit.entity?.attributes?.watchlists?.includes(requiredWatchlistId) ?? false;
-      }
-      return true;
-    }
-  );
 };

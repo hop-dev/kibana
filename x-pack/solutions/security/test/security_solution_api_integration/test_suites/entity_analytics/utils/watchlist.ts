@@ -40,12 +40,8 @@ export const watchlistRouteHelpersFactory = (supertest: SuperTest.Agent, namespa
       .set('kbn-xsrf', 'true')
       .set(ELASTIC_HTTP_VERSION_HEADER, API_VERSIONS.public.v1)
       .set(X_ELASTIC_INTERNAL_ORIGIN_REQUEST, 'kibana')
-      .send(body);
-
-    if (response.status !== expectStatusCode) {
-      // eslint-disable-next-line no-console
-      console.log(`Unexpected status code: ${response.status}. Response body:`, response.body);
-    }
+      .send(body)
+      .expect(expectStatusCode);
 
     return response;
   },

@@ -459,7 +459,7 @@ interface AssetCriticalitySystemProcessedAssignmentFileEvent {
     endTime: string;
     tookMs: number;
   };
-  result?: BulkUpsertAssetCriticalityRecordsResponse['stats'];
+  result?: BulkUpsertAssetCriticalityRecordsResponse['stats'] & { unmatched?: number };
   status: 'success' | 'partial_success' | 'fail';
 }
 
@@ -483,6 +483,14 @@ export const ASSET_CRITICALITY_SYSTEM_PROCESSED_ASSIGNMENT_FILE_EVENT: EventType
           failed: {
             type: 'long',
             _meta: { description: 'Number of criticality records which had errors' },
+          },
+          unmatched: {
+            type: 'long',
+            _meta: {
+              optional: true,
+              description:
+                'Number of criticality records which did not match any entities to update',
+            },
           },
           total: { type: 'long', _meta: { description: 'Total number of lines in the file' } },
         },
