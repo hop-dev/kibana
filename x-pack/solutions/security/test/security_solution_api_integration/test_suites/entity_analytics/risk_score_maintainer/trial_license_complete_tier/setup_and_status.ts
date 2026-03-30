@@ -177,7 +177,7 @@ export default ({ getService }: FtrProviderContext) => {
           entityTypes: ['host'],
           dataViewPattern: seedLogsIndex,
         });
-        await waitForMaintainerRun({ retry, routes: maintainerRoutes, timeoutMs: 60_000 });
+        await waitForMaintainerRun({ retry, routes: maintainerRoutes });
 
         await checkAssets('default', maintainerRoutes);
       });
@@ -187,11 +187,7 @@ export default ({ getService }: FtrProviderContext) => {
           entityTypes: ['host'],
           dataViewPattern: seedLogsIndex,
         });
-        await waitForMaintainerRun({
-          retry,
-          routes: maintainerRoutesCustomSpace,
-          timeoutMs: 60_000,
-        });
+        await waitForMaintainerRun({ retry, routes: maintainerRoutesCustomSpace });
 
         await checkAssets(customSpaceName, maintainerRoutesCustomSpace);
       });

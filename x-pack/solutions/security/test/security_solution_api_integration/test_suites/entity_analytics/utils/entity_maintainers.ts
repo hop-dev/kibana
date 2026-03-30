@@ -107,7 +107,7 @@ export const waitForMaintainerRun = async ({
   routes,
   minRuns = 1,
   maintainerId = 'risk-score',
-  timeoutMs = 120_000,
+  timeoutMs = 60_000,
 }: {
   retry: RetryServiceLike;
   routes: Pick<

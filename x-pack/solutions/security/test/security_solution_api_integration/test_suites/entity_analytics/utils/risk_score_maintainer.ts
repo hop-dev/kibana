@@ -272,7 +272,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     entityTypes = ['user', 'host'],
     dataViewPattern,
     minRuns = 1,
-    timeoutMs = 120_000,
+    timeoutMs = 60_000,
   }: {
     entityTypes?: string[];
     dataViewPattern?: string;
@@ -332,7 +332,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     entityTypes = ['user', 'host'],
     dataViewPattern,
     minRuns = 1,
-    timeoutMs = 120_000,
+    timeoutMs = 60_000,
   }: {
     entities: MaintainerEntitySeed[];
     alerts?: number;
