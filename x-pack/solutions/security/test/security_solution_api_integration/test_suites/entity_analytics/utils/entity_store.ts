@@ -287,10 +287,10 @@ export const EntityStoreUtils = (
 
   const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
     // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
-    const dataViewPattern = body.dataViewPattern ?? 'logs-*';
+    const { dataViewPattern = 'logs-*', ...installBody } = body;
     await dataView.create('security-solution', dataViewPattern);
 
-    const res = await enableEntityStoreV2(body);
+    const res = await enableEntityStoreV2(installBody);
 
     await retry.waitForWithTimeout(
       `Engines to start for entity types: ${body.entityTypes.join(', ')}`,
@@ -329,6 +329,7 @@ export const EntityStoreUtils = (
           extractRes.body
         )}`
       );
+      expect([200, 202]).to.contain(extractRes.status);
     }
     await waitForEntityStoreEntities({ es, log, count: 1, namespace });
 

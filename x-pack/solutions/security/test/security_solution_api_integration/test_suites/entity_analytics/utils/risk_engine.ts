@@ -222,11 +222,13 @@ export const deleteAllRiskScores = async (
 export const readRiskScores = async (
   es: Client,
   index: string[] = ['risk-score.risk-score-default'],
-  size: number = 1000
+  size: number = 1000,
+  query?: Record<string, any>
 ): Promise<EcsRiskScore[]> => {
   const results = await es.search({
     index,
     size,
+    ...(query ? { query } : {}),
   });
   return results.hits.hits.map((hit) => hit._source as EcsRiskScore);
 };
@@ -314,11 +316,30 @@ export const waitForRiskScoreForId = async ({
       }
 
       try {
-        const riskScores = await readRiskScores(es, index, 1000);
+        const query = {
+          bool: {
+            should: [
+              { term: { 'host.risk.id_value': idValue } },
+              { term: { 'user.risk.id_value': idValue } },
+              { term: { 'service.risk.id_value': idValue } },
+            ],
+            minimum_should_match: 1,
+          },
+        };
+        const riskScores = await readRiskScores(es, index, 1000, query);
         const normalized = sanitizeScores(normalizeScores(riskScores));
         const matches = normalized.filter(({ id_value: candidateId }) => candidateId === idValue);
 
         if (matches.length === 0) {
+          return false;
+        }
+
+        if (typeof expectedCalculatedScore === 'number') {
+          const exactMatch = matches.find((m) => m.calculated_score === expectedCalculatedScore);
+          if (exactMatch) {
+            bestMatch = exactMatch;
+            return true;
+          }
           return false;
         }
 
@@ -330,9 +351,6 @@ export const waitForRiskScoreForId = async ({
         });
 
         const calculatedScore = bestMatch.calculated_score;
-        if (typeof expectedCalculatedScore === 'number') {
-          return calculatedScore === expectedCalculatedScore;
-        }
         if (typeof minCalculatedScore === 'number') {
           return typeof calculatedScore === 'number' && calculatedScore >= minCalculatedScore;
         }
