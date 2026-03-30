@@ -54,7 +54,7 @@ components:
           $ref: "#/components/schemas/EntityAfterKey"
         service:
           $ref: "#/components/schemas/EntityAfterKey"
-        universal:
+        generic:
           $ref: "#/components/schemas/EntityAfterKey"
       example:
         host:
