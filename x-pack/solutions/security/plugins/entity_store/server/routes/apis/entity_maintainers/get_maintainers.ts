@@ -58,11 +58,7 @@ export function registerGetMaintainers(router: EntityStorePluginRouter) {
         async (ctx, req, res): Promise<IKibanaResponse<GetEntityMaintainersResponse>> => {
           const entityStoreCtx = await ctx.entityStore;
           const { entityMaintainersClient } = entityStoreCtx;
-          const requestedIds = req.query.ids
-            ? Array.isArray(req.query.ids)
-              ? req.query.ids
-              : [req.query.ids]
-            : undefined;
+          const { ids: requestedIds } = req.query;
           const filteredMaintainers = await entityMaintainersClient.getMaintainers(requestedIds);
           const formattedMaintainers: EntityMaintainerResponseItem[] = filteredMaintainers.map(
             toGetMaintainersResponseItem

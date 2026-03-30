@@ -63,26 +63,16 @@ export const ENTITY_STORE_ROUTES = {
   ENTITY_MAINTAINERS_INIT: `${ENTITY_STORE_BASE_ROUTE}/entity_maintainers/init`,
 } as const satisfies Record<string, string>;
 
-export type EntityMaintainerTaskStatus = z.infer<typeof EntityMaintainerTaskStatus>;
-export const EntityMaintainerTaskStatus = z.enum(['never_started', 'started', 'stopped']);
-
-export type EntityMaintainerResponseItem = z.infer<typeof EntityMaintainerResponseItem>;
-export const EntityMaintainerResponseItem = z.object({
-  id: z.string(),
-  taskStatus: EntityMaintainerTaskStatus,
-  interval: z.string(),
-  description: z.string().nullable(),
-  nextRunAt: z.string().nullable(),
-  customState: z.record(z.string(), z.unknown()).nullable(),
-  runs: z.number(),
-  lastSuccessTimestamp: z.string().nullable(),
-  lastErrorTimestamp: z.string().nullable(),
-});
-
-export type GetEntityMaintainersResponse = z.infer<typeof GetEntityMaintainersResponse>;
-export const GetEntityMaintainersResponse = z.object({
-  maintainers: z.array(EntityMaintainerResponseItem),
-});
+export {
+  EntityMaintainerTaskStatus,
+  EntityMaintainerResponseItem,
+  GetEntityMaintainersResponse,
+} from './entity_maintainers';
+export type {
+  EntityMaintainerTaskStatus,
+  EntityMaintainerResponseItem,
+  GetEntityMaintainersResponse,
+} from './entity_maintainers';
 
 export const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {

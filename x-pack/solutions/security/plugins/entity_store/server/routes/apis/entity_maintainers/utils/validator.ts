@@ -25,5 +25,8 @@ export const maintainerIdParamsSchema = z
   .superRefine(validateMaintainerIdExists);
 
 export const maintainerIdsQuerySchema = z.object({
-  ids: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
+  ids: z
+    .union([z.string().min(1), z.array(z.string().min(1))])
+    .transform((value) => (Array.isArray(value) ? value : [value]))
+    .optional(),
 });
