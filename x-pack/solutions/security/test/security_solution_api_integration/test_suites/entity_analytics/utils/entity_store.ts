@@ -6,11 +6,8 @@
  */
 
 import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/common.gen';
-import type { Client } from '@elastic/elasticsearch';
-import type { ToolingLog } from '@kbn/tooling-log';
 import expect from '@kbn/expect';
 import type { InitEntityStoreRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/enable.gen';
-import { waitFor } from '@kbn/detections-response-ftr-services';
 import type { FtrProviderContext } from '../../../ftr_provider_context';
 import { elasticAssetCheckerFactory } from './elastic_asset_checker';
 import { dataViewRouteHelpersFactory } from './data_view';
@@ -345,7 +342,7 @@ export const EntityStoreUtils = (
       .set('kbn-xsrf', 'true')
       .set('x-elastic-internal-origin', 'Kibana')
       .send({});
-      
+
     expect([200, 201]).to.contain(maintainersRes.status);
     return res;
   };
