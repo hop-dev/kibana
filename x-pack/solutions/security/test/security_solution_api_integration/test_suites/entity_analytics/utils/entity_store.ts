@@ -6,6 +6,9 @@
  */
 
 import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/common.gen';
+import type { Client } from '@elastic/elasticsearch';
+import type { ToolingLog } from '@kbn/tooling-log';
+import { waitFor } from '@kbn/detections-response-ftr-services';
 import expect from '@kbn/expect';
 import type { InitEntityStoreRequestBodyInput } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/enable.gen';
 import type { FtrProviderContext } from '../../../ftr_provider_context';
@@ -401,7 +404,7 @@ export const readEntityStoreEntities = async (
   try {
     const results = await es.search({ index, size: 1000 });
     return results.hits.hits.map(
-      (hit) => hit._source as { entity: { id: string; risk?: Record<string, unknown> } }
+      (hit: any) => hit._source as { entity: { id: string; risk?: Record<string, unknown> } }
     );
   } catch (e: any) {
     if (e.meta?.statusCode === 404) {
