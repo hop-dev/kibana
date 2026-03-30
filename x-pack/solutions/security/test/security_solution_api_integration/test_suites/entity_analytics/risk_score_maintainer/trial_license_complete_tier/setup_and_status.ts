@@ -13,13 +13,18 @@ import {
   riskEngineRouteHelpersFactory,
   entityMaintainerRouteHelpersFactory,
   waitForMaintainerRun,
+  cleanUpRiskScoreMaintainer,
 } from '../../utils';
 
 export default ({ getService }: FtrProviderContext) => {
   const supertest = getService('supertest');
   const spaces = getService('spaces');
   const retry = getService('retry');
+  const es = getService('es');
+  const log = getService('log');
   const customSpaceName = 'ea-customspace-it';
+  const seedLogsIndex = 'logs-setup-status-default';
+  const seedLogsTemplate = 'logs-setup-status-default-template';
   const riskEngineRoutes = riskEngineRouteHelpersFactory(supertest);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
   const maintainerRoutesCustomSpace = entityMaintainerRouteHelpersFactory(
@@ -27,7 +32,6 @@ export default ({ getService }: FtrProviderContext) => {
     customSpaceName
   );
   const kibanaServer = getService('kibanaServer');
-  const es = getService('es');
 
   const entityStoreUtils = EntityStoreUtils(getService);
   const entityStoreUtilsCustomSpace = EntityStoreUtils(getService, customSpaceName);
@@ -96,16 +100,61 @@ export default ({ getService }: FtrProviderContext) => {
         description: `Space for ${customSpaceName}`,
         disabledFeatures: [],
       });
+
+      // Seed source documents so installEntityStoreV2 can extract at least one entity.
+      // Without this, waitForEntityStoreEntities hangs because extraction finds nothing.
+      await es.indices.deleteIndexTemplate({ name: seedLogsTemplate }, { ignore: [404] });
+      await es.indices.putIndexTemplate({
+        name: seedLogsTemplate,
+        index_patterns: [seedLogsIndex],
+        data_stream: {},
+        template: {
+          mappings: {
+            properties: {
+              '@timestamp': { type: 'date' },
+              host: { properties: { name: { type: 'keyword' } } },
+              data_stream: {
+                properties: {
+                  type: { type: 'keyword' },
+                  dataset: { type: 'keyword' },
+                  namespace: { type: 'keyword' },
+                },
+              },
+            },
+          },
+        },
+      });
+      await es.indices.deleteDataStream({ name: seedLogsIndex }, { ignore: [404] });
+      await es.indices.createDataStream({ name: seedLogsIndex });
+      await es.bulk({
+        refresh: true,
+        operations: [
+          { create: { _index: seedLogsIndex } },
+          {
+            '@timestamp': new Date().toISOString(),
+            host: { name: 'setup-status-seed-host' },
+            data_stream: { type: 'logs', dataset: 'setup.status', namespace: 'default' },
+          },
+        ],
+      });
+      log.info(`Seeded source document into ${seedLogsIndex}`);
+
       await entityStoreUtils.cleanEngines();
       await entityStoreUtilsCustomSpace.cleanEngines();
+      await cleanUpRiskScoreMaintainer({ es, log });
+      await cleanUpRiskScoreMaintainer({ es, log, namespace: customSpaceName });
     });
 
     afterEach(async () => {
       await entityStoreUtils.cleanEngines();
       await entityStoreUtilsCustomSpace.cleanEngines();
+      await cleanUpRiskScoreMaintainer({ es, log });
+      await cleanUpRiskScoreMaintainer({ es, log, namespace: customSpaceName });
     });
 
     after(async () => {
+      await es.indices.deleteDataStream({ name: seedLogsIndex }, { ignore: [404] });
+      await es.indices.deleteIndexTemplate({ name: seedLogsTemplate }, { ignore: [404] });
       await spaces.delete(customSpaceName);
     });
 
@@ -124,14 +173,20 @@ export default ({ getService }: FtrProviderContext) => {
       });
 
       it('should setup risk score assets and configuration when entity store is enabled', async () => {
-        await entityStoreUtils.installEntityStoreV2();
+        await entityStoreUtils.installEntityStoreV2({
+          entityTypes: ['host'],
+          dataViewPattern: seedLogsIndex,
+        });
         await waitForMaintainerRun({ retry, routes: maintainerRoutes, timeoutMs: 60_000 });
 
         await checkAssets('default', maintainerRoutes);
       });
 
       it('should setup risk score assets and configuration in custom namespace', async () => {
-        await entityStoreUtilsCustomSpace.installEntityStoreV2();
+        await entityStoreUtilsCustomSpace.installEntityStoreV2({
+          entityTypes: ['host'],
+          dataViewPattern: seedLogsIndex,
+        });
         await waitForMaintainerRun({
           retry,
           routes: maintainerRoutesCustomSpace,
