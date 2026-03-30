@@ -73,11 +73,6 @@ export {
   EntityMaintainerResponseItem,
   GetEntityMaintainersResponse,
 } from './entity_maintainers';
-export type {
-  EntityMaintainerTaskStatus,
-  EntityMaintainerResponseItem,
-  GetEntityMaintainersResponse,
-} from './entity_maintainers';
 
 export const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
