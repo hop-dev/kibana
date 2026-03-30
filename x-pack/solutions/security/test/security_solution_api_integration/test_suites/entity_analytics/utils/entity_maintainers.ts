@@ -44,7 +44,9 @@ export const entityMaintainerRouteHelpersFactory = (
   namespace?: string
 ) => {
   const getMaintainers = async (expectStatusCode: number = 200, ids?: string[]) => {
-    let req = supertest.get(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace));
+    let req = supertest.get(
+      routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace)
+    );
     if (ids && ids.length > 0) {
       req = req.query({ ids });
     }
