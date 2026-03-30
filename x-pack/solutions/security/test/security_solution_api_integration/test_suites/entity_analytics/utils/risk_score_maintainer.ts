@@ -8,6 +8,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Client } from '@elastic/elasticsearch';
 import type { ToolingLog } from '@kbn/tooling-log';
+import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity_analytics/entity_store/common.gen';
+import type { CriticalityLevel } from '@kbn/security-solution-plugin/common/entity_analytics/asset_criticality/types';
 import type { EntityRiskScoreRecord } from '@kbn/security-solution-plugin/common/api/entity_analytics/common';
 import { buildDocument, readRiskScores, normalizeScores } from './risk_engine';
 import { waitForMaintainerRun } from './entity_maintainers';
@@ -30,9 +32,6 @@ interface RetryServiceLike {
   ) => Promise<void>;
 }
 
-type EntityStoreEntityType = 'user' | 'host' | 'service' | 'generic';
-type CriticalityLevel = 'low_impact' | 'medium_impact' | 'high_impact' | 'extreme_impact';
-
 interface MaintainerRoutesLike {
   getMaintainers: () => Promise<{
     body: { maintainers: Array<{ id: string; runs: number }> };
@@ -46,7 +45,7 @@ interface EntityStoreUtilsLike {
     dataViewPattern?: string;
   }) => Promise<unknown>;
   forceUpdateEntityViaCrud: (params: {
-    entityType: EntityStoreEntityType;
+    entityType: EntityType;
     body: Record<string, unknown>;
   }) => Promise<unknown>;
 }
@@ -186,26 +185,40 @@ const buildTestEntity = (seed: MaintainerEntitySeed): TestMaintainerEntity => {
     };
   }
 
-  return {
-    seed,
-    documentId,
-    document: buildDocument(
-      {
-        user: { name: seed.userName },
-        host: { id: seed.hostId, ...(seed.hostName ? { name: seed.hostName } : {}) },
-        // Local-user path should mirror non-IDP logs extraction contract.
-        // Include module=local so risk-score EUID evaluation can resolve local namespace.
-        event: { kind: 'event', category: 'network', outcome: 'success', module: 'local' },
-        ...(seed.extraFields ?? {}),
-      },
-      documentId
-    ),
-    expectedEuid: `user:${seed.userName}@${seed.hostId}@local`,
-  };
+  if (seed.kind === 'local_user') {
+    return {
+      seed,
+      documentId,
+      document: buildDocument(
+        {
+          user: { name: seed.userName },
+          host: { id: seed.hostId, ...(seed.hostName ? { name: seed.hostName } : {}) },
+          // Local-user path should mirror non-IDP logs extraction contract.
+          // Include module=local so risk-score EUID evaluation can resolve local namespace.
+          event: { kind: 'event', category: 'network', outcome: 'success', module: 'local' },
+          ...(seed.extraFields ?? {}),
+        },
+        documentId
+      ),
+      expectedEuid: `user:${seed.userName}@${seed.hostId}@local`,
+    };
+  }
+
+  throw new Error(`Unknown entity seed kind: ${(seed as MaintainerEntitySeed).kind}`);
 };
 
 const buildAlertQueryForDocumentIds = (documentIds: string[]): string =>
   documentIds.map((id) => `id: ${id}`).join(' or ');
+
+const getEntityTypeForTestEntity = (testEntity: TestMaintainerEntity): EntityType => {
+  if (testEntity.seed.kind === 'host') {
+    return 'host';
+  }
+  if (testEntity.seed.kind === 'service') {
+    return 'service';
+  }
+  return 'user';
+};
 
 export const riskScoreMaintainerScenarioFactory = ({
   indexListOfDocuments,
@@ -229,7 +242,6 @@ export const riskScoreMaintainerScenarioFactory = ({
     await seedDocuments(testEntities.map(({ document }) => document));
     return {
       documentIds: testEntities.map(({ documentId }) => documentId),
-      documents: testEntities.map(({ document }) => document),
       testEntities,
     };
   };
@@ -271,26 +283,6 @@ export const riskScoreMaintainerScenarioFactory = ({
     await waitForMaintainerRun({ retry, routes, minRuns, timeoutMs });
   };
 
-  const forceUpdateEntityInStore = async ({
-    entityType,
-    body,
-  }: {
-    entityType: EntityStoreEntityType;
-    body: Record<string, unknown>;
-  }) => {
-    await entityStoreUtils.forceUpdateEntityViaCrud({ entityType, body });
-  };
-
-  const getEntityTypeForTestEntity = (testEntity: TestMaintainerEntity): EntityStoreEntityType => {
-    if (testEntity.seed.kind === 'host') {
-      return 'host';
-    }
-    if (testEntity.seed.kind === 'service') {
-      return 'service';
-    }
-    return 'user';
-  };
-
   const setEntityWatchlists = async ({
     testEntity,
     watchlistIds,
@@ -298,7 +290,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     testEntity: TestMaintainerEntity;
     watchlistIds: string[];
   }) => {
-    await forceUpdateEntityInStore({
+    await entityStoreUtils.forceUpdateEntityViaCrud({
       entityType: getEntityTypeForTestEntity(testEntity),
       body: {
         entity: {
@@ -318,7 +310,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     testEntity: TestMaintainerEntity;
     criticalityLevel: CriticalityLevel;
   }) => {
-    await forceUpdateEntityInStore({
+    await entityStoreUtils.forceUpdateEntityViaCrud({
       entityType: getEntityTypeForTestEntity(testEntity),
       body: {
         entity: {
@@ -331,7 +323,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     });
   };
 
-  const seedEntitiesCreateAlertsInstallAndRun = async ({
+  const setupAndRun = async ({
     entities,
     alerts,
     riskScore,
@@ -369,10 +361,9 @@ export const riskScoreMaintainerScenarioFactory = ({
     seedEntities,
     createAlertsForDocumentIds,
     installAndRunMaintainer,
-    forceUpdateEntityInStore,
     setEntityWatchlists,
     setEntityCriticality,
-    seedEntitiesCreateAlertsInstallAndRun,
+    setupAndRun,
   };
 };
 
