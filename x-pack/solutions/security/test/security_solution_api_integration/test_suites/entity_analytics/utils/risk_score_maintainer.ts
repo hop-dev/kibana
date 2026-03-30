@@ -12,7 +12,10 @@ import type { EntityType } from '@kbn/security-solution-plugin/common/api/entity
 import type { CriticalityLevel } from '@kbn/security-solution-plugin/common/entity_analytics/asset_criticality/types';
 import type { EntityRiskScoreRecord } from '@kbn/security-solution-plugin/common/api/entity_analytics/common';
 import { buildDocument, readRiskScores, normalizeScores } from './risk_engine';
-import { waitForMaintainerRun } from './entity_maintainers';
+import {
+  waitForMaintainerRun,
+  type entityMaintainerRouteHelpersFactory,
+} from './entity_maintainers';
 
 type IndexListOfDocuments = (docs: Array<Record<string, unknown>>) => Promise<void>;
 
@@ -28,16 +31,14 @@ interface RetryServiceLike {
   waitForWithTimeout: (
     label: string,
     timeout: number,
-    predicate: () => Promise<boolean>
+    predicate: () => Promise<boolean> | boolean
   ) => Promise<void>;
 }
 
-interface MaintainerRoutesLike {
-  getMaintainers: (expectStatusCode?: number, ids?: string[]) => Promise<{
-    body: { maintainers: Array<{ id: string; runs: number }> };
-  }>;
-  runMaintainer: (id: string) => Promise<unknown>;
-}
+type MaintainerRoutesLike = Pick<
+  ReturnType<typeof entityMaintainerRouteHelpersFactory>,
+  'getMaintainers' | 'runMaintainer'
+>;
 
 interface EntityStoreUtilsLike {
   installEntityStoreV2: (body?: {
