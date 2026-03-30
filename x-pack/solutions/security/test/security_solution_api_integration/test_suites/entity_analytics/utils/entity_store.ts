@@ -297,6 +297,32 @@ export const EntityStoreUtils = (
     return res;
   };
 
+  const forceUpdateEntityViaCrud = async ({
+    entityType,
+    body,
+  }: {
+    entityType: EntityType;
+    body: Record<string, unknown>;
+  }) => {
+    let url = `/internal/security/entity_store/entities/${entityType}?apiVersion=2&force=true`;
+    if (namespace !== 'default') {
+      url = `/s/${namespace}${url}`;
+    }
+
+    const response = await supertest
+      .put(url)
+      .set('kbn-xsrf', 'true')
+      .set('x-elastic-internal-origin', 'Kibana')
+      .send(body);
+
+    if (response.status !== 200) {
+      log.error(`Failed to force-update entity via CRUD API for type "${entityType}"`);
+      log.error(JSON.stringify(response.body));
+    }
+    expect(response.status).to.eql(200);
+    return response;
+  };
+
   return {
     cleanEngines,
     initEntityEngineForEntityTypesAndWait,
@@ -305,6 +331,7 @@ export const EntityStoreUtils = (
     expectEngineAssetsDoNotExist,
     enableEntityStore,
     installEntityStoreV2,
+    forceUpdateEntityViaCrud,
     waitForEngineStatus,
     initEntityEngineForEntityType,
   };

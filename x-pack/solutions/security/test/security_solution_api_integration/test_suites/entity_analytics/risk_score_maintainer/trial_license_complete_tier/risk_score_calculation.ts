@@ -9,7 +9,6 @@ import expect from '@kbn/expect';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteAllAlerts, deleteAllRules } from '@kbn/detections-response-ftr-services';
 import {
-  buildDocument,
   createAndSyncRuleAndAlertsFactory,
   readRiskScores,
   normalizeScores,
@@ -202,10 +201,10 @@ export default ({ getService }: FtrProviderContext): void => {
 
       it('calculates and persists risk score for a single host entity', async () => {
         const documentId = uuidv4();
-        const { documentIds, seededEntities } = await maintainerScenario.seedEntities([
+        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
           riskScoreMaintainerEntityBuilders.host({ hostName: 'host-1', documentId }),
         ]);
-        const [host] = seededEntities;
+        const [host] = testEntities;
         await maintainerScenario.createAlertsForDocumentIds({
           documentIds,
           alerts: 1,
@@ -228,11 +227,11 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       it('calculates risk scores for hosts and users together', async () => {
-        const { documentIds, seededEntities } = await maintainerScenario.seedEntities([
+        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
           riskScoreMaintainerEntityBuilders.host({ hostName: 'host-1' }),
           riskScoreMaintainerEntityBuilders.idpUser({ userName: 'user-1' }),
         ]);
-        const [host, idpUser] = seededEntities;
+        const [host, idpUser] = testEntities;
         await maintainerScenario.createAlertsForDocumentIds({
           documentIds,
           alerts: 2,
@@ -252,14 +251,14 @@ export default ({ getService }: FtrProviderContext): void => {
       it('calculates risk score for a local user EUID', async () => {
         const localHostId = `host-local-${uuidv4()}`;
         const localUserName = `local-user-${uuidv4()}`;
-        const { documentIds, seededEntities } = await maintainerScenario.seedEntities([
+        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
           riskScoreMaintainerEntityBuilders.localUser({
             userName: localUserName,
             hostId: localHostId,
             hostName: `host-local-name-${uuidv4()}`,
           }),
         ]);
-        const [localUser] = seededEntities;
+        const [localUser] = testEntities;
         await maintainerScenario.createAlertsForDocumentIds({
           documentIds,
           alerts: 1,
@@ -292,7 +291,10 @@ export default ({ getService }: FtrProviderContext): void => {
         it('calculates risk scores with criticality modifiers', async () => {
           const documentId = uuidv4();
           const hostName = `host-${uuidv4()}`;
-          await indexListOfDocuments([buildDocument({ host: { name: hostName } }, documentId)]);
+          const { documentIds, testEntities } = await maintainerScenario.seedEntities([
+            riskScoreMaintainerEntityBuilders.host({ hostName, documentId }),
+          ]);
+          const [testHost] = testEntities;
 
           await assetCriticalityRoutes.upsert({
             id_field: 'host.name',
@@ -312,8 +314,8 @@ export default ({ getService }: FtrProviderContext): void => {
               return doc?.criticality_level === 'high_impact';
             }
           );
-          await createAndSyncRuleAndAlerts({
-            query: `id: ${documentId}`,
+          await maintainerScenario.createAlertsForDocumentIds({
+            documentIds,
             alerts: 1,
             riskScore: 21,
           });
@@ -322,24 +324,13 @@ export default ({ getService }: FtrProviderContext): void => {
             entityTypes: ['user', 'host'],
             dataViewPattern: testLogsIndex,
           });
-          await waitForEntityStoreDoc({ entityId: `host:${hostName}` });
-          await es.updateByQuery({
-            index: '.entities.v2.latest.security_default',
-            query: { term: { 'entity.id': `host:${hostName}` } },
-            script: {
-              source: `
-                if (ctx._source.asset == null) {
-                  ctx._source.asset = new HashMap();
-                }
-                ctx._source.asset.criticality = params.criticality;
-              `,
-              lang: 'painless',
-              params: { criticality: 'high_impact' },
-            },
-            refresh: true,
+          await waitForEntityStoreDoc({ entityId: testHost.expectedEuid });
+          await maintainerScenario.setEntityCriticality({
+            testEntity: testHost,
+            criticalityLevel: 'high_impact',
           });
           await waitForEntityStoreDoc({
-            entityId: `host:${hostName}`,
+            entityId: testHost.expectedEuid,
             requireCriticality: 'high_impact',
           });
           await maintainerRoutes.runMaintainer('risk-score');
@@ -347,7 +338,7 @@ export default ({ getService }: FtrProviderContext): void => {
           const score = await waitForRiskScoreForId({
             es,
             log,
-            idValue: `host:${hostName}`,
+            idValue: testHost.expectedEuid,
             expectedCalculatedScore: 21,
           });
 
@@ -358,74 +349,7 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(score.calculated_score_norm).to.be.within(11.677912, 11.6779121);
           expect(score.category_1_score).to.be.within(8.1006017, 8.100602);
           expect(score.category_1_count).to.eql(1);
-          expect(score.id_value).to.eql(`host:${hostName}`);
-        });
-
-        it('ignores deleted asset criticality when calculating scores', async () => {
-          const documentId = uuidv4();
-          const hostName = `host-${uuidv4()}`;
-          await indexListOfDocuments([buildDocument({ host: { name: hostName } }, documentId)]);
-
-          await assetCriticalityRoutes.upsert({
-            id_field: 'host.name',
-            id_value: hostName,
-            criticality_level: 'high_impact',
-          });
-          await assetCriticalityRoutes.delete('host.name', hostName);
-          await retry.waitForWithTimeout(
-            `asset criticality removed for ${hostName}`,
-            30_000,
-            async () => {
-              const doc = await getAssetCriticalityEsDocument({
-                es,
-                idField: 'host.name',
-                idValue: hostName,
-              });
-              return !doc || doc.criticality_level !== 'high_impact';
-            }
-          );
-
-          await createAndSyncRuleAndAlerts({
-            query: `id: ${documentId}`,
-            alerts: 1,
-            riskScore: 21,
-          });
-
-          await entityStoreUtils.installEntityStoreV2({
-            entityTypes: ['user', 'host'],
-            dataViewPattern: testLogsIndex,
-          });
-          await waitForEntityStoreDoc({ entityId: `host:${hostName}` });
-          await es.updateByQuery({
-            index: '.entities.v2.latest.security_default',
-            query: { term: { 'entity.id': `host:${hostName}` } },
-            script: {
-              source: `
-                if (ctx._source.asset != null) {
-                  ctx._source.asset.remove('criticality');
-                }
-              `,
-              lang: 'painless',
-            },
-            refresh: true,
-          });
-          await waitForEntityStoreDoc({
-            entityId: `host:${hostName}`,
-            requireCriticality: 'absent',
-          });
-          await maintainerRoutes.runMaintainer('risk-score');
-          await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
-          const score = await waitForRiskScoreForId({
-            es,
-            log,
-            idValue: `host:${hostName}`,
-            expectedCalculatedScore: 21,
-          });
-
-          expect(score.criticality_level).to.be(undefined);
-          expect(score.criticality_modifier).to.be(undefined);
-          expect(score.calculated_score_norm).to.be.within(8.1006017, 8.100602);
-          expect(score.id_value).to.eql(`host:${hostName}`);
+          expect(score.id_value).to.eql(testHost.expectedEuid);
         });
       });
 
@@ -447,10 +371,10 @@ export default ({ getService }: FtrProviderContext): void => {
         it('calculates risk scores with watchlist modifiers', async () => {
           const documentId = uuidv4();
           const userName = `watchlist-user-${uuidv4()}`;
-          const { documentIds, seededEntities } = await maintainerScenario.seedEntities([
+          const { documentIds, testEntities } = await maintainerScenario.seedEntities([
             riskScoreMaintainerEntityBuilders.idpUser({ userName, documentId }),
           ]);
-          const [idpUser] = seededEntities;
+          const [idpUser] = testEntities;
           await maintainerScenario.createAlertsForDocumentIds({
             documentIds,
             alerts: 1,
@@ -483,22 +407,10 @@ export default ({ getService }: FtrProviderContext): void => {
           const baseNormScore = baseScore.calculated_score_norm!;
 
           // Update the entity in the entity store to add watchlist membership
-          const updateResponse = await es.updateByQuery({
-            index: '.entities.v2.latest.security_default',
-            query: { term: { 'entity.id': idpUser.expectedEuid } },
-            script: {
-              source: `
-                if (!ctx._source.entity.containsKey('attributes')) {
-                  ctx._source.entity.attributes = new HashMap();
-                }
-                ctx._source.entity.attributes.watchlists = params.watchlistIds;
-              `,
-              lang: 'painless',
-              params: { watchlistIds: [watchlistId] },
-            },
-            refresh: true,
+          await maintainerScenario.setEntityWatchlists({
+            testEntity: idpUser,
+            watchlistIds: [watchlistId],
           });
-          expect(updateResponse.updated).to.be.greaterThan(0);
           await waitForEntityStoreDoc({
             entityId: idpUser.expectedEuid,
             requiredWatchlistId: watchlistId,

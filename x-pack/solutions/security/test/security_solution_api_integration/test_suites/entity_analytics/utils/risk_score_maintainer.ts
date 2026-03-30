@@ -27,6 +27,9 @@ interface RetryServiceLike {
   ) => Promise<void>;
 }
 
+type EntityStoreEntityType = 'user' | 'host' | 'service' | 'generic';
+type CriticalityLevel = 'low_impact' | 'medium_impact' | 'high_impact' | 'extreme_impact';
+
 type MaintainerRoutesLike = {
   getMaintainers: () => Promise<{
     body: { maintainers: Array<{ id: string; runs: number }> };
@@ -36,6 +39,10 @@ type MaintainerRoutesLike = {
 
 type EntityStoreUtilsLike = {
   installEntityStoreV2: (body?: { entityTypes: string[]; dataViewPattern?: string }) => Promise<unknown>;
+  forceUpdateEntityViaCrud: (params: {
+    entityType: EntityStoreEntityType;
+    body: Record<string, unknown>;
+  }) => Promise<unknown>;
 };
 
 export type MaintainerEntitySeed =
@@ -64,14 +71,14 @@ export type MaintainerEntitySeed =
       extraFields?: Record<string, unknown>;
     };
 
-export interface SeededMaintainerEntity {
+export interface TestMaintainerEntity {
   seed: MaintainerEntitySeed;
   documentId: string;
   document: Record<string, unknown>;
   expectedEuid: string;
 }
 
-const buildSeededEntity = (seed: MaintainerEntitySeed): SeededMaintainerEntity => {
+const buildTestEntity = (seed: MaintainerEntitySeed): TestMaintainerEntity => {
   const documentId = seed.documentId ?? uuidv4();
 
   if (seed.kind === 'host') {
@@ -152,12 +159,12 @@ export const riskScoreMaintainerScenarioFactory = ({
   };
 
   const seedEntities = async (entities: MaintainerEntitySeed[]) => {
-    const seededEntities = entities.map(buildSeededEntity);
-    await seedDocuments(seededEntities.map(({ document }) => document));
+    const testEntities = entities.map(buildTestEntity);
+    await seedDocuments(testEntities.map(({ document }) => document));
     return {
-      documentIds: seededEntities.map(({ documentId }) => documentId),
-      documents: seededEntities.map(({ document }) => document),
-      seededEntities,
+      documentIds: testEntities.map(({ documentId }) => documentId),
+      documents: testEntities.map(({ document }) => document),
+      testEntities,
     };
   };
 
@@ -198,6 +205,63 @@ export const riskScoreMaintainerScenarioFactory = ({
     await waitForMaintainerRun({ retry, routes, minRuns, timeoutMs });
   };
 
+  const forceUpdateEntityInStore = async ({
+    entityType,
+    body,
+  }: {
+    entityType: EntityStoreEntityType;
+    body: Record<string, unknown>;
+  }) => {
+    await entityStoreUtils.forceUpdateEntityViaCrud({ entityType, body });
+  };
+
+  const getEntityTypeForTestEntity = (testEntity: TestMaintainerEntity): EntityStoreEntityType => {
+    if (testEntity.seed.kind === 'host') {
+      return 'host';
+    }
+    return 'user';
+  };
+
+  const setEntityWatchlists = async ({
+    testEntity,
+    watchlistIds,
+  }: {
+    testEntity: TestMaintainerEntity;
+    watchlistIds: string[];
+  }) => {
+    await forceUpdateEntityInStore({
+      entityType: getEntityTypeForTestEntity(testEntity),
+      body: {
+        entity: {
+          id: testEntity.expectedEuid,
+          attributes: {
+            watchlists: watchlistIds,
+          },
+        },
+      },
+    });
+  };
+
+  const setEntityCriticality = async ({
+    testEntity,
+    criticalityLevel,
+  }: {
+    testEntity: TestMaintainerEntity;
+    criticalityLevel: CriticalityLevel;
+  }) => {
+    await forceUpdateEntityInStore({
+      entityType: getEntityTypeForTestEntity(testEntity),
+      body: {
+        entity: {
+          id: testEntity.expectedEuid,
+        },
+        asset: {
+          criticality: criticalityLevel,
+        },
+      },
+    });
+  };
+
   const seedEntitiesCreateAlertsInstallAndRun = async ({
     entities,
     alerts,
@@ -219,7 +283,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     minRuns?: number;
     timeoutMs?: number;
   }) => {
-    const { documentIds, seededEntities } = await seedEntities(entities);
+    const { documentIds, testEntities } = await seedEntities(entities);
     await createAlertsForDocumentIds({
       documentIds,
       alerts,
@@ -228,7 +292,7 @@ export const riskScoreMaintainerScenarioFactory = ({
       riskScoreOverride,
     });
     await installAndRunMaintainer({ entityTypes, dataViewPattern, minRuns, timeoutMs });
-    return { documentIds, seededEntities };
+    return { documentIds, testEntities };
   };
 
   return {
@@ -236,6 +300,9 @@ export const riskScoreMaintainerScenarioFactory = ({
     seedEntities,
     createAlertsForDocumentIds,
     installAndRunMaintainer,
+    forceUpdateEntityInStore,
+    setEntityWatchlists,
+    setEntityCriticality,
     seedEntitiesCreateAlertsInstallAndRun,
   };
 };
