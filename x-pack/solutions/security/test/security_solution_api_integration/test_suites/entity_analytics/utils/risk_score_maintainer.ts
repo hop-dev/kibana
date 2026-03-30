@@ -33,7 +33,7 @@ interface RetryServiceLike {
 }
 
 interface MaintainerRoutesLike {
-  getMaintainers: () => Promise<{
+  getMaintainers: (expectStatusCode?: number, ids?: string[]) => Promise<{
     body: { maintainers: Array<{ id: string; runs: number }> };
   }>;
   runMaintainer: (id: string) => Promise<unknown>;

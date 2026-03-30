@@ -43,10 +43,12 @@ export const entityMaintainerRouteHelpersFactory = (
   supertest: SuperTest.Agent,
   namespace?: string
 ) => {
-  const getMaintainers = async (expectStatusCode: number = 200) => {
-    const response = await withHeaders(
-      supertest.get(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace))
-    ).expect(expectStatusCode);
+  const getMaintainers = async (expectStatusCode: number = 200, ids?: string[]) => {
+    let req = supertest.get(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace));
+    if (ids && ids.length > 0) {
+      req = req.query({ ids });
+    }
+    const response = await withHeaders(req).expect(expectStatusCode);
     return response as SuperTest.Response & {
       body: { maintainers: EntityMaintainerResponse[] };
     };
@@ -95,7 +97,7 @@ export const entityMaintainerRouteHelpersFactory = (
     },
 
     getRiskScoreMaintainer: async (): Promise<EntityMaintainerResponse | null> => {
-      const response = await getMaintainers();
+      const response = await getMaintainers(200, ['risk-score']);
       const maintainers: EntityMaintainerResponse[] = response.body.maintainers ?? [];
       return maintainers.find((m) => m.id === 'risk-score') ?? null;
     },
@@ -122,7 +124,7 @@ export const waitForMaintainerRun = async ({
   // not a stale count from a previous test.
   let baselineRuns = 0;
   try {
-    const baseline = await routes.getMaintainers();
+    const baseline = await routes.getMaintainers(200, [maintainerId]);
     const existing = baseline.body.maintainers.find(
       (m: { id: string; runs: number }) => m.id === maintainerId
     );
@@ -142,7 +144,7 @@ export const waitForMaintainerRun = async ({
     `Entity maintainer "${maintainerId}" to complete at least ${minRuns} new run(s) (baseline: ${baselineRuns})`,
     timeoutMs,
     async () => {
-      const response = await routes.getMaintainers();
+      const response = await routes.getMaintainers(200, [maintainerId]);
       const maintainer = response.body.maintainers.find(
         (m: { id: string; runs: number }) => m.id === maintainerId
       );
