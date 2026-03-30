@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import type { Client } from '@elastic/elasticsearch';
+import type { ToolingLog } from '@kbn/tooling-log';
 import type SuperTest from 'supertest';
 import { ENTITY_STORE_ROUTES } from '@kbn/entity-store/common';
 import { X_ELASTIC_INTERNAL_ORIGIN_REQUEST } from '@kbn/core-http-common';
@@ -27,6 +29,14 @@ export interface EntityMaintainerResponse {
   runs: number;
   lastSuccessTimestamp: string | null;
   lastErrorTimestamp: string | null;
+}
+
+interface RetryServiceLike {
+  waitForWithTimeout: (
+    label: string,
+    timeout: number,
+    predicate: () => Promise<boolean> | boolean
+  ) => Promise<void>;
 }
 
 export const entityMaintainerRouteHelpersFactory = (
@@ -90,4 +100,87 @@ export const entityMaintainerRouteHelpersFactory = (
       return maintainers.find((m) => m.id === 'risk-score') ?? null;
     },
   };
+};
+
+export const waitForMaintainerRun = async ({
+  retry,
+  routes,
+  minRuns = 1,
+  maintainerId = 'risk-score',
+  timeoutMs = 60_000,
+}: {
+  retry: RetryServiceLike;
+  routes: Pick<
+    ReturnType<typeof entityMaintainerRouteHelpersFactory>,
+    'getMaintainers' | 'runMaintainer'
+  >;
+  minRuns?: number;
+  maintainerId?: string;
+  timeoutMs?: number;
+}): Promise<void> => {
+  // Capture current runs count so we wait for an actual NEW run,
+  // not a stale count from a previous test.
+  let baselineRuns = 0;
+  try {
+    const baseline = await routes.getMaintainers();
+    const existing = baseline.body.maintainers.find(
+      (m: { id: string; runs: number }) => m.id === maintainerId
+    );
+    baselineRuns = existing?.runs ?? 0;
+  } catch {
+    // Maintainer may not exist yet
+  }
+
+  // Trigger a manual run so we don't have to wait for the scheduled interval
+  try {
+    await routes.runMaintainer(maintainerId);
+  } catch {
+    // May fail if maintainer isn't ready yet; the scheduled run will cover it
+  }
+
+  await retry.waitForWithTimeout(
+    `Entity maintainer "${maintainerId}" to complete at least ${minRuns} new run(s) (baseline: ${baselineRuns})`,
+    timeoutMs,
+    async () => {
+      const response = await routes.getMaintainers();
+      const maintainer = response.body.maintainers.find(
+        (m: { id: string; runs: number }) => m.id === maintainerId
+      );
+      return maintainer !== undefined && maintainer.runs >= baselineRuns + minRuns;
+    }
+  );
+};
+
+export const cleanUpRiskScoreMaintainer = async ({
+  es,
+  log,
+  namespace = 'default',
+}: {
+  es: Client;
+  log: ToolingLog;
+  namespace?: string;
+}) => {
+  const errors: Error[] = [];
+  const addError = (e: Error) => errors.push(e);
+
+  const alias = `risk-score.risk-score-${namespace}`;
+  const template = `.risk-score.risk-score-${namespace}-index-template`;
+
+  await es.indices.deleteDataStream({ name: alias }, { ignore: [404] }).catch(addError);
+  await es.indices.deleteIndexTemplate({ name: template }, { ignore: [404] }).catch(addError);
+  await es.cluster
+    .deleteComponentTemplate({ name: `.risk-score-mappings-${namespace}` }, { ignore: [404] })
+    .catch(addError);
+  await es.ingest
+    .deletePipeline(
+      { id: `entity_analytics_create_eventIngest_from_timestamp-pipeline-${namespace}` },
+      { ignore: [404] }
+    )
+    .catch(addError);
+
+  if (errors.length > 0) {
+    log.error(
+      `Errors cleaning up risk score maintainer: ${errors.map((e) => e.message).join(', ')}`
+    );
+  }
 };
