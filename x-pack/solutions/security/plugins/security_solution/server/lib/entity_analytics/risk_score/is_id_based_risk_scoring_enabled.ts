@@ -7,12 +7,18 @@
 
 import type { IUiSettingsClient } from '@kbn/core/server';
 import { FF_ENABLE_ENTITY_STORE_V2 } from '@kbn/entity-store/common';
-import { isIdBasedRiskScoringEnabled } from '../../../../common/entity_analytics/risk_score/is_id_based_risk_scoring_enabled';
 
+/**
+ * Runtime gate for id-based risk scoring.
+ *
+ * This remains separate from maintainer registration gating
+ * (experimentalFeatures.riskScoringMaintainerEnabled), which controls whether
+ * the maintainer task is registered at plugin startup.
+ */
 export const getIsIdBasedRiskScoringEnabled = async (
   uiSettingsClient: IUiSettingsClient
 ): Promise<boolean> => {
   const entityStoreV2Enabled = await uiSettingsClient.get<boolean>(FF_ENABLE_ENTITY_STORE_V2);
 
-  return isIdBasedRiskScoringEnabled({ entityStoreV2Enabled });
+  return entityStoreV2Enabled;
 };
