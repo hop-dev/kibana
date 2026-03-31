@@ -5,8 +5,7 @@
  * 2.0.
  */
 
-// V2 maintainer copy kept separate from legacy reset-to-zero to avoid
-// optional-dependency branching between pipelines.
+// Kept separate from legacy reset-to-zero to avoid mixed dependency paths.
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
@@ -91,8 +90,7 @@ export const resetToZero = async ({
     | WHERE score > 0
     | WHERE calculation_run_id IS NULL OR calculation_run_id != "${calculationRunId}"
     | KEEP id_value
-    // Intentionally bounded per run; additional stale entities are drained by
-    // subsequent scheduled maintainer runs.
+    // Bounded per run; remaining stale entities are handled by later runs.
     | LIMIT ${RESET_BATCH_LIMIT}
     `;
 

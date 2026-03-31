@@ -48,18 +48,10 @@ export interface Phase1BaseScoringSummary {
 }
 
 /**
- * Phase 1: Base Scoring for a single entity type.
- * "Base" means risk derived directly from this entity's own alert inputs in the
- * current run window, before any cross-entity propagation/resolution phases.
+ * Computes base risk scores for one entity type and streams paginated results.
  *
- * Streams scored pages for one entity type:
- * - page entity ids via composite aggregation on EUID
- * - compute base scores with ES|QL for each page bound
- * - fetch matching Entity Store documents once and reuse for:
- *   - modifier application
- *   - downstream category decisions in the persistence path
- *
- * Returns scored pages without any persistence.
+ * Each page is scored from alert inputs, enriched with entity-derived modifiers,
+ * and returned without persistence.
  */
 export const calculateBaseEntityScores = async function* ({
   esClient,
@@ -78,7 +70,7 @@ export const calculateBaseEntityScores = async function* ({
   let previousPageUpperBound: string | undefined;
 
   do {
-    // Composite paging gives deterministic page bounds for the ES|QL score query.
+    // Composite paging gives deterministic bounds for the ES|QL score query.
     const compositeResponse = await esClient.search(
       getEuidCompositeQuery(entityType, alertFilters, {
         index: alertsIndex,
@@ -148,8 +140,7 @@ export const scoreBaseEntities = async ({
   idBasedRiskScoringEnabled,
   ...params
 }: ScoreAndPersistBaseEntitiesParams): Promise<Phase1BaseScoringSummary> => {
-  // Persists each base-score page in explicit phase-1 categories so phase-2
-  // defer/lookup routing can be introduced without reshaping this loop.
+  // Persist using categorized write groups to keep routing explicit.
   let writeNowCount = 0;
   let deferToPhase2Count = 0;
   let notInStoreCount = 0;
@@ -168,17 +159,15 @@ export const scoreBaseEntities = async ({
       `[page:${pagesProcessed}] categorization: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
     );
 
-    // Temporary Phase 1 behavior: defer_to_phase_2 scores are still written now.
-    // When Phase 2 aggregation is implemented, this write set will become
-    // write_now only and defer_to_phase_2 will be handled in that phase.
+    // `defer_to_phase_2` is currently written with `write_now`.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
     const bulkResponse = await writer.bulk({ [params.entityType]: riskIndexWrites });
     scoresWritten += bulkResponse.docs_written;
     if (bulkResponse.errors.length > 0) {
       params.logger.warn(
-        `[page:${pagesProcessed}] risk score bulk write had ${bulkResponse.errors.length} error(s): ${bulkResponse.errors.join(
-          '; '
-        )}`
+        `[page:${pagesProcessed}] risk score bulk write had ${
+          bulkResponse.errors.length
+        } error(s): ${bulkResponse.errors.join('; ')}`
       );
     } else {
       params.logger.info(

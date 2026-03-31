@@ -198,6 +198,8 @@ export const createRiskScoreMaintainer = ({
         runLogger.debug('starting base scoring/reset pass');
 
         // Phase 1 (base scoring):
+        // - "base entity" means an entity scored directly from its own alert inputs in this run
+        //   (before any propagation/resolution adjustments)
         // - reads alert inputs for this entity type
         // - applies modifiers from Entity Store/watchlists
         // - categorizes scores into write decisions

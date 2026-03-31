@@ -13,8 +13,7 @@ export const categorizePhase1Entities = (page: ScoredEntityPage): CategorizedEnt
   const notInStore = page.scores.filter((score) => !knownEntityIds.has(score.id_value));
 
   return {
-    // Phase 1 has no propagation/aggregation yet, so all known entities are
-    // currently persisted immediately.
+    // Known entities are currently persisted immediately.
     write_now: writeNow,
     not_in_store: notInStore,
     defer_to_phase_2: [],

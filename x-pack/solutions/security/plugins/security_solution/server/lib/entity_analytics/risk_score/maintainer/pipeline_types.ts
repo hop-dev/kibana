@@ -5,22 +5,22 @@
  * 2.0.
  */
 
-/** Shared types for the active Phase 1 maintainer runtime path. */
+/** Shared types for the maintainer scoring runtime path. */
 
 import type { AssetCriticalityLevel } from '@kbn/entity-store/common';
 import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
 
-/** Output of categorizeEntities() for downstream write/routing decisions. */
+/** Output of entity categorization for write routing decisions. */
 export interface CategorizedEntities {
   /** Entities missing in Entity Store. */
   not_in_store: EntityRiskScoreRecord[];
-  /** Scores that are final in Phase 1 and safe to persist immediately. */
+  /** Scores safe to persist immediately. */
   write_now: EntityRiskScoreRecord[];
-  /** Scores that should be deferred to Phase 2 once aggregation is enabled. */
+  /** Scores reserved for deferred handling. */
   defer_to_phase_2: EntityRiskScoreRecord[];
 }
 
-/** Minimal entity fields required for Phase 1 modifier application. */
+/** Minimal entity fields required for modifier application. */
 export interface RiskScoreModifierEntity {
   entity?: {
     id?: string;
@@ -33,7 +33,7 @@ export interface RiskScoreModifierEntity {
   };
 }
 
-/** Shared scored page shape used across maintainer loops. */
+/** Shared scored page shape used across scoring loops. */
 export interface ScoredEntityPage {
   entityIds: string[];
   scores: EntityRiskScoreRecord[];
