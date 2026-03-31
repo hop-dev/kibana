@@ -72,16 +72,18 @@ const buildWatchlistModifiers = (
   return watchlistIds.reduce<Array<Modifier<'watchlist'>>>((acc, watchlistId) => {
     const config = watchlistConfigs.get(watchlistId);
     if (config) {
+      const isPrivmonWatchlist = config.name === 'privmon' || config.name === 'privileged_users';
       const modifierValue = config.riskModifier;
       const weightedModifier =
         globalWeight !== undefined ? modifierValue * globalWeight : modifierValue;
 
       acc.push({
         type: 'watchlist',
-        subtype: config.name,
+        subtype: isPrivmonWatchlist ? 'privmon' : config.name,
         modifier_value: weightedModifier,
         metadata: {
           watchlist_id: watchlistId,
+          ...(isPrivmonWatchlist ? { is_privileged_user: true } : {}),
         },
       });
     }

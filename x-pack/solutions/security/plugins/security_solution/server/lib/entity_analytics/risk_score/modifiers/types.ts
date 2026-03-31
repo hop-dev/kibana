@@ -14,7 +14,10 @@ interface ModifierTypeMap {
   };
   watchlist: {
     subtype: string;
-    metadata: { watchlist_id: string };
+    metadata: {
+      watchlist_id?: string;
+      is_privileged_user?: boolean;
+    };
   };
 }
 export type MODIFIER_TYPE = keyof ModifierTypeMap;

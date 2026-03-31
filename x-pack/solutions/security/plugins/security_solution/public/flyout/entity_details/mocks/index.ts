@@ -60,7 +60,7 @@ const userRiskScore: UserRiskScore = {
           subtype: 'privmon',
           contribution: 5,
           metadata: {
-            watchlist_id: 'privmon',
+            is_privileged_user: true,
           },
         },
       ],
@@ -111,7 +111,7 @@ const hostRiskScore: HostRiskScore = {
           subtype: 'privmon',
           contribution: 5,
           metadata: {
-            watchlist_id: 'privmon',
+            is_privileged_user: true,
           },
         },
       ],

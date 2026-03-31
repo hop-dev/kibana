@@ -105,7 +105,7 @@ describe('extractModifiersFromEntity', () => {
           type: 'watchlist',
           subtype: 'privmon',
           modifier_value: 1.5,
-          metadata: { watchlist_id: 'wl-1' },
+          metadata: { watchlist_id: 'wl-1', is_privileged_user: true },
         },
       ]);
     });
@@ -121,7 +121,7 @@ describe('extractModifiersFromEntity', () => {
       expect(watchlistMods[0]).toMatchObject({
         subtype: 'privmon',
         modifier_value: 1.5,
-        metadata: { watchlist_id: 'wl-1' },
+        metadata: { watchlist_id: 'wl-1', is_privileged_user: true },
       });
       expect(watchlistMods[1]).toMatchObject({
         subtype: 'vip',
