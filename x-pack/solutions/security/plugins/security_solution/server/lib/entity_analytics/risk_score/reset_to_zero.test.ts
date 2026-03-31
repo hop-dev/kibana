@@ -109,7 +109,6 @@ describe('resetToZero', () => {
       refresh: 'wait_for',
     });
 
-    // Finding 1: exclusions are passed as a native ES filter, not in the ES|QL string
     expect(esClient.esql.query).toHaveBeenCalledWith(
       expect.objectContaining({
         filter: {

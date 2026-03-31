@@ -5,9 +5,6 @@
  * 2.0.
  */
 
-// Tests for the V2 maintainer resetToZero (see ./reset_to_zero.ts for why this
-// is a separate copy from ../reset_to_zero.ts).
-
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
@@ -114,8 +111,6 @@ describe('resetToZero (maintainer)', () => {
     );
     expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
 
-    // Zero base score means modifier doesn't change the numeric score (bayesianUpdate(0, ?) = 0),
-    // but the modifier metadata should appear in the score document.
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
         expect.objectContaining({
