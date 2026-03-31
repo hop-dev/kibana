@@ -167,6 +167,14 @@ export const cleanUpRiskScoreMaintainer = async ({
   const errors: Error[] = [];
   const addError = (e: Error) => errors.push(e);
 
+  // Remove the Task Manager task document so the runs counter resets to 0
+  // and setup() will re-run on next install. This is the most reliable way
+  // to ensure clean state regardless of whether the uninstall API succeeded.
+  const taskDocId = `task:risk-score:${namespace}`;
+  await es
+    .delete({ index: '.kibana_task_manager', id: taskDocId, refresh: true }, { ignore: [404] })
+    .catch(addError);
+
   const alias = `risk-score.risk-score-${namespace}`;
   const template = `.risk-score.risk-score-${namespace}-index-template`;
 

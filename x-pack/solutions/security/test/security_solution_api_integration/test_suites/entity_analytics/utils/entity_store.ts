@@ -439,6 +439,70 @@ export const waitForEntityStoreEntities = async ({
 };
 
 /**
+ * Polls until a specific entity document appears in the Entity Store V2 latest index,
+ * optionally requiring specific attribute values (criticality, watchlist membership).
+ */
+export const waitForEntityStoreDoc = async ({
+  es,
+  retry,
+  entityId,
+  timeoutMs = 60_000,
+  requireCriticality,
+  requiredWatchlistId,
+  namespace = 'default',
+}: {
+  es: Client;
+  retry: {
+    waitForWithTimeout: (
+      label: string,
+      timeout: number,
+      predicate: () => Promise<boolean>
+    ) => Promise<void>;
+  };
+  entityId: string;
+  timeoutMs?: number;
+  requireCriticality?: 'high_impact' | 'absent';
+  requiredWatchlistId?: string;
+  namespace?: string;
+}): Promise<void> => {
+  const index = `.entities.v2.latest.security_${namespace}`;
+  await retry.waitForWithTimeout(
+    `entity store doc present for ${entityId}`,
+    timeoutMs,
+    async () => {
+      const response = await es.search({
+        index,
+        size: 1,
+        query: { term: { 'entity.id': entityId } },
+      });
+      const hit = response.hits.hits[0]?._source as
+        | {
+            asset?: { criticality?: string };
+            entity?: { attributes?: { watchlists?: string[] } };
+          }
+        | undefined;
+      if (!hit) {
+        return false;
+      }
+
+      if (requireCriticality === 'high_impact' && hit.asset?.criticality !== 'high_impact') {
+        return false;
+      }
+      if (requireCriticality === 'absent' && hit.asset?.criticality != null) {
+        return false;
+      }
+      if (
+        requiredWatchlistId &&
+        !(hit.entity?.attributes?.watchlists?.includes(requiredWatchlistId) ?? false)
+      ) {
+        return false;
+      }
+      return true;
+    }
+  );
+};
+
+/**
  * Asserts that risk scores have been dual-written to the Entity Store.
  * Checks that entities in the store have `entity.risk` fields populated.
  */
