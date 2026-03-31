@@ -485,14 +485,17 @@ export const waitForEntityStoreDoc = async ({
         return false;
       }
 
-      if (requireCriticality === 'high_impact') {
-        return hit.asset?.criticality === 'high_impact';
+      if (requireCriticality === 'high_impact' && hit.asset?.criticality !== 'high_impact') {
+        return false;
       }
-      if (requireCriticality === 'absent') {
-        return hit.asset?.criticality == null;
+      if (requireCriticality === 'absent' && hit.asset?.criticality != null) {
+        return false;
       }
-      if (requiredWatchlistId) {
-        return hit.entity?.attributes?.watchlists?.includes(requiredWatchlistId) ?? false;
+      if (
+        requiredWatchlistId &&
+        !(hit.entity?.attributes?.watchlists?.includes(requiredWatchlistId) ?? false)
+      ) {
+        return false;
       }
       return true;
     }

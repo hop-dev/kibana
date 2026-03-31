@@ -168,6 +168,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
       describe('risk score document structure', () => {
         const watchlistRoutes = watchlistRouteHelpersFactory(supertest);
+        const assetCriticalityRoutes = assetCriticalityRouteHelpersFactory(supertest);
 
         afterEach(async () => {
           await cleanAssetCriticality({ log, es });
@@ -244,6 +245,12 @@ export default ({ getService }: FtrProviderContext): void => {
             riskScore: 30,
           });
 
+          await assetCriticalityRoutes.upsert({
+            id_field: 'host.name',
+            id_value: hostName,
+            criticality_level: 'high_impact',
+          });
+
           await entityStoreUtils.installEntityStoreV2({
             entityTypes: ['user', 'host'],
             dataViewPattern: testLogsIndex,
@@ -277,18 +284,31 @@ export default ({ getService }: FtrProviderContext): void => {
             es,
             retry,
             entityId: host.expectedEuid,
+            requireCriticality: 'high_impact',
             requiredWatchlistId: watchlistId,
           });
 
-          await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
-          await waitForRiskScoresToBePresent({ es, log, scoreCount: 1 });
 
-          const rawScores = await readRiskScores(es);
-          const ecsDoc = rawScores.find((s) => s.host?.risk?.id_value === host.expectedEuid);
-          expect(ecsDoc).to.not.be(undefined);
-
-          const risk = ecsDoc!.host!.risk!;
+          let risk: Record<string, unknown> = {};
+          await retry.waitForWithTimeout(
+            `risk score with both criticality and watchlist modifiers for ${host.expectedEuid}`,
+            60_000,
+            async () => {
+              const rawScores = await readRiskScores(es);
+              const ecsDoc = rawScores.find(
+                (s) =>
+                  s.host?.risk?.id_value === host.expectedEuid &&
+                  Array.isArray(s.host?.risk?.modifiers) &&
+                  s.host.risk.modifiers.length === 2
+              );
+              if (!ecsDoc) {
+                return false;
+              }
+              risk = ecsDoc.host!.risk! as Record<string, unknown>;
+              return true;
+            }
+          );
 
           expect(risk.criticality_level).to.eql('high_impact');
           expect(risk.criticality_modifier).to.be.a('number');
@@ -297,10 +317,10 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(risk.category_2_count).to.eql(1);
 
           expect(risk.modifiers).to.be.an('array');
-          expect(risk.modifiers!.length).to.eql(2);
+          expect((risk.modifiers as unknown[])!.length).to.eql(2);
 
-          const critMod = risk.modifiers!.find(
-            (m: Record<string, unknown>) => m.type === 'asset_criticality'
+          const critMod = (risk.modifiers as Array<Record<string, unknown>>)!.find(
+            (m) => m.type === 'asset_criticality'
           );
           expect(critMod).to.not.be(undefined);
           expect(critMod!.modifier_value).to.be.a('number');
@@ -310,8 +330,8 @@ export default ({ getService }: FtrProviderContext): void => {
             'high_impact'
           );
 
-          const wlMod = risk.modifiers!.find(
-            (m: Record<string, unknown>) => m.type === 'watchlist'
+          const wlMod = (risk.modifiers as Array<Record<string, unknown>>)!.find(
+            (m) => m.type === 'watchlist'
           );
           expect(wlMod).to.not.be(undefined);
           expect(wlMod!.subtype).to.eql('shape-test-watchlist');
@@ -391,13 +411,20 @@ export default ({ getService }: FtrProviderContext): void => {
           entityTypes: ['user', 'host', 'service'],
           dataViewPattern: testLogsIndex,
         });
-        await waitForEntityStoreEntities({ es, log, count: 1 });
-        await maintainerRoutes.runMaintainer('risk-score');
+        await waitForEntityStoreDoc({ es, retry, entityId: serviceEntity.expectedEuid });
         await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
-        const rawScores = await readRiskScores(es);
-        const ecsDoc = rawScores.find(
-          (s) => s.service?.risk?.id_value === serviceEntity.expectedEuid
+        let ecsDoc: Awaited<ReturnType<typeof readRiskScores>>[number] | undefined;
+        await retry.waitForWithTimeout(
+          `risk score present for service entity ${serviceEntity.expectedEuid}`,
+          60_000,
+          async () => {
+            const rawScores = await readRiskScores(es);
+            ecsDoc = rawScores.find(
+              (s) => s.service?.risk?.id_value === serviceEntity.expectedEuid
+            );
+            return ecsDoc !== undefined;
+          }
         );
         expect(ecsDoc).to.not.be(undefined);
         expect(ecsDoc!.service?.name).to.be.a('string');
