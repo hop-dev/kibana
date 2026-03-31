@@ -30,7 +30,7 @@ import type { EntityMaintainersClient } from './domain/entity_maintainers';
 import type { FeatureFlags } from './infra/feature_flags';
 import type { CcsLogsExtractionClient, LogsExtractionClient } from './domain/logs_extraction';
 import type { HistorySnapshotClient } from './domain/history_snapshot';
-import type { CRUDClient, EntityUpdateClient as MaintainerEntityUpdateClient } from './domain/crud';
+import type { CRUDClient } from './domain/crud';
 import type { ResolutionClient } from './domain/resolution';
 import type { RegisterEntityMaintainerConfig } from './tasks/entity_maintainers/types';
 
@@ -72,7 +72,6 @@ export type EntityStorePluginRouter = IRouter<EntityStoreRequestHandlerContext>;
 
 export type RegisterEntityMaintainer = (config: RegisterEntityMaintainerConfig) => void;
 
-export type EntityUpdateClient = MaintainerEntityUpdateClient;
 export type EntityStoreCRUDClient = Omit<CRUDClient, 'createEntity'>;
 
 export interface EntityStoreStartContract {
