@@ -384,7 +384,6 @@ export default ({ getService }: FtrProviderContext): void => {
           dataViewPattern: testLogsIndex,
         });
         await waitForEntityStoreDoc({ es, retry, entityId: localUser.expectedEuid });
-        await maintainerRoutes.runMaintainer('risk-score');
         await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
         const score = await waitForRiskScoreForId({
           es,
@@ -486,7 +485,6 @@ export default ({ getService }: FtrProviderContext): void => {
             entityId: testHost.expectedEuid,
             requireCriticality: 'high_impact',
           });
-          await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           const score = await waitForRiskScoreForId({
             es,
@@ -574,8 +572,6 @@ export default ({ getService }: FtrProviderContext): void => {
             | undefined;
           expect(entityDoc?.entity?.attributes?.watchlists ?? []).to.contain(watchlistId);
 
-          // Re-run maintainer after watchlist membership has propagated to the entity doc
-          await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await retry.waitForWithTimeout(
             `risk score with watchlist modifier for ${idpUser.expectedEuid}`,
@@ -643,7 +639,6 @@ export default ({ getService }: FtrProviderContext): void => {
             dataViewPattern: testLogsIndex,
           });
           await waitForEntityStoreEntities({ es, log, count: 2 });
-          await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: 2 });
 
@@ -811,7 +806,6 @@ export default ({ getService }: FtrProviderContext): void => {
             requiredWatchlistId: watchlistId,
           });
 
-          await maintainerRoutes.runMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: testEntities.length });
 
