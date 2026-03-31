@@ -68,6 +68,20 @@ export const createRiskScoreMaintainer = ({
     pipelineVersion: PIPELINE_VERSION,
   });
 
+  const ensureRiskScoreResources = async ({
+    namespace,
+    riskScoreDataClient,
+    soClient,
+  }: {
+    namespace: string;
+    riskScoreDataClient: RiskScoreDataClient;
+    soClient: ReturnType<typeof buildScopedInternalSavedObjectsClientUnsafe>;
+  }) => {
+    logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
+    await initSavedObjects({ savedObjectsClient: soClient, namespace });
+    await riskScoreDataClient.init();
+  };
+
   return {
     setup: async ({ status }) => {
       const namespace = status.metadata.namespace;
@@ -84,11 +98,7 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      logger.debug(`Initializing risk score maintainer saved objects for namespace "${namespace}"`);
-      await initSavedObjects({ savedObjectsClient: soClient, namespace });
-      logger.debug(`Initializing risk score maintainer data client for namespace "${namespace}"`);
-      await riskScoreDataClient.init();
-
+      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
       logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
       return status.state;
     },
@@ -110,6 +120,8 @@ export const createRiskScoreMaintainer = ({
         soClient,
         auditLogger,
       });
+
+      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
 
       const license = await pluginsStart.licensing.getLicense();
 

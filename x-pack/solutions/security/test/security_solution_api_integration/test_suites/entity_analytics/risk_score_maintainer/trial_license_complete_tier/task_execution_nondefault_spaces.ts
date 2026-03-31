@@ -65,9 +65,16 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       beforeEach(async () => {
+        // Clean stale state from any previous run (handles crashed/incomplete cleanup)
+        await cleanUpRiskScoreMaintainer({ log, es, namespace });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
 
+        try {
+          await spaces.delete(namespace);
+        } catch {
+          // Space may not exist on first run
+        }
         await spaces.create({
           id: namespace,
           name: namespace,
@@ -93,8 +100,8 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       afterEach(async () => {
-        await entityStoreUtils.cleanEngines();
         await cleanUpRiskScoreMaintainer({ log, es, namespace });
+        await entityStoreUtils.cleanEngines();
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
         await spaces.delete(namespace);
