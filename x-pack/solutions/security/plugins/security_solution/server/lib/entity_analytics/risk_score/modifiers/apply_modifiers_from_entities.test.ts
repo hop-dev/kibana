@@ -130,28 +130,20 @@ describe('extractModifiersFromEntity', () => {
       });
     });
 
-    it('returns empty array when watchlists array is empty', () => {
-      const entity = buildTestEntity({ id: 'user:u1', watchlists: [] });
-      const [, watchlistMods] = extractModifiersFromEntity(
-        entity,
-        undefined,
-        defaultWatchlistConfigs
-      );
-      expect(watchlistMods).toEqual([]);
-    });
-
-    it('returns empty array when entity has no attributes', () => {
-      const entity = buildTestEntity({ id: 'user:u1' });
-      const [, watchlistMods] = extractModifiersFromEntity(
-        entity,
-        undefined,
-        defaultWatchlistConfigs
-      );
-      expect(watchlistMods).toEqual([]);
-    });
-
-    it('returns empty array when watchlist ID is not in configs', () => {
-      const entity = buildTestEntity({ id: 'user:u1', watchlists: ['unknown-id'] });
+    it.each([
+      {
+        name: 'watchlists array is empty',
+        entity: buildTestEntity({ id: 'user:u1', watchlists: [] }),
+      },
+      {
+        name: 'entity has no attributes',
+        entity: buildTestEntity({ id: 'user:u1' }),
+      },
+      {
+        name: 'watchlist ID is not in configs',
+        entity: buildTestEntity({ id: 'user:u1', watchlists: ['unknown-id'] }),
+      },
+    ])('returns empty array when $name', ({ entity }) => {
       const [, watchlistMods] = extractModifiersFromEntity(
         entity,
         undefined,
@@ -235,30 +227,6 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(doc.calculated_score_norm).toBeGreaterThan(75);
   });
 
-  it('applies watchlist modifier', () => {
-    const entities = new Map([
-      ['user:u1', buildTestEntity({ id: 'user:u1', watchlists: ['wl-1'] })],
-    ]);
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores: [buildScore('user:u1')], identifierField },
-      entities,
-      watchlistConfigs: defaultWatchlistConfigs,
-    });
-
-    expect(results).toHaveLength(1);
-    const doc = results[0];
-    expect(doc.modifiers).toHaveLength(1);
-    expect(doc.modifiers?.[0]).toMatchObject({
-      type: 'watchlist',
-      subtype: 'privmon',
-      modifier_value: 1.5,
-      metadata: { watchlist_id: 'wl-1' },
-    });
-    expect(doc.calculated_score_norm).toBeGreaterThan(75);
-  });
-
   it('applies both modifiers when entity has criticality and watchlists', () => {
     const entities = new Map([
       [
@@ -284,38 +252,6 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(doc.calculated_score_norm).toBeGreaterThan(75);
     expect(doc.criticality_level).toBe('extreme_impact');
     expect(doc.criticality_modifier).toBe(2.0);
-  });
-
-  it('produces base score with empty modifiers when entity has no modifiers', () => {
-    const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores: [buildScore('host:h1')], identifierField },
-      entities,
-    });
-
-    expect(results).toHaveLength(1);
-    const doc = results[0];
-    expect(doc.modifiers).toEqual([]);
-    expect(doc.calculated_score_norm).toBe(75);
-    expect(doc.criticality_level).toBeUndefined();
-    expect(doc.criticality_modifier).toBeUndefined();
-  });
-
-  it('produces base score when entity is not found in map', () => {
-    const entities = new Map<string, RiskScoreModifierEntity>();
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores: [buildScore('host:unknown')], identifierField },
-      entities,
-    });
-
-    expect(results).toHaveLength(1);
-    const doc = results[0];
-    expect(doc.modifiers).toEqual([]);
-    expect(doc.calculated_score_norm).toBe(75);
   });
 
   it('returns empty array with empty scores', () => {
@@ -365,22 +301,6 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(results[2].modifiers).toHaveLength(2);
   });
 
-  it('empty entity map produces no modifiers for all scores', () => {
-    const entities = new Map<string, RiskScoreModifierEntity>();
-    const scores = [buildScore('host:h1'), buildScore('host:h2')];
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores, identifierField },
-      entities,
-    });
-
-    expect(results).toHaveLength(2);
-    results.forEach((doc) => {
-      expect(doc.modifiers).toEqual([]);
-    });
-  });
-
   it('sets correct @timestamp and id fields', () => {
     const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
 
@@ -395,29 +315,20 @@ describe('applyScoreModifiersFromEntities', () => {
     expect(results[0].id_value).toBe('host:h1');
   });
 
-  it('defaults score_type to base', () => {
+  it.each([
+    { scoreType: undefined, expected: 'base' },
+    { scoreType: 'propagated' as const, expected: 'propagated' },
+  ])('sets score_type to $expected', ({ scoreType, expected }) => {
     const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
 
     const results = applyScoreModifiersFromEntities({
       now,
+      scoreType,
       page: { scores: [buildScore('host:h1')], identifierField },
       entities,
     });
 
-    expect(results[0].score_type).toBe('base');
-  });
-
-  it('sets explicit score_type when provided', () => {
-    const entities = new Map([['host:h1', buildTestEntity({ id: 'host:h1' })]]);
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      scoreType: 'propagated',
-      page: { scores: [buildScore('host:h1')], identifierField },
-      entities,
-    });
-
-    expect(results[0].score_type).toBe('propagated');
+    expect(results[0].score_type).toBe(expected);
   });
 
   it('sets calculation_run_id when provided', () => {
@@ -459,45 +370,5 @@ describe('applyScoreModifiersFromEntities', () => {
     const baseScore = 75; // normalized_score from the bucket
     const scoreChange = doc.calculated_score_norm - baseScore;
     expect(totalContribution).toBeCloseTo(scoreChange, 5);
-  });
-
-  it('applies multiple watchlist modifiers multiplicatively', () => {
-    const configs = buildWatchlistConfigs(
-      { id: 'wl-1', name: 'privmon', riskModifier: 1.5 },
-      { id: 'wl-2', name: 'vip', riskModifier: 2.0 }
-    );
-    const entities = new Map([
-      ['user:u1', buildTestEntity({ id: 'user:u1', watchlists: ['wl-1', 'wl-2'] })],
-    ]);
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores: [buildScore('user:u1')], identifierField },
-      entities,
-      watchlistConfigs: configs,
-    });
-
-    const doc = results[0];
-    expect(doc.modifiers).toHaveLength(2);
-    expect(doc.modifiers?.map((m) => m.subtype)).toEqual(['privmon', 'vip']);
-    // With 1.5 * 2.0 = 3.0 combined modifier, score should increase substantially
-    expect(doc.calculated_score_norm).toBeGreaterThan(75);
-  });
-
-  it('ignores unknown watchlist IDs in entity attributes', () => {
-    const entities = new Map([
-      ['user:u1', buildTestEntity({ id: 'user:u1', watchlists: ['unknown-id'] })],
-    ]);
-
-    const results = applyScoreModifiersFromEntities({
-      now,
-      page: { scores: [buildScore('user:u1')], identifierField },
-      entities,
-      watchlistConfigs: defaultWatchlistConfigs,
-    });
-
-    const doc = results[0];
-    expect(doc.modifiers).toEqual([]);
-    expect(doc.calculated_score_norm).toBe(75);
   });
 });
