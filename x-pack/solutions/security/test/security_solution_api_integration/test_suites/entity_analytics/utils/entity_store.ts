@@ -52,12 +52,6 @@ export const EntityStoreUtils = (
       .send({ changes: { 'securitySolution:entityStoreEnableV2': null } })
       .expect(200);
 
-    try {
-      await dataView.delete('security-solution');
-    } catch (e) {
-      // Ignore if it doesn't exist
-    }
-
     // Use the supported uninstall API so maintainers are removed via
     // entityMaintainersClient.removeAll() and don't leak task state between tests.
     let uninstallUrl = '/internal/security/entity_store/uninstall?apiVersion=2';
@@ -289,13 +283,19 @@ export const EntityStoreUtils = (
 
   const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
     // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
-    const { dataViewPattern = 'logs-*', waitForEntities = true, ...installBody } = body;
+    const {
+      dataViewPattern = 'logs-*',
+      waitForEntities = true,
+      entityTypes = ['user', 'host'],
+      ...installBody
+    } = body;
+    const installRequestBody = { ...installBody, entityTypes };
     await dataView.create('security-solution', dataViewPattern);
 
-    const res = await enableEntityStoreV2(installBody);
+    const res = await enableEntityStoreV2(installRequestBody);
 
     await retry.waitForWithTimeout(
-      `Engines to start for entity types: ${body.entityTypes.join(', ')}`,
+      `Engines to start for entity types: ${entityTypes.join(', ')}`,
       60_000,
       async () => {
         const { body: enginesBody } = await entityAnalyticsApi
@@ -311,7 +311,6 @@ export const EntityStoreUtils = (
       }
     );
 
-    const entityTypes: string[] = body.entityTypes;
     const fromDateISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const toDateISO = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     for (const entityType of entityTypes) {
