@@ -176,6 +176,7 @@ export default ({ getService }: FtrProviderContext) => {
         await entityStoreUtils.installEntityStoreV2({
           entityTypes: ['host'],
           dataViewPattern: seedLogsIndex,
+          waitForEntities: false,
         });
         await waitForMaintainerRun({ retry, routes: maintainerRoutes });
 
@@ -186,6 +187,7 @@ export default ({ getService }: FtrProviderContext) => {
         await entityStoreUtilsCustomSpace.installEntityStoreV2({
           entityTypes: ['host'],
           dataViewPattern: seedLogsIndex,
+          waitForEntities: false,
         });
         await waitForMaintainerRun({ retry, routes: maintainerRoutesCustomSpace });
 

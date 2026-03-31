@@ -289,7 +289,7 @@ export const EntityStoreUtils = (
 
   const installEntityStoreV2 = async (body: any = { entityTypes: ['user', 'host'] }) => {
     // Default to logs-* to avoid coupling extraction to ecs_compliant fixture state.
-    const { dataViewPattern = 'logs-*', ...installBody } = body;
+    const { dataViewPattern = 'logs-*', waitForEntities = true, ...installBody } = body;
     await dataView.create('security-solution', dataViewPattern);
 
     const res = await enableEntityStoreV2(installBody);
@@ -333,7 +333,9 @@ export const EntityStoreUtils = (
       );
       expect([200, 202]).to.contain(extractRes.status);
     }
-    await waitForEntityStoreEntities({ es, log, count: 1, namespace });
+    if (waitForEntities) {
+      await waitForEntityStoreEntities({ es, log, count: 1, namespace });
+    }
 
     let maintainersUrl = '/internal/security/entity_store/entity_maintainers/init?apiVersion=2';
     if (namespace !== 'default') {
