@@ -109,7 +109,8 @@ export const riskScoreServiceFactory = ({
 
       const alertSampleSizePerShard =
         savedObjectConfig.alertSampleSizePerShard ??
-        entityAnalyticsConfig.riskEngine.alertSampleSizePerShard;
+        entityAnalyticsConfig?.riskEngine?.alertSampleSizePerShard ??
+        10000;
 
       return {
         ...savedObjectConfig,

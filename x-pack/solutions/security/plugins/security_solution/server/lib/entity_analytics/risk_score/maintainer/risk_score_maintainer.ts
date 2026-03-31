@@ -151,7 +151,8 @@ export const createRiskScoreMaintainer = ({
       const writer = await riskScoreDataClient.getWriter({ namespace });
       const sampleSize =
         configuration.alertSampleSizePerShard ??
-        entityAnalyticsConfig.riskEngine.alertSampleSizePerShard;
+        entityAnalyticsConfig?.riskEngine?.alertSampleSizePerShard ??
+        10000;
       const pageSize = configuration.pageSize ?? DEFAULT_RISK_SCORE_PAGE_SIZE;
       const entityTypes = configuration.identifierType
         ? [configuration.identifierType]

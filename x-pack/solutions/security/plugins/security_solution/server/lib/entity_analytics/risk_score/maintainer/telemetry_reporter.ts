@@ -43,6 +43,10 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
   telemetry: AnalyticsServiceSetup;
   pipelineVersion: string;
 }) => {
+  const reportEvent = (eventType: string, properties: Record<string, unknown>) => {
+    telemetry?.reportEvent?.(eventType, properties);
+  };
+
   let lastGlobalSkipReason: GlobalSkipReason | undefined;
 
   const forRun = (runContext: MaintainerRunContext) => {
@@ -74,7 +78,7 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
       notInStoreCount?: number;
       resetBatchLimitHit?: boolean;
     }) => {
-      telemetry.reportEvent(RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT.eventType, {
+      reportEvent(RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT.eventType, {
         namespace: runContext.namespace,
         entityType: runContext.entityType,
         calculationRunId: runContext.calculationRunId,
@@ -156,7 +160,7 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
       startBaseStage,
       startResetStage,
       errorSummary: (input: { errorKind: MaintainerErrorKind; errorMessage: string }) => {
-        telemetry.reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
+        reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
           namespace: runContext.namespace,
           entityType: runContext.entityType,
           calculationRunId: runContext.calculationRunId,
@@ -184,7 +188,7 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         deferToPhase2Count: number;
         notInStoreCount: number;
       }) => {
-        telemetry.reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
+        reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
           namespace: runContext.namespace,
           entityType: runContext.entityType,
           calculationRunId: runContext.calculationRunId,
@@ -216,7 +220,7 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         return;
       }
 
-      telemetry.reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
+      reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
         namespace,
         entityType: 'all',
         calculationRunId,

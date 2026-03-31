@@ -372,7 +372,7 @@ export const getESQL = (
     | EVAL input = CONCAT(""" {"risk_score": """", risk_score::keyword, """", "time": """", time::keyword, """", "index": """", _index, """", "rule_name_b64": """", rule_name_b64, """\", "category_b64": """", category_b64, """\", "id": \"""", alert_id, """\" } """)
     | STATS
         alert_count = count(risk_score),
-        scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
+        scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize ?? 10000}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
         risk_inputs = TOP(input, 10, "desc")
     BY ${identifierField}
     | SORT scores DESC
@@ -536,7 +536,7 @@ export const getBaseScoreESQL = (
     | WHERE ${rangeClause}
     | STATS
         alert_count = count(risk_score),
-        scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
+        scores = MV_PSERIES_WEIGHTED_SUM(TOP(risk_score, ${sampleSize ?? 10000}, "desc"), ${RIEMANN_ZETA_S_VALUE}),
         risk_inputs = TOP(input, 10, "desc")
         BY entity_id
     | SORT scores DESC

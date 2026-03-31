@@ -8,17 +8,16 @@
 import expect from '@kbn/expect';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteAllRules, deleteAllAlerts } from '@kbn/detections-response-ftr-services';
-import { dataGeneratorFactory } from '../../../detections_response/utils';
 import {
-  buildDocument,
-  createAndSyncRuleAndAlertsFactory,
   readRiskScores,
   waitForRiskScoresToBePresent,
   normalizeScores,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
-  waitForMaintainerRun,
   cleanUpRiskScoreMaintainer,
+  indexListOfDocumentsFactory,
+  riskScoreMaintainerScenarioFactory,
+  createAndSyncRuleAndAlertsFactory,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -32,22 +31,26 @@ export default ({ getService }: FtrProviderContext): void => {
 
   describe('@ess Risk Score Maintainer in non-default space', () => {
     describe('with alerts in a non-default space', () => {
-      const { indexListOfDocuments } = dataGeneratorFactory({
-        es,
-        index: 'ecs_compliant',
-        log,
-      });
+      const testLogsIndex = 'ecs_compliant';
       const namespace = uuidv4();
-      const documentId = uuidv4();
-      const index = [`risk-score.risk-score-${namespace}`];
-      const createAndSyncRuleAndAlertsForOtherSpace = createAndSyncRuleAndAlertsFactory({
+
+      const indexListOfDocuments = indexListOfDocumentsFactory({ es, log, index: testLogsIndex });
+      const createAndSyncRuleAndAlerts = createAndSyncRuleAndAlertsFactory({
         supertest,
         log,
         namespace,
+        indices: [testLogsIndex],
       });
+      const entityStoreUtils = EntityStoreUtils(getService, namespace);
+      const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest, namespace);
 
-      const entityStoreUtilsCustomSpace = EntityStoreUtils(getService, namespace);
-      const maintainerRoutesCustomSpace = entityMaintainerRouteHelpersFactory(supertest, namespace);
+      const maintainerScenario = riskScoreMaintainerScenarioFactory({
+        indexListOfDocuments,
+        createAndSyncRuleAndAlerts,
+        entityStoreUtils,
+        retry,
+        routes: maintainerRoutes,
+      });
 
       before(async () => {
         await esArchiver.load(
@@ -71,28 +74,26 @@ export default ({ getService }: FtrProviderContext): void => {
           disabledFeatures: [],
         });
 
-        const baseEvent = buildDocument({ host: { name: 'host-1' } }, documentId);
-        await indexListOfDocuments(
+        const { documentIds } = await maintainerScenario.seedEntities(
           Array(10)
-            .fill(baseEvent)
-            .map((_baseEvent, _index) => ({
-              ..._baseEvent,
-              'host.name': `host-${_index}`,
-            }))
+            .fill(0)
+            .map((_, i) => ({ kind: 'host', hostName: `host-${i}` }))
         );
 
-        await createAndSyncRuleAndAlertsForOtherSpace({
-          query: `id: ${documentId}`,
+        await maintainerScenario.createAlertsForDocumentIds({
+          documentIds,
           alerts: 10,
           riskScore: 40,
         });
 
-        await entityStoreUtilsCustomSpace.installEntityStoreV2();
-        await waitForMaintainerRun({ retry, routes: maintainerRoutesCustomSpace });
+        await maintainerScenario.installAndRunMaintainer({
+          entityTypes: ['user', 'host'],
+          dataViewPattern: testLogsIndex,
+        });
       });
 
       afterEach(async () => {
-        await entityStoreUtilsCustomSpace.cleanEngines();
+        await entityStoreUtils.cleanEngines();
         await cleanUpRiskScoreMaintainer({ log, es, namespace });
         await deleteAllAlerts(supertest, log, es);
         await deleteAllRules(supertest, log);
@@ -100,14 +101,16 @@ export default ({ getService }: FtrProviderContext): void => {
       });
 
       it('calculates and persists risk scores for alert documents', async () => {
+        const index = `risk-score.risk-score-${namespace}`;
+
         await waitForRiskScoresToBePresent({
           es,
           log,
           scoreCount: 10,
-          index,
+          index: [index],
         });
 
-        const scores = await readRiskScores(es, index);
+        const scores = await readRiskScores(es, [index]);
         const normalized = normalizeScores(scores);
         expect(normalized.length).to.eql(10);
 
