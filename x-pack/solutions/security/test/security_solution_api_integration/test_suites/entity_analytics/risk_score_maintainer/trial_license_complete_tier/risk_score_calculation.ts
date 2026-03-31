@@ -52,7 +52,7 @@ export default ({ getService }: FtrProviderContext): void => {
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
     this.tags(['esGate']);
 
-    context('with auditbeat data', () => {
+    context('with test log data', () => {
       const indexListOfDocuments = indexListOfDocumentsFactory({ es, log, index: testLogsIndex });
       const maintainerScenario = riskScoreMaintainerScenarioFactory({
         indexListOfDocuments,
@@ -431,7 +431,7 @@ export default ({ getService }: FtrProviderContext): void => {
         expect(ecsDoc!.service?.risk?.calculated_score_norm).to.be.greaterThan(0);
       });
 
-      describe('@skipInServerless with asset criticality data', () => {
+      describe('@skipInServerless with asset criticality modifiers', () => {
         const assetCriticalityRoutes = assetCriticalityRouteHelpersFactory(supertest);
 
         afterEach(async () => {
@@ -504,7 +504,7 @@ export default ({ getService }: FtrProviderContext): void => {
         });
       });
 
-      describe('@skipInServerless with watchlist modifier data', () => {
+      describe('@skipInServerless with watchlist modifiers', () => {
         const watchlistRoutes = watchlistRouteHelpersFactory(supertest);
 
         afterEach(async () => {
