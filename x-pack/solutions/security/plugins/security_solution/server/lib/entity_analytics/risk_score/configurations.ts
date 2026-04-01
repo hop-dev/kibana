@@ -94,6 +94,21 @@ const commonRiskFields: FieldMap = {
     array: true,
     required: false,
   },
+  related_entities: {
+    type: 'object',
+    array: true,
+    required: false,
+  },
+  'related_entities.entity_id': {
+    type: 'keyword',
+    array: false,
+    required: false,
+  },
+  'related_entities.relationship_type': {
+    type: 'keyword',
+    array: false,
+    required: false,
+  },
   'inputs.id': {
     type: 'keyword',
     array: false,

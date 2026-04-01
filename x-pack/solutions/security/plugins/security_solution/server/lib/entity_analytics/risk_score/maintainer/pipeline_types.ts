@@ -44,3 +44,9 @@ export interface ScoredEntityPage {
   scores: EntityRiskScoreRecord[];
   entities: Map<string, RiskScoreModifierEntity>;
 }
+
+/** Minimal summary fields returned by scorer modules. */
+export interface ScoringSummaryBase {
+  pagesProcessed: number;
+  scores: EntityRiskScoreRecord[];
+}
