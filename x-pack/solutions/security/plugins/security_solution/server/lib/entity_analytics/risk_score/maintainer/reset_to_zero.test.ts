@@ -178,6 +178,36 @@ describe('resetToZero (maintainer)', () => {
     });
   });
 
+  it('supports service entity reset-to-zero writes', async () => {
+    (esClient.esql.query as jest.Mock).mockResolvedValue({
+      values: [['service:svc-1', null]],
+    });
+
+    const result = await resetToZero({
+      esClient,
+      dataClient,
+      spaceId: 'default',
+      entityType: EntityType.service,
+      logger,
+      idBasedRiskScoringEnabled: true,
+      crudClient,
+      calculationRunId: 'run-id-1',
+      now,
+      watchlistConfigs: emptyWatchlistConfigs,
+    });
+
+    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(writerBulkMock).toHaveBeenCalledWith({
+      service: [
+        expect.objectContaining({
+          id_value: 'service:svc-1',
+          calculated_score: 0,
+          calculated_score_norm: 0,
+        }),
+      ],
+    });
+  });
+
   it('proceeds with empty entity map when entity fetch fails', async () => {
     (esClient.esql.query as jest.Mock).mockResolvedValue({
       values: [['host:host-1', null]],

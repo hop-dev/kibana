@@ -58,11 +58,6 @@ export const resetToZero = async ({
   calculationRunId,
   now,
 }: ResetToZeroDependencies): Promise<ResetToZeroSummary> => {
-  if (entityType !== 'host' && entityType !== 'user') {
-    logger.debug(`reset_to_zero skipped for unsupported entity type "${entityType}"`);
-    return { scoresWritten: 0, resetBatchLimitHit: false };
-  }
-
   const { alias } = await getIndexPatternDataStream(spaceId);
   const indexExists = await esClient.indices.exists({ index: alias });
   if (!indexExists) {
