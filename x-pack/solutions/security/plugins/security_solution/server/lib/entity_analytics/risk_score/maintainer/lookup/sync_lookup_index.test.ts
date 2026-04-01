@@ -58,6 +58,20 @@ describe('lookup index utilities', () => {
     );
   });
 
+  it('ignores resource_already_exists_exception during concurrent create', async () => {
+    (esClient.indices.exists as jest.Mock).mockResolvedValue(false);
+    (esClient.indices.create as jest.Mock).mockRejectedValue(
+      new Error('resource_already_exists_exception')
+    );
+
+    const index = await ensureLookupIndex({
+      esClient,
+      namespace: 'default',
+    });
+
+    expect(index).toBe('.entity_analytics.risk_score.lookup-default');
+  });
+
   it('upserts lookup documents through bulk operations', async () => {
     await syncLookupIndex({
       esClient,
@@ -198,6 +212,67 @@ describe('lookup index utilities', () => {
       ],
       deletes: ['user:stale-3'],
     });
+  });
+
+  it('does not overwrite a resolution mapping with self mapping', () => {
+    const page: ScoredEntityPage = {
+      entityIds: ['user:a', 'user:b'],
+      scores: [],
+      entities: new Map([
+        [
+          'user:b',
+          {
+            entity: {
+              id: 'user:b',
+              relationships: {
+                resolution: { resolved_to: 'user:c' },
+              },
+            },
+          },
+        ],
+        [
+          'user:a',
+          {
+            entity: {
+              id: 'user:a',
+              relationships: {
+                resolution: { resolved_to: 'user:b' },
+              },
+            },
+          },
+        ],
+      ]),
+    };
+
+    const operations = buildLookupSyncOperationsForPage({
+      page,
+      now: '2026-01-01T00:00:00.000Z',
+      notInStoreEntityIds: [],
+    });
+
+    expect(operations.upserts).toEqual([
+      {
+        entity_id: 'user:b',
+        resolution_target_id: 'user:c',
+        propagation_target_id: null,
+        relationship_type: 'entity.relationships.resolution.resolved_to',
+        '@timestamp': '2026-01-01T00:00:00.000Z',
+      },
+      {
+        entity_id: 'user:c',
+        resolution_target_id: 'user:c',
+        propagation_target_id: null,
+        relationship_type: 'self',
+        '@timestamp': '2026-01-01T00:00:00.000Z',
+      },
+      {
+        entity_id: 'user:a',
+        resolution_target_id: 'user:b',
+        propagation_target_id: null,
+        relationship_type: 'entity.relationships.resolution.resolved_to',
+        '@timestamp': '2026-01-01T00:00:00.000Z',
+      },
+    ]);
   });
 
   it('syncs a scored page using one helper call', async () => {

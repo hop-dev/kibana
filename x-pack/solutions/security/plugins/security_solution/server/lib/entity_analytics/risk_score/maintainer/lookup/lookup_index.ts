@@ -33,13 +33,20 @@ export const ensureLookupIndex = async ({
   const exists = await esClient.indices.exists({ index: lookupIndex });
 
   if (!exists) {
-    await esClient.indices.create({
-      index: lookupIndex,
-      settings: {
-        'index.mode': 'lookup',
-      },
-      mappings: LOOKUP_INDEX_MAPPING,
-    });
+    try {
+      await esClient.indices.create({
+        index: lookupIndex,
+        settings: {
+          'index.mode': 'lookup',
+        },
+        mappings: LOOKUP_INDEX_MAPPING,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (!errorMessage.includes('resource_already_exists_exception')) {
+        throw error;
+      }
+    }
   }
 
   return lookupIndex;

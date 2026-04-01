@@ -463,7 +463,7 @@ export const createRiskScoreMaintainer = ({
             resetStage.error({
               errorKind: 'unexpected',
             });
-            runLogger.error(`error resetting risk scores to zero: ${error}`);
+            runLogger.error(`error resetting risk scores to zero: ${errorMessage}`);
           }
         } else {
           runLogger.debug('reset_to_zero disabled in configuration');

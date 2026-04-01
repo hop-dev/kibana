@@ -36,44 +36,49 @@ export const parseEsqlBaseScoreRow =
   (row: unknown[]): ParsedRiskScore => {
     const [count, score, _inputs, entityId] = row as [number, number, string | string[], string];
 
-    const inputs = [_inputs].flat().map((input, i) => {
-      let parsedRiskInputData: Record<string, string> = {};
-      let ruleName: string | undefined;
-      let category: string | undefined;
+    const inputs = [_inputs]
+      .flat()
+      .map((input, i) => {
+        let parsedRiskInputData: Record<string, string> = {};
+        let ruleName: string | undefined;
+        let category: string | undefined;
 
-      try {
-        parsedRiskInputData = JSON.parse(input);
-        ruleName = parsedRiskInputData.rule_name_b64
-          ? Buffer.from(parsedRiskInputData.rule_name_b64, 'base64').toString('utf-8')
-          : parsedRiskInputData.rule_name;
-        category = parsedRiskInputData.category_b64
-          ? Buffer.from(parsedRiskInputData.category_b64, 'base64').toString('utf-8')
-          : parsedRiskInputData.category;
-      } catch {
-        ruleName = parsedRiskInputData.rule_name;
-        category = parsedRiskInputData.category;
-      }
+        try {
+          parsedRiskInputData = JSON.parse(input);
+          ruleName = parsedRiskInputData.rule_name_b64
+            ? Buffer.from(parsedRiskInputData.rule_name_b64, 'base64').toString('utf-8')
+            : parsedRiskInputData.rule_name;
+          category = parsedRiskInputData.category_b64
+            ? Buffer.from(parsedRiskInputData.category_b64, 'base64').toString('utf-8')
+            : parsedRiskInputData.category;
+        } catch {
+          return null;
+        }
 
-      const value = parseFloat(parsedRiskInputData.risk_score);
-      const currentScore = value / Math.pow(i + 1, RIEMANN_ZETA_S_VALUE);
-      const otherFields = omit(parsedRiskInputData, [
-        'risk_score',
-        'rule_name',
-        'rule_name_b64',
-        'category',
-        'category_b64',
-      ]);
+        const value = parseFloat(parsedRiskInputData.risk_score);
+        if (Number.isNaN(value) || !parsedRiskInputData.id) {
+          return null;
+        }
+        const currentScore = value / Math.pow(i + 1, RIEMANN_ZETA_S_VALUE);
+        const otherFields = omit(parsedRiskInputData, [
+          'risk_score',
+          'rule_name',
+          'rule_name_b64',
+          'category',
+          'category_b64',
+        ]);
 
-      return {
-        id: parsedRiskInputData.id,
-        ...otherFields,
-        rule_name: ruleName,
-        category,
-        score: value,
-        contribution: currentScore / RIEMANN_ZETA_VALUE,
-        index,
-      } as SearchHitRiskInput;
-    });
+        return {
+          id: parsedRiskInputData.id,
+          ...otherFields,
+          rule_name: ruleName,
+          category,
+          score: value,
+          contribution: currentScore / RIEMANN_ZETA_VALUE,
+          index,
+        } as SearchHitRiskInput;
+      })
+      .filter((riskInput): riskInput is SearchHitRiskInput => riskInput !== null);
 
     return {
       entity_id: entityId,
@@ -109,8 +114,8 @@ export const parseEsqlResolutionScoreRow =
       })
       .filter(
         (entry) =>
-          entry.entity_id.length > 0 &&
-          entry.relationship_type.length > 0 &&
+          entry.entity_id?.length > 0 &&
+          entry.relationship_type?.length > 0 &&
           entry.relationship_type !== 'self'
       );
 

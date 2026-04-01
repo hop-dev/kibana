@@ -46,13 +46,15 @@ export const buildLookupSyncOperationsForPage = ({
         '@timestamp': now,
       });
 
-      upsertMap.set(targetId, {
-        entity_id: targetId,
-        resolution_target_id: targetId,
-        propagation_target_id: null,
-        relationship_type: SELF_RELATIONSHIP_TYPE,
-        '@timestamp': now,
-      });
+      if (!upsertMap.has(targetId)) {
+        upsertMap.set(targetId, {
+          entity_id: targetId,
+          resolution_target_id: targetId,
+          propagation_target_id: null,
+          relationship_type: SELF_RELATIONSHIP_TYPE,
+          '@timestamp': now,
+        });
+      }
     }
   }
 
