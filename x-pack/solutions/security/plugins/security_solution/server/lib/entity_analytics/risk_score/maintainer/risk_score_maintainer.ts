@@ -119,7 +119,11 @@ export const createRiskScoreMaintainer = ({
     watchlistConfigs: Map<string, WatchlistObject>;
     idBasedRiskScoringEnabled: boolean;
     writer: Awaited<ReturnType<RiskScoreDataClient['getWriter']>>;
-  }): Promise<number> => {
+  }): Promise<{
+    scoresWritten: number;
+    pagesProcessed: number;
+    skippedReason?: 'lookup_empty';
+  }> => {
     const resolutionSummary = await scoreResolutionEntities({
       esClient,
       crudClient,
@@ -138,7 +142,11 @@ export const createRiskScoreMaintainer = ({
       runLogger.debug(
         `phase 2 (resolution) skipped for ${entityType}: lookup_empty or no matching alerts`
       );
-      return 0;
+      return {
+        scoresWritten: 0,
+        pagesProcessed: resolutionSummary.pagesProcessed,
+        skippedReason: resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : undefined,
+      };
     }
 
     const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
@@ -162,7 +170,10 @@ export const createRiskScoreMaintainer = ({
       }
     }
 
-    return scoresWrittenResolution;
+    return {
+      scoresWritten: scoresWrittenResolution,
+      pagesProcessed: resolutionSummary.pagesProcessed,
+    };
   };
 
   return {
@@ -219,7 +230,6 @@ export const createRiskScoreMaintainer = ({
           namespace,
           skipReason,
           idBasedRiskScoringEnabled: false,
-          calculationRunId: uuidv4(),
         });
         logger.debug(
           'Risk score maintainer run skipped due to insufficient license or feature disabled'
@@ -266,10 +276,12 @@ export const createRiskScoreMaintainer = ({
         );
         let runStatus: 'success' | 'error' = 'success';
         let runErrorKind: MaintainerErrorKind | undefined;
-        let runErrorMessage: string | undefined;
         let scoresWrittenBase = 0;
         let scoresWrittenResolution = 0;
         let scoresWrittenResetToZero = 0;
+        let lookupDocsUpserted = 0;
+        let lookupDocsDeleted = 0;
+        let lookupPrunedDocs = 0;
         let pagesProcessed = 0;
         let deferToPhase2Count = 0;
         let notInStoreCount = 0;
@@ -293,6 +305,7 @@ export const createRiskScoreMaintainer = ({
         // Phase 1 lookup table synchronization is intentionally not in this branch.
         const alertFilters = buildAlertFilters(configuration, entityType, runLogger);
         const baseStage = runTelemetry.startBaseStage();
+        const lookupStage = runTelemetry.startLookupSyncStage();
         try {
           const baseSummary = await scoreBaseEntities({
             alertFilters,
@@ -315,6 +328,8 @@ export const createRiskScoreMaintainer = ({
           pagesProcessed = baseSummary.pagesProcessed;
           deferToPhase2Count = baseSummary.deferToPhase2Count;
           notInStoreCount = baseSummary.notInStoreCount;
+          lookupDocsUpserted = baseSummary.lookupDocsUpserted;
+          lookupDocsDeleted = baseSummary.lookupDocsDeleted;
 
           baseStage.success({
             pagesProcessed: baseSummary.pagesProcessed,
@@ -322,25 +337,30 @@ export const createRiskScoreMaintainer = ({
             deferToPhase2Count: baseSummary.deferToPhase2Count,
             notInStoreCount: baseSummary.notInStoreCount,
           });
+          lookupStage.success({
+            lookupDocsUpserted: baseSummary.lookupDocsUpserted,
+            lookupDocsDeleted: baseSummary.lookupDocsDeleted,
+          });
         } catch (error) {
           const errorMessage = telemetryReporter.getErrorMessage(error);
           runStatus = 'error';
           runErrorKind = 'unexpected';
-          runErrorMessage = errorMessage;
           runLogger.error(`base scoring failed: ${errorMessage}`);
           baseStage.error({
             errorKind: 'unexpected',
-            errorMessage,
+          });
+          lookupStage.error({
+            errorKind: 'unexpected',
           });
           runTelemetry.errorSummary({
             errorKind: 'unexpected',
-            errorMessage,
           });
           throw error;
         }
 
+        const resolutionStage = runTelemetry.startResolutionStage();
         try {
-          scoresWrittenResolution = await runResolutionScoring({
+          const resolutionResult = await runResolutionScoring({
             esClient,
             crudClient,
             logger: runLogger,
@@ -355,12 +375,23 @@ export const createRiskScoreMaintainer = ({
             idBasedRiskScoringEnabled,
             writer,
           });
+          scoresWrittenResolution = resolutionResult.scoresWritten;
+          if (resolutionResult.skippedReason) {
+            resolutionStage.skipped(resolutionResult.skippedReason);
+          } else {
+            resolutionStage.success({
+              pagesProcessed: resolutionResult.pagesProcessed,
+              scoresWritten: resolutionResult.scoresWritten,
+            });
+          }
         } catch (error) {
           const errorMessage = telemetryReporter.getErrorMessage(error);
           runStatus = 'error';
           runErrorKind = 'unexpected';
-          runErrorMessage = errorMessage;
           runLogger.error(`resolution scoring failed: ${errorMessage}`);
+          resolutionStage.error({
+            errorKind: 'unexpected',
+          });
         }
 
         // Cleanup step: clear stale positive scores for entities not scored in this run.
@@ -396,6 +427,7 @@ export const createRiskScoreMaintainer = ({
               index: lookupIndex,
               riskWindowStart,
             });
+            lookupPrunedDocs = prunedDocs;
             if (prunedDocs > 0) {
               runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
             }
@@ -403,10 +435,8 @@ export const createRiskScoreMaintainer = ({
             const errorMessage = telemetryReporter.getErrorMessage(error);
             runStatus = 'error';
             runErrorKind = 'unexpected';
-            runErrorMessage = errorMessage;
             resetStage.error({
               errorKind: 'unexpected',
-              errorMessage,
             });
             runLogger.error(`error resetting risk scores to zero: ${error}`);
           }
@@ -418,12 +448,15 @@ export const createRiskScoreMaintainer = ({
         runTelemetry.completionSummary({
           runStatus,
           runErrorKind,
-          runErrorMessage,
           scoresWrittenBase,
+          scoresWrittenResolution,
           scoresWrittenResetToZero,
           pagesProcessed,
           deferToPhase2Count,
           notInStoreCount,
+          lookupDocsUpserted,
+          lookupDocsDeleted,
+          lookupPrunedDocs,
         });
       }
 

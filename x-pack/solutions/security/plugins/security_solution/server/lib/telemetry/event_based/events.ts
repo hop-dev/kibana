@@ -320,6 +320,8 @@ export type RiskScoreMaintainerSkipReason =
   | 'feature_disabled'
   | 'risk_engine_disabled'
   | 'reset_to_zero_disabled'
+  | 'lookup_empty'
+  | 'resolution_disabled'
   | 'phase_not_available';
 export type RiskScoreMaintainerErrorKind =
   | 'esql_query_failed'
@@ -327,7 +329,11 @@ export type RiskScoreMaintainerErrorKind =
   | 'entity_store_write_failed'
   | 'entity_fetch_failed'
   | 'unexpected';
-export type RiskScoreMaintainerStage = 'phase1_base_scoring' | 'reset_to_zero';
+export type RiskScoreMaintainerStage =
+  | 'phase1_base_scoring'
+  | 'phase1_lookup_sync'
+  | 'phase2_resolution_scoring'
+  | 'reset_to_zero';
 
 export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
   namespace: string;
@@ -338,10 +344,14 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
   durationMs: number;
   scoresWrittenTotal: number;
   scoresWrittenBase: number;
+  scoresWrittenResolution: number;
   scoresWrittenResetToZero: number;
   pagesProcessed: number;
   deferToPhase2Count: number;
   notInStoreCount: number;
+  lookupDocsUpserted: number;
+  lookupDocsDeleted: number;
+  lookupPrunedDocs: number;
   idBasedRiskScoringEnabled: boolean;
   pipelineVersion: string;
 }> = {
@@ -364,6 +374,10 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
       type: 'long',
       _meta: { description: 'Risk score docs written during base scoring stage' },
     },
+    scoresWrittenResolution: {
+      type: 'long',
+      _meta: { description: 'Risk score docs written during resolution scoring stage' },
+    },
     scoresWrittenResetToZero: {
       type: 'long',
       _meta: { description: 'Risk score docs written during reset-to-zero stage' },
@@ -379,6 +393,18 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
     notInStoreCount: {
       type: 'long',
       _meta: { description: 'Entities classified as not_in_store' },
+    },
+    lookupDocsUpserted: {
+      type: 'long',
+      _meta: { description: 'Lookup docs upserted during phase-1 lookup synchronization' },
+    },
+    lookupDocsDeleted: {
+      type: 'long',
+      _meta: { description: 'Lookup docs deleted during phase-1 lookup synchronization' },
+    },
+    lookupPrunedDocs: {
+      type: 'long',
+      _meta: { description: 'Lookup docs pruned after reset-to-zero cleanup' },
     },
     idBasedRiskScoringEnabled: {
       type: 'boolean',
@@ -403,6 +429,8 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
   scoresWritten?: number;
   deferToPhase2Count?: number;
   notInStoreCount?: number;
+  lookupDocsUpserted?: number;
+  lookupDocsDeleted?: number;
   resetBatchLimitHit?: boolean;
   idBasedRiskScoringEnabled: boolean;
   pipelineVersion: string;
@@ -437,6 +465,14 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
     notInStoreCount: {
       type: 'long',
       _meta: { optional: true, description: 'Entities classified as not_in_store' },
+    },
+    lookupDocsUpserted: {
+      type: 'long',
+      _meta: { optional: true, description: 'Lookup docs upserted in this stage' },
+    },
+    lookupDocsDeleted: {
+      type: 'long',
+      _meta: { optional: true, description: 'Lookup docs deleted in this stage' },
     },
     resetBatchLimitHit: {
       type: 'boolean',
