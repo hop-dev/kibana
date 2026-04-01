@@ -35,16 +35,6 @@ const normalizeWatchlists = (value: unknown): string[] => {
   return [];
 };
 
-const RESOLVED_TO_FIELD = 'entity.relationships.resolution.resolved_to';
-
-const getResolvedTo = (entity: NormalizedModifierEntitySource): string | undefined => {
-  const nested = entity.entity?.relationships?.resolution?.resolved_to;
-  if (typeof nested === 'string') return nested;
-  const dotted = (entity as Record<string, unknown>)[RESOLVED_TO_FIELD];
-  if (typeof dotted === 'string') return dotted;
-  return undefined;
-};
-
 const normalizeModifierEntity = (
   entity: NormalizedModifierEntitySource | undefined
 ): RiskScoreModifierEntity | undefined => {
@@ -57,6 +47,7 @@ const normalizeModifierEntity = (
   }
 
   const watchlists = normalizeWatchlists(entity.entity?.attributes?.watchlists);
+  const resolvedTo = entity.entity?.relationships?.resolution?.resolved_to;
 
   return {
     entity: {
@@ -66,7 +57,7 @@ const normalizeModifierEntity = (
       },
       relationships: {
         resolution: {
-          resolved_to: getResolvedTo(entity),
+          resolved_to: typeof resolvedTo === 'string' ? resolvedTo : undefined,
         },
       },
     },
