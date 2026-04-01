@@ -76,7 +76,7 @@ export const syncLookupIndex = async ({
 
   for (const doc of upserts) {
     operations.push({ index: { _index: index, _id: doc.entity_id } });
-    operations.push(doc);
+    operations.push({ ...doc });
   }
 
   for (const entityId of deletes) {

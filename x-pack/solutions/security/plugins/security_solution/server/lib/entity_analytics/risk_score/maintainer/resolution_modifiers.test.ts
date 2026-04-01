@@ -45,7 +45,7 @@ describe('buildResolutionModifierEntity', () => {
               id: 'user:alias-1',
               attributes: { watchlists: ['wl-2', 'wl-1'] },
             },
-            asset: { criticality: 'critical_asset' },
+            asset: { criticality: 'extreme_impact' },
           },
         ],
         [
@@ -61,7 +61,7 @@ describe('buildResolutionModifierEntity', () => {
       ]),
     });
 
-    expect(result.asset?.criticality).toBe('critical_asset');
+    expect(result.asset?.criticality).toBe('extreme_impact');
     expect(result.entity?.attributes?.watchlists).toEqual(
       expect.arrayContaining(['wl-1', 'wl-2', 'wl-3'])
     );

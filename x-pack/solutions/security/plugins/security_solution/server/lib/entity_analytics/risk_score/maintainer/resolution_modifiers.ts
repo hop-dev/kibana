@@ -13,8 +13,7 @@ const criticalityRank: Partial<Record<AssetCriticalityLevel, number>> = {
   low_impact: 1,
   medium_impact: 2,
   high_impact: 3,
-  critical_asset: 4,
-  extreme_impact: 5,
+  extreme_impact: 4,
 };
 
 const getHigherCriticality = (

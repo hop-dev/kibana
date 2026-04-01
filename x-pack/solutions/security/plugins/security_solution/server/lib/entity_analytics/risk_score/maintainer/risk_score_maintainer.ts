@@ -42,6 +42,7 @@ import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_repo
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
+import type { ScopedLogger } from './utils/with_log_context';
 import { ensureLookupIndex } from './lookup/lookup_index';
 import { scoreResolutionEntities } from './score_resolution_entities';
 import { pruneLookupIndex } from './lookup/prune_lookup_index';
@@ -108,7 +109,7 @@ export const createRiskScoreMaintainer = ({
   }: {
     esClient: ElasticsearchClient;
     crudClient: Parameters<RiskScoreMaintainerConfig['run']>[0]['crudClient'];
-    logger: Logger;
+    logger: ScopedLogger;
     entityType: EntityType;
     alertsIndex: string;
     lookupIndex: string;
@@ -197,7 +198,7 @@ export const createRiskScoreMaintainer = ({
     esClient: ElasticsearchClient;
     lookupIndex: string;
     riskWindowStart: string;
-    runLogger: Logger;
+    runLogger: ScopedLogger;
   }): Promise<{ prunedDocs: number; errorMessage?: string }> => {
     try {
       const prunedDocs = await pruneLookupIndex({

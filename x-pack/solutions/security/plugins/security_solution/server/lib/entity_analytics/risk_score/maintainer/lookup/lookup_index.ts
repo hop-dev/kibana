@@ -6,10 +6,10 @@
  */
 
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type { TypeMapping } from '@elastic/elasticsearch/lib/api/types';
+import type { MappingTypeMapping } from '@elastic/elasticsearch/lib/api/types';
 import { getIndexPatternLookup } from '../../configurations';
 
-const LOOKUP_INDEX_MAPPING: TypeMapping = {
+const LOOKUP_INDEX_MAPPING: MappingTypeMapping = {
   properties: {
     entity_id: { type: 'keyword' },
     resolution_target_id: { type: 'keyword' },

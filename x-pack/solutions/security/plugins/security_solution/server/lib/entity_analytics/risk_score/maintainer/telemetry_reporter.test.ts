@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { AnalyticsServiceSetup } from '@kbn/core/server';
 import {
   RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT,
   RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT,
@@ -20,7 +21,7 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
 
   it('reports run completion with resolution and lookup counters', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
-      telemetry: { reportEvent } as unknown as { reportEvent: typeof reportEvent },
+      telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
       pipelineVersion: 'v2_phase2_resolution',
     });
 
@@ -63,7 +64,7 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
 
   it('reports lookup sync success and resolution skipped stages', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
-      telemetry: { reportEvent } as unknown as { reportEvent: typeof reportEvent },
+      telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
       pipelineVersion: 'v2_phase2_resolution',
     });
 
@@ -109,7 +110,7 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
 
   it('deduplicates repeated global skip reports for the same reason', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
-      telemetry: { reportEvent } as unknown as { reportEvent: typeof reportEvent },
+      telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
       pipelineVersion: 'v2_phase2_resolution',
     });
 
