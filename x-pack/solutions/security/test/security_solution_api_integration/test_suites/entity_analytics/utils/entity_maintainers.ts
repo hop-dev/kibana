@@ -35,7 +35,7 @@ interface RetryServiceLike {
   waitForWithTimeout: (
     label: string,
     timeout: number,
-    predicate: () => Promise<boolean>
+    predicate: () => Promise<boolean> | boolean
   ) => Promise<void>;
 }
 
