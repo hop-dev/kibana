@@ -73,6 +73,9 @@ export const scoreResolutionEntities = async ({
     pagesProcessed += 1;
     const upper = buckets[buckets.length - 1].key.resolution_target_id;
     afterKey = compositeAgg?.after_key;
+    logger.debug(
+      `[resolution][page:${pagesProcessed}] lookup buckets=${buckets.length}, upper_bound="${upper}"`
+    );
 
     const query = getResolutionScoreESQL(
       entityType,
@@ -84,8 +87,14 @@ export const scoreResolutionEntities = async ({
     );
 
     const esqlResponse = await esClient.esql.query({ query });
+
     previousUpperBound = upper;
     const parsedScores = (esqlResponse.values ?? []).map(parseEsqlResolutionScoreRow(alertsIndex));
+    logger.debug(
+      `[resolution][page:${pagesProcessed}] parsed_scores=${parsedScores.length}, esql_rows=${
+        esqlResponse.values?.length ?? 0
+      }`
+    );
 
     if (parsedScores.length > 0) {
       const allMemberIds = new Set<string>();
@@ -102,6 +111,9 @@ export const scoreResolutionEntities = async ({
         errorContext:
           'Error fetching entities for resolution modifier application. Resolution scoring will proceed without modifiers',
       });
+      logger.debug(
+        `[resolution][page:${pagesProcessed}] member_entities_requested=${allMemberIds.size}, fetched=${memberEntities.size}`
+      );
 
       const mergedModifierEntities = new Map(
         parsedScores.map((score) => [
@@ -138,6 +150,9 @@ export const scoreResolutionEntities = async ({
           related_entities: parsedScores[index].related_entities,
         });
       }
+      logger.debug(
+        `[resolution][page:${pagesProcessed}] modified_scores=${modifiedScores.length}, cumulative_resolution_docs=${scoredDocuments.length}`
+      );
     }
   } while (afterKey !== undefined);
 

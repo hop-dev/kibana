@@ -56,7 +56,8 @@ export const buildLookupSyncOperationsForPage = ({
     }
   }
 
-  return { upserts: [...upsertMap.values()], deletes: notInStoreEntityIds };
+  const upserts = [...upsertMap.values()];
+  return { upserts, deletes: notInStoreEntityIds };
 };
 
 export const syncLookupIndex = async ({

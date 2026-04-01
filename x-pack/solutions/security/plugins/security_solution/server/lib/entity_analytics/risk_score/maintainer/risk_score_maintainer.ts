@@ -124,6 +124,9 @@ export const createRiskScoreMaintainer = ({
     pagesProcessed: number;
     skippedReason?: 'lookup_empty';
   }> => {
+    runLogger.info(
+      `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
+    );
     const resolutionSummary = await scoreResolutionEntities({
       esClient,
       crudClient,
@@ -139,8 +142,10 @@ export const createRiskScoreMaintainer = ({
     });
 
     if (resolutionSummary.scores.length === 0) {
-      runLogger.debug(
-        `phase 2 (resolution) skipped for ${entityType}: lookup_empty or no matching alerts`
+      const skipReason =
+        resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
+      runLogger.info(
+        `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${resolutionSummary.pagesProcessed}`
       );
       return {
         scoresWritten: 0,
@@ -151,9 +156,16 @@ export const createRiskScoreMaintainer = ({
 
     const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
     const scoresWrittenResolution = bulkResponse.docs_written;
-    runLogger.debug(
-      `resolution scoring wrote ${scoresWrittenResolution} score documents across ${resolutionSummary.pagesProcessed} page(s)`
+    runLogger.info(
+      `phase 2 resolution write succeeded: attempted=${resolutionSummary.scores.length}, written=${scoresWrittenResolution}, pages=${resolutionSummary.pagesProcessed}, took=${bulkResponse.took}ms`
     );
+    if (bulkResponse.errors.length > 0) {
+      runLogger.warn(
+        `phase 2 resolution write had ${
+          bulkResponse.errors.length
+        } error(s): ${bulkResponse.errors.join('; ')}`
+      );
+    }
 
     if (idBasedRiskScoringEnabled) {
       const entityStoreErrors = await persistRiskScoresToEntityStore({
@@ -355,6 +367,11 @@ export const createRiskScoreMaintainer = ({
             errorKind: 'unexpected',
           });
           throw error;
+        }
+
+        if (lookupDocsUpserted > 0) {
+          await esClient.indices.refresh({ index: lookupIndex });
+          runLogger.debug(`refreshed lookup index after ${lookupDocsUpserted} upserts`);
         }
 
         const resolutionStage = runTelemetry.startResolutionStage();
