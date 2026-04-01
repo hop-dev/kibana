@@ -132,6 +132,21 @@ Object {
     "required": false,
     "type": "keyword",
   },
+  "host.risk.related_entities": Object {
+    "array": true,
+    "required": false,
+    "type": "object",
+  },
+  "host.risk.related_entities.entity_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
+  "host.risk.related_entities.relationship_type": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "host.risk.score_type": Object {
     "array": false,
     "required": false,
@@ -257,6 +272,21 @@ Object {
     "required": false,
     "type": "keyword",
   },
+  "service.risk.related_entities": Object {
+    "array": true,
+    "required": false,
+    "type": "object",
+  },
+  "service.risk.related_entities.entity_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
+  "service.risk.related_entities.relationship_type": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
   "service.risk.score_type": Object {
     "array": false,
     "required": false,
@@ -378,6 +408,21 @@ Object {
     "type": "keyword",
   },
   "user.risk.notes": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
+  "user.risk.related_entities": Object {
+    "array": true,
+    "required": false,
+    "type": "object",
+  },
+  "user.risk.related_entities.entity_id": Object {
+    "array": false,
+    "required": false,
+    "type": "keyword",
+  },
+  "user.risk.related_entities.relationship_type": Object {
     "array": false,
     "required": false,
     "type": "keyword",

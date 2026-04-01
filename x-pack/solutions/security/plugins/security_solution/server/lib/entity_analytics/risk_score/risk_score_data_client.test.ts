@@ -296,6 +296,17 @@ const assertIndex = (namespace: string) => {
                   notes: {
                     type: 'keyword',
                   },
+                  related_entities: {
+                    type: 'object',
+                    properties: {
+                      entity_id: {
+                        type: 'keyword',
+                      },
+                      relationship_type: {
+                        type: 'keyword',
+                      },
+                    },
+                  },
                   inputs: {
                     properties: {
                       id: {
@@ -404,6 +415,17 @@ const assertIndex = (namespace: string) => {
                   notes: {
                     type: 'keyword',
                   },
+                  related_entities: {
+                    type: 'object',
+                    properties: {
+                      entity_id: {
+                        type: 'keyword',
+                      },
+                      relationship_type: {
+                        type: 'keyword',
+                      },
+                    },
+                  },
                 },
                 type: 'object',
               },
@@ -465,6 +487,17 @@ const assertIndex = (namespace: string) => {
                   },
                   notes: {
                     type: 'keyword',
+                  },
+                  related_entities: {
+                    type: 'object',
+                    properties: {
+                      entity_id: {
+                        type: 'keyword',
+                      },
+                      relationship_type: {
+                        type: 'keyword',
+                      },
+                    },
                   },
                   inputs: {
                     properties: {
