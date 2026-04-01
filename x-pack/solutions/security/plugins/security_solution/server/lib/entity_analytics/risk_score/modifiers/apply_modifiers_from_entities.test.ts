@@ -6,10 +6,10 @@
  */
 
 import type { AssetCriticalityLevel } from '@kbn/entity-store/common';
-import type { RiskScoreModifierEntity } from '../maintainer/pipeline_types';
+import type { RiskScoreModifierEntity } from '../maintainer/steps/pipeline_types';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
+import type { ParsedRiskScore } from '../maintainer/steps/parse_esql_row';
 import {
   extractModifiersFromEntity,
   applyScoreModifiersFromEntities,

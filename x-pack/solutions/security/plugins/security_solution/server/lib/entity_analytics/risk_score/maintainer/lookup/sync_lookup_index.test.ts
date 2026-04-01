@@ -8,7 +8,7 @@
 import { elasticsearchServiceMock } from '@kbn/core/server/mocks';
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { ensureLookupIndex, getLookupIndexName } from './lookup_index';
-import type { CategorizedEntities, ScoredEntityPage } from '../pipeline_types';
+import type { CategorizedEntities, ScoredEntityPage } from '../steps/pipeline_types';
 import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
 import {
   buildLookupSyncOperationsForPage,

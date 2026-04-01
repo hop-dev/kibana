@@ -7,7 +7,7 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { LookupDocument } from './lookup_types';
-import type { CategorizedEntities, ScoredEntityPage } from '../pipeline_types';
+import type { CategorizedEntities, ScoredEntityPage } from '../steps/pipeline_types';
 
 interface SyncLookupIndexParams {
   esClient: ElasticsearchClient;

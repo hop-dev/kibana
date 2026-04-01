@@ -37,10 +37,8 @@ interface GlobalSkipInput {
 
 export const createRiskScoreMaintainerTelemetryReporter = ({
   telemetry,
-  pipelineVersion,
 }: {
   telemetry: AnalyticsServiceSetup;
-  pipelineVersion: string;
 }) => {
   const reportEvent = (eventType: string, properties: Record<string, unknown>) => {
     telemetry?.reportEvent?.(eventType, properties);
@@ -99,7 +97,6 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         lookupDocsDeleted,
         resetBatchLimitHit,
         idBasedRiskScoringEnabled: runContext.idBasedRiskScoringEnabled,
-        pipelineVersion,
       });
     };
 
@@ -231,7 +228,6 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
           lookupDocsDeleted: 0,
           lookupPrunedDocs: 0,
           idBasedRiskScoringEnabled: runContext.idBasedRiskScoringEnabled,
-          pipelineVersion,
         });
       },
       completionSummary: (input: {
@@ -267,7 +263,6 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
           lookupDocsDeleted: input.lookupDocsDeleted,
           lookupPrunedDocs: input.lookupPrunedDocs,
           idBasedRiskScoringEnabled: runContext.idBasedRiskScoringEnabled,
-          pipelineVersion,
         });
       },
     };
@@ -300,7 +295,6 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         lookupDocsDeleted: 0,
         lookupPrunedDocs: 0,
         idBasedRiskScoringEnabled,
-        pipelineVersion,
       });
       lastGlobalSkipReason = skipReason;
     },

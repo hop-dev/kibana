@@ -22,7 +22,6 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
   it('reports run completion with resolution and lookup counters', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
       telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
-      pipelineVersion: 'v2_phase2_resolution',
     });
 
     const runTelemetry = reporter.forRun({
@@ -57,7 +56,6 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
         lookupDocsUpserted: 7,
         lookupDocsDeleted: 8,
         lookupPrunedDocs: 9,
-        pipelineVersion: 'v2_phase2_resolution',
       })
     );
   });
@@ -65,7 +63,6 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
   it('reports lookup sync success and resolution skipped stages', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
       telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
-      pipelineVersion: 'v2_phase2_resolution',
     });
 
     const runTelemetry = reporter.forRun({
@@ -111,7 +108,6 @@ describe('createRiskScoreMaintainerTelemetryReporter', () => {
   it('deduplicates repeated global skip reports for the same reason', () => {
     const reporter = createRiskScoreMaintainerTelemetryReporter({
       telemetry: { reportEvent } as unknown as AnalyticsServiceSetup,
-      pipelineVersion: 'v2_phase2_resolution',
     });
 
     reporter.reportGlobalSkipIfChanged({
