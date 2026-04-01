@@ -195,6 +195,11 @@ export const getIndexPatternDataStream = (namespace: string): IIndexPatternStrin
   alias: `${riskScoreBaseIndexName}.${riskScoreBaseIndexName}-${namespace}`,
 });
 
+export const getIndexPatternLookup = (namespace: string): IIndexPatternString => ({
+  template: `.entity_analytics.risk_score.lookup-${namespace}-index-template`,
+  alias: `.entity_analytics.risk_score.lookup-${namespace}`,
+});
+
 export type TransformOptions = Omit<TransformPutTransformRequest, 'transform_id'>;
 
 /**

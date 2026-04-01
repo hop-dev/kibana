@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { AnalyticsServiceSetup, Logger } from '@kbn/core/server';
+import type { AnalyticsServiceSetup, ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,6 +39,7 @@ import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_repo
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
+import { ensureLookupIndex } from './lookup/lookup_index';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -52,7 +53,7 @@ export interface RiskScoreMaintainerDeps {
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
 const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
-const PIPELINE_VERSION = 'v2_phase1';
+const PIPELINE_VERSION = 'v2_phase2_resolution';
 
 export const createRiskScoreMaintainer = ({
   getStartServices,
@@ -70,16 +71,19 @@ export const createRiskScoreMaintainer = ({
 
   const ensureRiskScoreResources = async ({
     namespace,
+    esClient,
     riskScoreDataClient,
     soClient,
   }: {
     namespace: string;
+    esClient: ElasticsearchClient;
     riskScoreDataClient: RiskScoreDataClient;
     soClient: ReturnType<typeof buildScopedInternalSavedObjectsClientUnsafe>;
   }) => {
     logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
     await initSavedObjects({ savedObjectsClient: soClient, namespace });
     await riskScoreDataClient.init();
+    await ensureLookupIndex({ esClient, namespace });
   };
 
   return {
@@ -98,7 +102,7 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
+      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
       logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
       return status.state;
     },
@@ -121,7 +125,8 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
+      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
+      const lookupIndex = await ensureLookupIndex({ esClient, namespace });
 
       const license = await pluginsStart.licensing.getLicense();
 
@@ -215,6 +220,7 @@ export const createRiskScoreMaintainer = ({
             crudClient,
             entityType,
             esClient,
+            lookupIndex,
             logger: runLogger,
             now: runNow,
             calculationRunId,

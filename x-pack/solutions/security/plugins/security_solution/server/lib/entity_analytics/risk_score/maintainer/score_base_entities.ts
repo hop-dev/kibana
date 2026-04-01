@@ -19,6 +19,7 @@ import { categorizePhase1Entities } from './categorize_phase1_entities';
 import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 import type { ScopedLogger } from './utils/with_log_context';
+import { syncLookupIndexForCategorizedPage } from './lookup/sync_lookup_index';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
@@ -37,6 +38,7 @@ interface ScoreBaseEntitiesParams {
 interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
   writer: RiskEngineDataWriter;
   idBasedRiskScoringEnabled: boolean;
+  lookupIndex: string;
 }
 
 export interface Phase1BaseScoringSummary {
@@ -45,6 +47,8 @@ export interface Phase1BaseScoringSummary {
   deferToPhase2Count: number;
   notInStoreCount: number;
   scoresWritten: number;
+  lookupDocsUpserted: number;
+  lookupDocsDeleted: number;
 }
 
 /**
@@ -136,6 +140,7 @@ export const calculateBaseEntityScores = async function* ({
 export const scoreBaseEntities = async ({
   writer,
   idBasedRiskScoringEnabled,
+  lookupIndex,
   ...params
 }: ScoreAndPersistBaseEntitiesParams): Promise<Phase1BaseScoringSummary> => {
   // Persist using categorized write groups to keep routing explicit.
@@ -144,17 +149,31 @@ export const scoreBaseEntities = async ({
   let notInStoreCount = 0;
   let pagesProcessed = 0;
   let scoresWritten = 0;
+  let lookupDocsUpserted = 0;
+  let lookupDocsDeleted = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
     pagesProcessed += 1;
     const categorized = categorizePhase1Entities(page);
+    const lookupSyncResult = await syncLookupIndexForCategorizedPage({
+      esClient: params.esClient,
+      index: lookupIndex,
+      page,
+      categorized,
+      now: params.now,
+    });
 
     writeNowCount += categorized.write_now.length;
     deferToPhase2Count += categorized.defer_to_phase_2.length;
     notInStoreCount += categorized.not_in_store.length;
+    lookupDocsUpserted += lookupSyncResult.upserted;
+    lookupDocsDeleted += lookupSyncResult.deleted;
 
     params.logger.debug(
       `[page:${pagesProcessed}] categorization: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
+    );
+    params.logger.debug(
+      `[page:${pagesProcessed}] lookup sync: upserts=${lookupSyncResult.upserted}, deletes=${lookupSyncResult.deleted}`
     );
 
     // `defer_to_phase_2` is currently written with `write_now` until phase 2 is implemented.
@@ -198,6 +217,9 @@ export const scoreBaseEntities = async ({
   params.logger.debug(
     `categorization totals: pages=${pagesProcessed}, write_now=${writeNowCount}, defer_to_phase_2=${deferToPhase2Count}, not_in_store=${notInStoreCount}`
   );
+  params.logger.debug(
+    `lookup sync totals: upserts=${lookupDocsUpserted}, deletes=${lookupDocsDeleted}`
+  );
 
   return {
     pagesProcessed,
@@ -205,5 +227,7 @@ export const scoreBaseEntities = async ({
     deferToPhase2Count,
     notInStoreCount,
     scoresWritten,
+    lookupDocsUpserted,
+    lookupDocsDeleted,
   };
 };

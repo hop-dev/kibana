@@ -27,6 +27,11 @@ export interface RiskScoreModifierEntity {
     attributes?: {
       watchlists?: string[];
     };
+    relationships?: {
+      resolution?: {
+        resolved_to?: string;
+      };
+    };
   };
   asset?: {
     criticality?: AssetCriticalityLevel;
