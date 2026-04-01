@@ -324,6 +324,28 @@ export const riskScoreMaintainerScenarioFactory = ({
     });
   };
 
+  const setEntityResolutionTarget = async ({
+    testEntity,
+    resolvedToEntityId,
+  }: {
+    testEntity: TestMaintainerEntity;
+    resolvedToEntityId: string;
+  }) => {
+    await entityStoreUtils.forceUpdateEntityViaCrud({
+      entityType: getEntityTypeForTestEntity(testEntity),
+      body: {
+        entity: {
+          id: testEntity.expectedEuid,
+          relationships: {
+            resolution: {
+              resolved_to: resolvedToEntityId,
+            },
+          },
+        },
+      },
+    });
+  };
+
   const setupAndRun = async ({
     entities,
     alerts,
@@ -364,6 +386,7 @@ export const riskScoreMaintainerScenarioFactory = ({
     installAndRunMaintainer,
     setEntityWatchlists,
     setEntityCriticality,
+    setEntityResolutionTarget,
     setupAndRun,
   };
 };

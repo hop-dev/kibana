@@ -94,6 +94,21 @@ const commonRiskFields: FieldMap = {
     array: true,
     required: false,
   },
+  related_entities: {
+    type: 'object',
+    array: true,
+    required: false,
+  },
+  'related_entities.entity_id': {
+    type: 'keyword',
+    array: false,
+    required: false,
+  },
+  'related_entities.relationship_type': {
+    type: 'keyword',
+    array: false,
+    required: false,
+  },
   'inputs.id': {
     type: 'keyword',
     array: false,
@@ -193,6 +208,11 @@ export const totalFieldsLimit = 1000;
 export const getIndexPatternDataStream = (namespace: string): IIndexPatternString => ({
   template: `.${riskScoreBaseIndexName}.${riskScoreBaseIndexName}-${namespace}-index-template`,
   alias: `${riskScoreBaseIndexName}.${riskScoreBaseIndexName}-${namespace}`,
+});
+
+export const getIndexPatternLookup = (namespace: string): IIndexPatternString => ({
+  template: `.entity_analytics.risk_score.lookup-${namespace}-index-template`,
+  alias: `.entity_analytics.risk_score.lookup-${namespace}`,
 });
 
 export type TransformOptions = Omit<TransformPutTransformRequest, 'transform_id'>;

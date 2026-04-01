@@ -49,9 +49,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('writes zero scores with entity.id identifier field', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:host-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['host:host-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
 
     const result = await resetToZero({
       esClient,
@@ -81,9 +85,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('fetches entities from entity store for modifier application', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:host-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['host:host-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
     (crudClient.listEntities as jest.Mock).mockResolvedValue({
       entities: [
         { entity: { id: 'host:host-1' }, asset: { criticality: 'high_impact' } } as Entity,
@@ -138,9 +146,13 @@ describe('resetToZero (maintainer)', () => {
       ],
     ]);
 
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['user:user-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['user:user-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
     (crudClient.listEntities as jest.Mock).mockResolvedValue({
       entities: [
         {
@@ -179,9 +191,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('supports service entity reset-to-zero writes', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['service:svc-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['service:svc-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
 
     const result = await resetToZero({
       esClient,
@@ -209,9 +225,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('proceeds with empty entity map when entity fetch fails', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:host-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['host:host-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
     (crudClient.listEntities as jest.Mock).mockRejectedValue(new Error('Entity store error'));
 
     const result = await resetToZero({
@@ -286,9 +306,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('queries stale base docs by latest run id', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:host-2', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['host:host-2', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
 
     await resetToZero({
       esClient,
@@ -310,9 +334,13 @@ describe('resetToZero (maintainer)', () => {
   });
 
   it('writes to entity store when idBasedRiskScoringEnabled is true', async () => {
-    (esClient.esql.query as jest.Mock).mockResolvedValue({
-      values: [['host:host-1', null]],
-    });
+    (esClient.esql.query as jest.Mock)
+      .mockResolvedValueOnce({
+        values: [['host:host-1', null]],
+      })
+      .mockResolvedValueOnce({
+        values: [],
+      });
 
     await resetToZero({
       esClient,

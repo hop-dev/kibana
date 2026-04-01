@@ -19,11 +19,25 @@ const scoreToEntityDoc = (
   doc: {
     entity: {
       id: score.id_value,
-      risk: {
-        calculated_level: score.calculated_level,
-        calculated_score: score.calculated_score,
-        calculated_score_norm: score.calculated_score_norm,
-      },
+      ...(score.score_type === 'resolution'
+        ? {
+            relationships: {
+              resolution: {
+                risk: {
+                  calculated_level: score.calculated_level,
+                  calculated_score: score.calculated_score,
+                  calculated_score_norm: score.calculated_score_norm,
+                },
+              },
+            },
+          }
+        : {
+            risk: {
+              calculated_level: score.calculated_level,
+              calculated_score: score.calculated_score,
+              calculated_score_norm: score.calculated_score_norm,
+            },
+          }),
     },
   } as Entity,
 });

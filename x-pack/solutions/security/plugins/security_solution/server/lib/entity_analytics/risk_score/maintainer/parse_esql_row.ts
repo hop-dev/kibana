@@ -17,6 +17,15 @@ export interface ParsedRiskScore {
   risk_inputs: SearchHitRiskInput[];
 }
 
+export interface ParsedResolutionScore {
+  resolution_target_id: string;
+  alert_count: number;
+  score: number;
+  normalized_score: number;
+  risk_inputs: SearchHitRiskInput[];
+  related_entities: Array<{ entity_id: string; relationship_type: string }>;
+}
+
 /**
  * Parses one base-score ES|QL row for maintainer scoring.
  *
@@ -72,5 +81,45 @@ export const parseEsqlBaseScoreRow =
       score,
       normalized_score: score / RIEMANN_ZETA_VALUE,
       risk_inputs: inputs,
+    };
+  };
+
+export const parseEsqlResolutionScoreRow =
+  (index: string) =>
+  (row: unknown[]): ParsedResolutionScore => {
+    const [count, score, _inputs, contributingEntitiesRaw, resolutionTargetId] = row as [
+      number,
+      number,
+      string | string[],
+      string | string[],
+      string
+    ];
+
+    const baseParsed = parseEsqlBaseScoreRow(index)([count, score, _inputs, resolutionTargetId]);
+
+    const parsedRelatedEntities = [contributingEntitiesRaw]
+      .flat()
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => {
+        const [entityId, relationshipType] = entry.split('|', 2);
+        return {
+          entity_id: entityId,
+          relationship_type: relationshipType,
+        };
+      })
+      .filter(
+        (entry) =>
+          entry.entity_id.length > 0 &&
+          entry.relationship_type.length > 0 &&
+          entry.relationship_type !== 'self'
+      );
+
+    return {
+      resolution_target_id: resolutionTargetId,
+      alert_count: baseParsed.alert_count,
+      score: baseParsed.score,
+      normalized_score: baseParsed.normalized_score,
+      risk_inputs: baseParsed.risk_inputs,
+      related_entities: parsedRelatedEntities,
     };
   };

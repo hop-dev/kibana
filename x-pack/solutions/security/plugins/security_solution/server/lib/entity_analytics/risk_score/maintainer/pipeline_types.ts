@@ -27,6 +27,11 @@ export interface RiskScoreModifierEntity {
     attributes?: {
       watchlists?: string[];
     };
+    relationships?: {
+      resolution?: {
+        resolved_to?: string;
+      };
+    };
   };
   asset?: {
     criticality?: AssetCriticalityLevel;
@@ -38,4 +43,10 @@ export interface ScoredEntityPage {
   entityIds: string[];
   scores: EntityRiskScoreRecord[];
   entities: Map<string, RiskScoreModifierEntity>;
+}
+
+/** Minimal summary fields returned by scorer modules. */
+export interface ScoringSummaryBase {
+  pagesProcessed: number;
+  scores: EntityRiskScoreRecord[];
 }

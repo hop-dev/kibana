@@ -21,6 +21,7 @@ import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity
 import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
 import type { ScopedLogger } from './utils/with_log_context';
 import type { ParsedRiskScore } from './parse_esql_row';
+import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
@@ -40,6 +41,10 @@ const RISK_SCORE_ID_VALUE_FIELD = 'risk.id_value';
 const RISK_SCORE_TYPE_FIELD = 'risk.score_type';
 const RISK_SCORE_RUN_ID_FIELD = 'risk.calculation_run_id';
 const RESET_BATCH_LIMIT = 10000;
+type ResetScoreType = Extract<
+  NonNullable<EntityRiskScoreRecord['score_type']>,
+  'base' | 'resolution'
+>;
 
 export interface ResetToZeroSummary {
   scoresWritten: number;
@@ -70,14 +75,19 @@ export const resetToZero = async ({
   const scoreTypeField = `${entityType}.${RISK_SCORE_TYPE_FIELD}`;
   const runIdField = `${entityType}.${RISK_SCORE_RUN_ID_FIELD}`;
   const identifierField = EntityIdentifierFields.generic;
-  const esql = /* sql */ `
+  const getStaleEntityIds = async (scoreType: ResetScoreType): Promise<string[]> => {
+    const scoreTypeFilter =
+      scoreType === 'base'
+        ? 'score_type IS NULL OR score_type == "base"'
+        : 'score_type == "resolution"';
+    const esql = /* sql */ `
     FROM ${alias}
     | EVAL id_value = TO_STRING(${entityField})
     | EVAL score = TO_DOUBLE(${scoreField})
     | EVAL score_type = TO_STRING(${scoreTypeField})
     | EVAL calculation_run_id = TO_STRING(${runIdField})
     | WHERE id_value IS NOT NULL AND id_value != ""
-    | WHERE score_type IS NULL OR score_type == "base"
+    | WHERE ${scoreTypeFilter}
     | STATS
         score = LAST(score, @timestamp),
         calculation_run_id = LAST(calculation_run_id, @timestamp)
@@ -89,64 +99,81 @@ export const resetToZero = async ({
     | LIMIT ${RESET_BATCH_LIMIT}
     `;
 
-  logger.debug(`reset_to_zero ESQL query:\n${esql}`);
+    logger.debug(`reset_to_zero (${scoreType}) ESQL query:\n${esql}`);
 
-  const response = await esClient.esql.query({ query: esql }).catch((e) => {
-    logger.error(
-      `Error executing ESQL query to reset ${entityType} risk scores to zero: ${e.message}`
-    );
-    throw e;
-  });
+    const response = await esClient.esql.query({ query: esql }).catch((e) => {
+      logger.error(
+        `Error executing ESQL query to reset ${entityType} ${scoreType} risk scores to zero: ${e.message}`
+      );
+      throw e;
+    });
 
-  const entityIds = response.values.reduce<string[]>((acc, row) => {
-    const [entity] = row;
-    if (typeof entity !== 'string' || entity === '') {
+    return response.values.reduce<string[]>((acc, row) => {
+      const [entity] = row;
+      if (typeof entity !== 'string' || entity === '') {
+        return acc;
+      }
+      acc.push(entity);
       return acc;
-    }
-    acc.push(entity);
-    return acc;
-  }, []);
+    }, []);
+  };
 
-  if (entityIds.length === 0) {
+  const baseEntityIds = await getStaleEntityIds('base');
+  const resolutionEntityIds = await getStaleEntityIds('resolution');
+  const allEntityIds = [...new Set([...baseEntityIds, ...resolutionEntityIds])];
+
+  if (allEntityIds.length === 0) {
     logger.debug('reset_to_zero found no stale entities');
     return { scoresWritten: 0, resetBatchLimitHit: false };
   }
 
-  const resetBatchLimitHit = entityIds.length === RESET_BATCH_LIMIT;
-  logger.debug(`reset_to_zero found ${entityIds.length} stale entities`);
-  if (resetBatchLimitHit) {
-    logger.debug(
-      `reset_to_zero reached batch limit (${RESET_BATCH_LIMIT}); remaining stale entities will be reset in subsequent runs`
-    );
-  }
+  const resetBatchLimitHit =
+    baseEntityIds.length === RESET_BATCH_LIMIT || resolutionEntityIds.length === RESET_BATCH_LIMIT;
 
-  const baseScores: ParsedRiskScore[] = entityIds.map((entityId) => ({
-    entity_id: entityId,
-    alert_count: 0,
-    score: 0,
-    normalized_score: 0,
-    risk_inputs: [],
-  }));
+  const buildZeroScores = (entityIds: string[]): ParsedRiskScore[] =>
+    entityIds.map((entityId) => ({
+      entity_id: entityId,
+      alert_count: 0,
+      score: 0,
+      normalized_score: 0,
+      risk_inputs: [],
+    }));
 
   const entities = await fetchEntitiesByIds({
     crudClient,
-    entityIds,
+    entityIds: allEntityIds,
     logger,
     errorContext:
       'Error fetching entities for reset-to-zero modifier application. Reset will proceed without modifiers',
   });
 
-  const scores = applyScoreModifiersFromEntities({
+  const baseScores = applyScoreModifiersFromEntities({
     now,
     identifierType: entityType,
+    scoreType: 'base',
     calculationRunId,
     page: {
-      scores: baseScores,
+      scores: buildZeroScores(baseEntityIds),
       identifierField,
     },
     entities,
     watchlistConfigs,
   });
+
+  const resolutionScores = applyScoreModifiersFromEntities({
+    now,
+    identifierType: entityType,
+    scoreType: 'resolution',
+    calculationRunId,
+    page: {
+      scores: buildZeroScores(resolutionEntityIds),
+      identifierField,
+    },
+    entities,
+    watchlistConfigs,
+  });
+
+  const scores = [...baseScores, ...resolutionScores];
 
   const writer = await dataClient.getWriter({ namespace: spaceId });
   await writer.bulk({ [entityType]: scores }).catch((e) => {

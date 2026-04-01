@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { AnalyticsServiceSetup, Logger } from '@kbn/core/server';
+import type { AnalyticsServiceSetup, ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,6 +15,8 @@ import type {
   EntityAnalyticsRoutesDeps,
   RiskEngineConfiguration,
 } from '../../types';
+import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { EntityType } from '../../../../../common/entity_analytics/types';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -35,10 +37,14 @@ import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enab
 import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
 import { scoreBaseEntities } from './score_base_entities';
+import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_reporter';
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
+import { ensureLookupIndex } from './lookup/lookup_index';
+import { scoreResolutionEntities } from './score_resolution_entities';
+import { pruneLookupIndex } from './lookup/prune_lookup_index';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -52,7 +58,7 @@ export interface RiskScoreMaintainerDeps {
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
 const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
-const PIPELINE_VERSION = 'v2_phase1';
+const PIPELINE_VERSION = 'v2_phase2_resolution';
 
 export const createRiskScoreMaintainer = ({
   getStartServices,
@@ -70,16 +76,116 @@ export const createRiskScoreMaintainer = ({
 
   const ensureRiskScoreResources = async ({
     namespace,
+    esClient,
     riskScoreDataClient,
     soClient,
   }: {
     namespace: string;
+    esClient: ElasticsearchClient;
     riskScoreDataClient: RiskScoreDataClient;
     soClient: ReturnType<typeof buildScopedInternalSavedObjectsClientUnsafe>;
   }) => {
     logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
     await initSavedObjects({ savedObjectsClient: soClient, namespace });
     await riskScoreDataClient.init();
+    await ensureLookupIndex({ esClient, namespace });
+  };
+
+  const runResolutionScoring = async ({
+    esClient,
+    crudClient,
+    logger: runLogger,
+    entityType,
+    alertsIndex,
+    lookupIndex,
+    pageSize,
+    sampleSize,
+    now,
+    calculationRunId,
+    watchlistConfigs,
+    idBasedRiskScoringEnabled,
+    writer,
+  }: {
+    esClient: ElasticsearchClient;
+    crudClient: Parameters<RiskScoreMaintainerConfig['run']>[0]['crudClient'];
+    logger: Logger;
+    entityType: EntityType;
+    alertsIndex: string;
+    lookupIndex: string;
+    pageSize: number;
+    sampleSize: number;
+    now: string;
+    calculationRunId: string;
+    watchlistConfigs: Map<string, WatchlistObject>;
+    idBasedRiskScoringEnabled: boolean;
+    writer: Awaited<ReturnType<RiskScoreDataClient['getWriter']>>;
+  }): Promise<{
+    scoresWritten: number;
+    pagesProcessed: number;
+    skippedReason?: 'lookup_empty';
+  }> => {
+    runLogger.debug(
+      `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
+    );
+    const resolutionSummary = await scoreResolutionEntities({
+      esClient,
+      crudClient,
+      logger: runLogger,
+      entityType,
+      alertsIndex,
+      lookupIndex,
+      pageSize,
+      sampleSize,
+      now,
+      calculationRunId,
+      watchlistConfigs,
+    });
+
+    if (resolutionSummary.scores.length === 0) {
+      const skipReason =
+        resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
+      runLogger.debug(
+        `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${resolutionSummary.pagesProcessed}`
+      );
+      return {
+        scoresWritten: 0,
+        pagesProcessed: resolutionSummary.pagesProcessed,
+        skippedReason: resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : undefined,
+      };
+    }
+
+    const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
+    const scoresWrittenResolution = bulkResponse.docs_written;
+    runLogger.debug(
+      `phase 2 resolution write succeeded: attempted=${resolutionSummary.scores.length}, written=${scoresWrittenResolution}, pages=${resolutionSummary.pagesProcessed}, took=${bulkResponse.took}ms`
+    );
+    if (bulkResponse.errors.length > 0) {
+      runLogger.warn(
+        `phase 2 resolution write had ${
+          bulkResponse.errors.length
+        } error(s): ${bulkResponse.errors.join('; ')}`
+      );
+    }
+
+    if (idBasedRiskScoringEnabled) {
+      const entityStoreErrors = await persistRiskScoresToEntityStore({
+        crudClient,
+        logger: runLogger,
+        scores: { [entityType]: resolutionSummary.scores },
+      });
+      if (entityStoreErrors.length > 0) {
+        runLogger.warn(
+          `Entity store resolution write had ${
+            entityStoreErrors.length
+          } error(s): ${entityStoreErrors.join('; ')}`
+        );
+      }
+    }
+
+    return {
+      scoresWritten: scoresWrittenResolution,
+      pagesProcessed: resolutionSummary.pagesProcessed,
+    };
   };
 
   return {
@@ -98,7 +204,7 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
+      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
       logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
       return status.state;
     },
@@ -121,7 +227,8 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, riskScoreDataClient, soClient });
+      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
+      const lookupIndex = await ensureLookupIndex({ esClient, namespace });
 
       const license = await pluginsStart.licensing.getLicense();
 
@@ -135,7 +242,6 @@ export const createRiskScoreMaintainer = ({
           namespace,
           skipReason,
           idBasedRiskScoringEnabled: false,
-          calculationRunId: uuidv4(),
         });
         logger.debug(
           'Risk score maintainer run skipped due to insufficient license or feature disabled'
@@ -169,10 +275,19 @@ export const createRiskScoreMaintainer = ({
       const entityTypes = configuration.identifierType
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
+      const maintainerRunStartedAtMs = Date.now();
+      let aggregateScoresWrittenBase = 0;
+      let aggregateScoresWrittenResolution = 0;
+      let aggregateScoresWrittenResetToZero = 0;
+      let aggregatePagesProcessed = 0;
+      let aggregateLookupDocsUpserted = 0;
+      let aggregateLookupDocsDeleted = 0;
+      let aggregateLookupPrunedDocs = 0;
 
       telemetryReporter.clearGlobalSkipReason();
 
       for (const entityType of entityTypes) {
+        const entityRunStartedAtMs = Date.now();
         const calculationRunId = uuidv4();
         const runNow = new Date().toISOString();
         const runTag = toRunTag(calculationRunId);
@@ -182,16 +297,18 @@ export const createRiskScoreMaintainer = ({
         );
         let runStatus: 'success' | 'error' = 'success';
         let runErrorKind: MaintainerErrorKind | undefined;
-        let runErrorMessage: string | undefined;
         let scoresWrittenBase = 0;
+        let scoresWrittenResolution = 0;
         let scoresWrittenResetToZero = 0;
+        let lookupDocsUpserted = 0;
+        let lookupDocsDeleted = 0;
+        let lookupPrunedDocs = 0;
         let pagesProcessed = 0;
         let deferToPhase2Count = 0;
         let notInStoreCount = 0;
         const runContext: MaintainerRunContext = {
           namespace,
           entityType,
-          calculationRunId,
           idBasedRiskScoringEnabled,
         };
         const runTelemetry = telemetryReporter.forRun(runContext);
@@ -205,9 +322,10 @@ export const createRiskScoreMaintainer = ({
         // - categorizes scores into write decisions
         // - persists with temporary behavior for Phase 2 candidates
         //
-        // Phase 1 lookup table synchronization is intentionally not in this branch.
+        // Phase 1 lookup synchronization runs inline with base scoring categorization.
         const alertFilters = buildAlertFilters(configuration, entityType, runLogger);
         const baseStage = runTelemetry.startBaseStage();
+        const lookupStage = runTelemetry.startLookupSyncStage();
         try {
           const baseSummary = await scoreBaseEntities({
             alertFilters,
@@ -215,6 +333,7 @@ export const createRiskScoreMaintainer = ({
             crudClient,
             entityType,
             esClient,
+            lookupIndex,
             logger: runLogger,
             now: runNow,
             calculationRunId,
@@ -229,6 +348,8 @@ export const createRiskScoreMaintainer = ({
           pagesProcessed = baseSummary.pagesProcessed;
           deferToPhase2Count = baseSummary.deferToPhase2Count;
           notInStoreCount = baseSummary.notInStoreCount;
+          lookupDocsUpserted = baseSummary.lookupDocsUpserted;
+          lookupDocsDeleted = baseSummary.lookupDocsDeleted;
 
           baseStage.success({
             pagesProcessed: baseSummary.pagesProcessed,
@@ -236,29 +357,67 @@ export const createRiskScoreMaintainer = ({
             deferToPhase2Count: baseSummary.deferToPhase2Count,
             notInStoreCount: baseSummary.notInStoreCount,
           });
+          lookupStage.success({
+            lookupDocsUpserted: baseSummary.lookupDocsUpserted,
+            lookupDocsDeleted: baseSummary.lookupDocsDeleted,
+          });
         } catch (error) {
           const errorMessage = telemetryReporter.getErrorMessage(error);
           runStatus = 'error';
           runErrorKind = 'unexpected';
-          runErrorMessage = errorMessage;
           runLogger.error(`base scoring failed: ${errorMessage}`);
           baseStage.error({
             errorKind: 'unexpected',
-            errorMessage,
+          });
+          lookupStage.error({
+            errorKind: 'unexpected',
           });
           runTelemetry.errorSummary({
             errorKind: 'unexpected',
-            errorMessage,
           });
           throw error;
         }
 
-        // TODO(phase-2): run propagation + resolution scoring here, using the
-        // Phase 1 lookup table synchronized during base scoring.
-        // Until lookup synchronization lands, keep Phase 2 explicitly skipped.
-        runLogger.debug(
-          `phase 2 (propagation/resolution) skipped: waiting for phase 1 lookup sync; entityType="${entityType}", calculationRunId="${calculationRunId}"`
-        );
+        if (lookupDocsUpserted > 0) {
+          await esClient.indices.refresh({ index: lookupIndex });
+          runLogger.debug(`refreshed lookup index after ${lookupDocsUpserted} upserts`);
+        }
+
+        const resolutionStage = runTelemetry.startResolutionStage();
+        try {
+          const resolutionResult = await runResolutionScoring({
+            esClient,
+            crudClient,
+            logger: runLogger,
+            entityType,
+            alertsIndex,
+            lookupIndex,
+            pageSize,
+            sampleSize,
+            now: runNow,
+            calculationRunId,
+            watchlistConfigs,
+            idBasedRiskScoringEnabled,
+            writer,
+          });
+          scoresWrittenResolution = resolutionResult.scoresWritten;
+          if (resolutionResult.skippedReason) {
+            resolutionStage.skipped(resolutionResult.skippedReason);
+          } else {
+            resolutionStage.success({
+              pagesProcessed: resolutionResult.pagesProcessed,
+              scoresWritten: resolutionResult.scoresWritten,
+            });
+          }
+        } catch (error) {
+          const errorMessage = telemetryReporter.getErrorMessage(error);
+          runStatus = 'error';
+          runErrorKind = 'unexpected';
+          runLogger.error(`resolution scoring failed: ${errorMessage}`);
+          resolutionStage.error({
+            errorKind: 'unexpected',
+          });
+        }
 
         // Cleanup step: clear stale positive scores for entities not scored in this run.
         if (configuration.enableResetToZero !== false) {
@@ -286,14 +445,23 @@ export const createRiskScoreMaintainer = ({
               scoresWritten: resetResult.scoresWritten,
               resetBatchLimitHit: resetResult.resetBatchLimitHit,
             });
+
+            const riskWindowStart = configuration.range?.start ?? 'now-30d';
+            const prunedDocs = await pruneLookupIndex({
+              esClient,
+              index: lookupIndex,
+              riskWindowStart,
+            });
+            lookupPrunedDocs = prunedDocs;
+            if (prunedDocs > 0) {
+              runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
+            }
           } catch (error) {
             const errorMessage = telemetryReporter.getErrorMessage(error);
             runStatus = 'error';
             runErrorKind = 'unexpected';
-            runErrorMessage = errorMessage;
             resetStage.error({
               errorKind: 'unexpected',
-              errorMessage,
             });
             runLogger.error(`error resetting risk scores to zero: ${error}`);
           }
@@ -305,16 +473,72 @@ export const createRiskScoreMaintainer = ({
         runTelemetry.completionSummary({
           runStatus,
           runErrorKind,
-          runErrorMessage,
           scoresWrittenBase,
+          scoresWrittenResolution,
           scoresWrittenResetToZero,
           pagesProcessed,
           deferToPhase2Count,
           notInStoreCount,
+          lookupDocsUpserted,
+          lookupDocsDeleted,
+          lookupPrunedDocs,
         });
+        const entityRunDurationMs = Date.now() - entityRunStartedAtMs;
+        runLogger.info(
+          `run summary ${JSON.stringify({
+            entityType,
+            status: runStatus,
+            errorKind: runErrorKind,
+            durationMs: entityRunDurationMs,
+            scoresWrittenTotal:
+              scoresWrittenBase + scoresWrittenResolution + scoresWrittenResetToZero,
+            scoresWrittenBase,
+            scoresWrittenResolution,
+            scoresWrittenResetToZero,
+            pagesProcessed,
+            deferToPhase2Count,
+            notInStoreCount,
+            lookupDocsUpserted,
+            lookupDocsDeleted,
+            lookupPrunedDocs,
+            idBasedRiskScoringEnabled,
+            pipelineVersion: PIPELINE_VERSION,
+            namespace,
+          })}`
+        );
+        aggregateScoresWrittenBase += scoresWrittenBase;
+        aggregateScoresWrittenResolution += scoresWrittenResolution;
+        aggregateScoresWrittenResetToZero += scoresWrittenResetToZero;
+        aggregatePagesProcessed += pagesProcessed;
+        aggregateLookupDocsUpserted += lookupDocsUpserted;
+        aggregateLookupDocsDeleted += lookupDocsDeleted;
+        aggregateLookupPrunedDocs += lookupPrunedDocs;
       }
 
-      logger.info(`Risk score maintainer run completed for namespace "${namespace}"`);
+      const maintainerRunDurationMs = Date.now() - maintainerRunStartedAtMs;
+      logger.info(
+        `Risk score maintainer run completed for namespace "${namespace}" in ${maintainerRunDurationMs}ms`
+      );
+      logger.info(
+        `maintainer totals ${JSON.stringify({
+          namespace,
+          durationMs: maintainerRunDurationMs,
+          entityTypesProcessed: entityTypes.length,
+          scoresWrittenTotal:
+            aggregateScoresWrittenBase +
+            aggregateScoresWrittenResolution +
+            aggregateScoresWrittenResetToZero,
+          scoresWrittenBase: aggregateScoresWrittenBase,
+          scoresWrittenResolution: aggregateScoresWrittenResolution,
+          scoresWrittenResetToZero: aggregateScoresWrittenResetToZero,
+          pagesProcessed: aggregatePagesProcessed,
+          lookupDocsUpserted: aggregateLookupDocsUpserted,
+          lookupDocsDeleted: aggregateLookupDocsDeleted,
+          lookupPrunedDocs: aggregateLookupPrunedDocs,
+          idBasedRiskScoringEnabled,
+          pipelineVersion: PIPELINE_VERSION,
+        })}`
+      );
       return status.state;
     },
   };

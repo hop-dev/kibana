@@ -17,7 +17,11 @@ interface FetchEntitiesByIdsParams {
 }
 
 interface NormalizedModifierEntitySource {
-  entity?: { id?: string; attributes?: { watchlists?: unknown } };
+  entity?: {
+    id?: string;
+    attributes?: { watchlists?: unknown };
+    relationships?: { resolution?: { resolved_to?: unknown } };
+  };
   asset?: RiskScoreModifierEntity['asset'];
 }
 
@@ -29,6 +33,16 @@ const normalizeWatchlists = (value: unknown): string[] => {
     return [value];
   }
   return [];
+};
+
+const RESOLVED_TO_FIELD = 'entity.relationships.resolution.resolved_to';
+
+const getResolvedTo = (entity: NormalizedModifierEntitySource): string | undefined => {
+  const nested = entity.entity?.relationships?.resolution?.resolved_to;
+  if (typeof nested === 'string') return nested;
+  const dotted = (entity as Record<string, unknown>)[RESOLVED_TO_FIELD];
+  if (typeof dotted === 'string') return dotted;
+  return undefined;
 };
 
 const normalizeModifierEntity = (
@@ -49,6 +63,11 @@ const normalizeModifierEntity = (
       id,
       attributes: {
         watchlists,
+      },
+      relationships: {
+        resolution: {
+          resolved_to: getResolvedTo(entity),
+        },
       },
     },
     asset: {
@@ -76,7 +95,12 @@ export const fetchEntitiesByIds = async ({
         filter: { terms: { 'entity.id': entityIds } },
         size: entityIds.length,
         searchAfter,
-        source: ['entity.id', 'entity.attributes.watchlists', 'asset.criticality'],
+        source: [
+          'entity.id',
+          'entity.attributes.watchlists',
+          'entity.relationships.resolution.resolved_to',
+          'asset.criticality',
+        ],
       });
       for (const entity of batch) {
         const normalizedEntity = normalizeModifierEntity(entity);
