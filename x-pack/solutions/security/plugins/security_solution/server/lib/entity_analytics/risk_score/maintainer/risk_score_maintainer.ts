@@ -15,6 +15,8 @@ import type {
   EntityAnalyticsRoutesDeps,
   RiskEngineConfiguration,
 } from '../../types';
+import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { EntityType } from '../../../../../common/entity_analytics/types';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -35,11 +37,14 @@ import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enab
 import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
 import { scoreBaseEntities } from './score_base_entities';
+import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_reporter';
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
 import { ensureLookupIndex } from './lookup/lookup_index';
+import { scoreResolutionEntities } from './score_resolution_entities';
+import { pruneLookupIndex } from './lookup/prune_lookup_index';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -84,6 +89,80 @@ export const createRiskScoreMaintainer = ({
     await initSavedObjects({ savedObjectsClient: soClient, namespace });
     await riskScoreDataClient.init();
     await ensureLookupIndex({ esClient, namespace });
+  };
+
+  const runResolutionScoring = async ({
+    esClient,
+    crudClient,
+    logger: runLogger,
+    entityType,
+    alertsIndex,
+    lookupIndex,
+    pageSize,
+    sampleSize,
+    now,
+    calculationRunId,
+    watchlistConfigs,
+    idBasedRiskScoringEnabled,
+    writer,
+  }: {
+    esClient: ElasticsearchClient;
+    crudClient: Parameters<RiskScoreMaintainerConfig['run']>[0]['crudClient'];
+    logger: Logger;
+    entityType: EntityType;
+    alertsIndex: string;
+    lookupIndex: string;
+    pageSize: number;
+    sampleSize: number;
+    now: string;
+    calculationRunId: string;
+    watchlistConfigs: Map<string, WatchlistObject>;
+    idBasedRiskScoringEnabled: boolean;
+    writer: Awaited<ReturnType<RiskScoreDataClient['getWriter']>>;
+  }): Promise<number> => {
+    const resolutionSummary = await scoreResolutionEntities({
+      esClient,
+      crudClient,
+      logger: runLogger,
+      entityType,
+      alertsIndex,
+      lookupIndex,
+      pageSize,
+      sampleSize,
+      now,
+      calculationRunId,
+      watchlistConfigs,
+    });
+
+    if (resolutionSummary.scores.length === 0) {
+      runLogger.debug(
+        `phase 2 (resolution) skipped for ${entityType}: lookup_empty or no matching alerts`
+      );
+      return 0;
+    }
+
+    const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
+    const scoresWrittenResolution = bulkResponse.docs_written;
+    runLogger.debug(
+      `resolution scoring wrote ${scoresWrittenResolution} score documents across ${resolutionSummary.pagesProcessed} page(s)`
+    );
+
+    if (idBasedRiskScoringEnabled) {
+      const entityStoreErrors = await persistRiskScoresToEntityStore({
+        crudClient,
+        logger: runLogger,
+        scores: { [entityType]: resolutionSummary.scores },
+      });
+      if (entityStoreErrors.length > 0) {
+        runLogger.warn(
+          `Entity store resolution write had ${
+            entityStoreErrors.length
+          } error(s): ${entityStoreErrors.join('; ')}`
+        );
+      }
+    }
+
+    return scoresWrittenResolution;
   };
 
   return {
@@ -189,6 +268,7 @@ export const createRiskScoreMaintainer = ({
         let runErrorKind: MaintainerErrorKind | undefined;
         let runErrorMessage: string | undefined;
         let scoresWrittenBase = 0;
+        let scoresWrittenResolution = 0;
         let scoresWrittenResetToZero = 0;
         let pagesProcessed = 0;
         let deferToPhase2Count = 0;
@@ -259,12 +339,29 @@ export const createRiskScoreMaintainer = ({
           throw error;
         }
 
-        // TODO(phase-2): run propagation + resolution scoring here, using the
-        // Phase 1 lookup table synchronized during base scoring.
-        // Until lookup synchronization lands, keep Phase 2 explicitly skipped.
-        runLogger.debug(
-          `phase 2 (propagation/resolution) skipped: waiting for phase 1 lookup sync; entityType="${entityType}", calculationRunId="${calculationRunId}"`
-        );
+        try {
+          scoresWrittenResolution = await runResolutionScoring({
+            esClient,
+            crudClient,
+            logger: runLogger,
+            entityType,
+            alertsIndex,
+            lookupIndex,
+            pageSize,
+            sampleSize,
+            now: runNow,
+            calculationRunId,
+            watchlistConfigs,
+            idBasedRiskScoringEnabled,
+            writer,
+          });
+        } catch (error) {
+          const errorMessage = telemetryReporter.getErrorMessage(error);
+          runStatus = 'error';
+          runErrorKind = 'unexpected';
+          runErrorMessage = errorMessage;
+          runLogger.error(`resolution scoring failed: ${errorMessage}`);
+        }
 
         // Cleanup step: clear stale positive scores for entities not scored in this run.
         if (configuration.enableResetToZero !== false) {
@@ -292,6 +389,16 @@ export const createRiskScoreMaintainer = ({
               scoresWritten: resetResult.scoresWritten,
               resetBatchLimitHit: resetResult.resetBatchLimitHit,
             });
+
+            const riskWindowStart = configuration.range?.start ?? 'now-30d';
+            const prunedDocs = await pruneLookupIndex({
+              esClient,
+              index: lookupIndex,
+              riskWindowStart,
+            });
+            if (prunedDocs > 0) {
+              runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
+            }
           } catch (error) {
             const errorMessage = telemetryReporter.getErrorMessage(error);
             runStatus = 'error';
