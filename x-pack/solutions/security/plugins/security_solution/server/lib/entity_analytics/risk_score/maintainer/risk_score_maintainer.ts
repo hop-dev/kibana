@@ -55,7 +55,6 @@ export interface RiskScoreMaintainerDeps {
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
 const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
-const PIPELINE_VERSION = 'v2_phase2_resolution';
 
 interface RunMetrics {
   scoresWrittenBase: number;
@@ -82,7 +81,6 @@ export const createRiskScoreMaintainer = ({
 }: RiskScoreMaintainerDeps): RiskScoreMaintainerConfig => {
   const telemetryReporter = createRiskScoreMaintainerTelemetryReporter({
     telemetry,
-    pipelineVersion: PIPELINE_VERSION,
   });
 
   return {
@@ -421,7 +419,6 @@ export const createRiskScoreMaintainer = ({
             lookupDocsDeleted: runMetrics.lookupDocsDeleted,
             lookupPrunedDocs: runMetrics.lookupPrunedDocs,
             idBasedRiskScoringEnabled,
-            pipelineVersion: PIPELINE_VERSION,
             namespace,
           })}`
         );
@@ -457,7 +454,6 @@ export const createRiskScoreMaintainer = ({
           lookupDocsDeleted: aggregateMetrics.lookupDocsDeleted,
           lookupPrunedDocs: aggregateMetrics.lookupPrunedDocs,
           idBasedRiskScoringEnabled,
-          pipelineVersion: PIPELINE_VERSION,
         })}`
       );
       return status.state;
