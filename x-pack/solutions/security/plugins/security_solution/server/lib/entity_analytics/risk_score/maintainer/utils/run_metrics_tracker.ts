@@ -63,12 +63,6 @@ interface AggregateSummaryContext extends SummaryContext {
   entityTypesProcessed: number;
 }
 
-const buildSummary = (metrics: RunMetrics, context: Record<string, unknown>) => ({
-  ...context,
-  scoresWrittenTotal: scoresWrittenTotal(metrics),
-  ...metrics,
-});
-
 export const createRunMetricsTracker = () => {
   const aggregate: RunMetrics = emptyMetrics();
 
@@ -112,10 +106,16 @@ export const createRunMetricsTracker = () => {
       }
     },
 
-    toRunSummary: (runMetrics: RunMetrics, context: RunSummaryContext) =>
-      buildSummary(runMetrics, context),
+    toRunSummary: (runMetrics: RunMetrics, context: RunSummaryContext) => ({
+      ...context,
+      scoresWrittenTotal: scoresWrittenTotal(runMetrics),
+      ...runMetrics,
+    }),
 
-    toAggregateSummary: (context: AggregateSummaryContext) =>
-      buildSummary(aggregate, context),
+    toAggregateSummary: (context: AggregateSummaryContext) => ({
+      ...context,
+      scoresWrittenTotal: scoresWrittenTotal(aggregate),
+      ...aggregate,
+    }),
   };
 };

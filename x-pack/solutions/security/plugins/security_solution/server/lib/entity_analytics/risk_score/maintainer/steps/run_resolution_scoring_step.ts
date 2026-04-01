@@ -7,12 +7,12 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { EntityType } from '../../../../../common/entity_analytics/types';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { RiskScoreDataClient } from '../risk_score_data_client';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
+import type { EntityType } from '../../../../../../common/entity_analytics/types';
+import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { RiskScoreDataClient } from '../../risk_score_data_client';
+import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
 import { scoreResolutionEntities } from './score_resolution_entities';
-import type { ScopedLogger } from './utils/with_log_context';
+import type { ScopedLogger } from '../utils/with_log_context';
 
 interface RunResolutionScoringParams {
   esClient: ElasticsearchClient;

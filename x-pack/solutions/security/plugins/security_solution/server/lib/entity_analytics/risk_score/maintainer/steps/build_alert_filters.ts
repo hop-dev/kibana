@@ -8,11 +8,11 @@
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import { isEmpty } from 'lodash';
 import { fromKueryExpression, toElasticsearchQuery } from '@kbn/es-query';
-import type { RiskEngineConfiguration } from '../../types';
-import type { EntityType } from '../../../../../common/search_strategy';
-import { filterFromRange } from '../helpers';
-import { convertRangeToISO } from '../tasks/helpers';
-import type { ScopedLogger } from './utils/with_log_context';
+import type { RiskEngineConfiguration } from '../../../types';
+import type { EntityType } from '../../../../../../common/search_strategy';
+import { filterFromRange } from '../../helpers';
+import { convertRangeToISO } from '../../tasks/helpers';
+import type { ScopedLogger } from '../utils/with_log_context';
 
 export const buildAlertFilters = (
   configuration: RiskEngineConfiguration,

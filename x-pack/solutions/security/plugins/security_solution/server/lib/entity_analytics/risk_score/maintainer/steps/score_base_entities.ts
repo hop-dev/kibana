@@ -8,18 +8,18 @@
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { EntityType } from '../../../../../common/entity_analytics/types';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { RiskEngineDataWriter } from '../risk_engine_data_writer';
-import { getEuidCompositeQuery, getBaseScoreESQL } from '../calculate_esql_risk_scores';
+import type { EntityType } from '../../../../../../common/entity_analytics/types';
+import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { RiskEngineDataWriter } from '../../risk_engine_data_writer';
+import { getEuidCompositeQuery, getBaseScoreESQL } from '../../calculate_esql_risk_scores';
 import { parseEsqlBaseScoreRow } from './parse_esql_row';
-import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
+import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
 import type { ScoredEntityPage } from './pipeline_types';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
-import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
-import type { ScopedLogger } from './utils/with_log_context';
-import { syncLookupIndexForCategorizedPage } from './lookup/sync_lookup_index';
+import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
+import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
+import type { ScopedLogger } from '../utils/with_log_context';
+import { syncLookupIndexForCategorizedPage } from '../lookup/sync_lookup_index';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;

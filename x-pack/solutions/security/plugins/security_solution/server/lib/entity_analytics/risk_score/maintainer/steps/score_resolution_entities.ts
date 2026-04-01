@@ -7,14 +7,14 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { EntityType } from '../../../../../common/entity_analytics/types';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import { getResolutionCompositeQuery, getResolutionScoreESQL } from '../calculate_esql_risk_scores';
-import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
-import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
+import type { EntityType } from '../../../../../../common/entity_analytics/types';
+import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import { getResolutionCompositeQuery, getResolutionScoreESQL } from '../../calculate_esql_risk_scores';
+import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
+import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
 import { buildResolutionModifierEntity } from './resolution_modifiers';
 import { parseEsqlResolutionScoreRow } from './parse_esql_row';
-import type { ScopedLogger } from './utils/with_log_context';
+import type { ScopedLogger } from '../utils/with_log_context';
 import type { ScoringSummaryBase } from './pipeline_types';
 
 interface ScoreResolutionEntitiesParams {

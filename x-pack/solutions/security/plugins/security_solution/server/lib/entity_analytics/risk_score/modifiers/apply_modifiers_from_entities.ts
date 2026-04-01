@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { RiskScoreModifierEntity } from '../maintainer/pipeline_types';
+import type { RiskScoreModifierEntity } from '../maintainer/steps/pipeline_types';
 
 import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { EntityType } from '../../../../../common/entity_analytics/types';
@@ -16,7 +16,7 @@ import type {
 import { bayesianUpdate, getCriticalityModifier } from '../../asset_criticality/helpers';
 import type { Modifier } from './types';
 import { getGlobalWeightForIdentifierType, max10DecimalPlaces } from '../helpers';
-import type { ParsedRiskScore } from '../maintainer/parse_esql_row';
+import type { ParsedRiskScore } from '../maintainer/steps/parse_esql_row';
 import { getRiskLevel, RiskCategories } from '../../../../../common/entity_analytics/risk_engine';
 import { buildLegacyCriticalityFields } from './asset_criticality';
 import { RIEMANN_ZETA_VALUE } from '../constants';

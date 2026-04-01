@@ -32,16 +32,16 @@ import {
   buildInternalSavedObjectsClientUnsafe,
 } from '../tasks/helpers';
 import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enabled';
-import { resetToZero } from './reset_to_zero';
-import { buildAlertFilters } from './build_alert_filters';
-import { scoreBaseEntities } from './score_base_entities';
+import { resetToZero } from './steps/reset_to_zero';
+import { buildAlertFilters } from './steps/build_alert_filters';
+import { scoreBaseEntities } from './steps/score_base_entities';
 import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_reporter';
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
 import { ensureLookupIndex } from './lookup/lookup_index';
 import { pruneLookupIndex } from './lookup/prune_lookup_index';
-import { runResolutionScoringStep } from './run_resolution_scoring_step';
+import { runResolutionScoringStep } from './steps/run_resolution_scoring_step';
 import { createRunMetricsTracker } from './utils/run_metrics_tracker';
 
 export interface RiskScoreMaintainerDeps {

@@ -9,14 +9,14 @@ import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import type { Entity } from '@kbn/entity-store/common';
-import { riskScoreDataClientMock } from '../risk_score_data_client.mock';
-import type { RiskScoreDataClient } from '../risk_score_data_client';
+import { riskScoreDataClientMock } from '../../risk_score_data_client.mock';
+import type { RiskScoreDataClient } from '../../risk_score_data_client';
 import { resetToZero } from './reset_to_zero';
-import { EntityType } from '../../../../../common/entity_analytics/types';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import { EntityType } from '../../../../../../common/entity_analytics/types';
+import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
+import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 
-jest.mock('../persist_risk_scores_to_entity_store');
+jest.mock('../../persist_risk_scores_to_entity_store');
 
 describe('resetToZero (maintainer)', () => {
   let esClient: ElasticsearchClient;

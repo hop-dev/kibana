@@ -12,16 +12,16 @@ import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import {
   EntityIdentifierFields,
   type EntityType,
-} from '../../../../../common/entity_analytics/types';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { RiskScoreDataClient } from '../risk_score_data_client';
-import { applyScoreModifiersFromEntities } from '../modifiers/apply_modifiers_from_entities';
-import { getIndexPatternDataStream } from '../configurations';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
-import { fetchEntitiesByIds } from './utils/fetch_entities_by_ids';
-import type { ScopedLogger } from './utils/with_log_context';
+} from '../../../../../../common/entity_analytics/types';
+import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { RiskScoreDataClient } from '../../risk_score_data_client';
+import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
+import { getIndexPatternDataStream } from '../../configurations';
+import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
+import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
+import type { ScopedLogger } from '../utils/with_log_context';
 import type { ParsedRiskScore } from './parse_esql_row';
-import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
+import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;

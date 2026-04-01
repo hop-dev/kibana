@@ -6,8 +6,8 @@
  */
 
 import { omit } from 'lodash';
-import type { SearchHitRiskInput } from '../../types';
-import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from '../constants';
+import type { SearchHitRiskInput } from '../../../types';
+import { RIEMANN_ZETA_S_VALUE, RIEMANN_ZETA_VALUE } from '../../constants';
 
 export interface ParsedRiskScore {
   entity_id: string;

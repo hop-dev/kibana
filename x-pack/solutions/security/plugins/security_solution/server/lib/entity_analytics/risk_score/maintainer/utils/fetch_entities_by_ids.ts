@@ -6,7 +6,7 @@
  */
 
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
-import type { RiskScoreModifierEntity } from '../pipeline_types';
+import type { RiskScoreModifierEntity } from '../steps/pipeline_types';
 import type { ScopedLogger } from './with_log_context';
 
 interface FetchEntitiesByIdsParams {

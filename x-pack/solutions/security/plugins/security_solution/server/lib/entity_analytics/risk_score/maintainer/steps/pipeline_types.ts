@@ -8,7 +8,7 @@
 /** Shared types for the maintainer scoring runtime path. */
 
 import type { AssetCriticalityLevel } from '@kbn/entity-store/common';
-import type { EntityRiskScoreRecord } from '../../../../../common/api/entity_analytics/common';
+import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
 
 /** Output of entity categorization for write routing decisions. */
 export interface CategorizedEntities {
