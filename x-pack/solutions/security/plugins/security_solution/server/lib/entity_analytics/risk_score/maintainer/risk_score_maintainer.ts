@@ -215,13 +215,13 @@ export const createRiskScoreMaintainer = ({
             crudClient,
             entityType,
             esClient,
-            idBasedRiskScoringEnabled,
             logger: runLogger,
             now: runNow,
             calculationRunId,
             pageSize,
             sampleSize,
             watchlistConfigs,
+            idBasedRiskScoringEnabled,
             writer,
           });
           runLogger.debug('completed base scoring pass');
@@ -241,6 +241,7 @@ export const createRiskScoreMaintainer = ({
           runStatus = 'error';
           runErrorKind = 'unexpected';
           runErrorMessage = errorMessage;
+          runLogger.error(`base scoring failed: ${errorMessage}`);
           baseStage.error({
             errorKind: 'unexpected',
             errorMessage,

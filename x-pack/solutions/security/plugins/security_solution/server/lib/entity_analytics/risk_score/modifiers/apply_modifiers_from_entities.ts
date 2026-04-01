@@ -64,8 +64,15 @@ const buildWatchlistModifiers = (
   globalWeight?: number,
   watchlistConfigs?: Map<string, WatchlistObject>
 ): Array<Modifier<'watchlist'>> => {
-  const watchlistIds = entity?.entity?.attributes?.watchlists;
-  if (!watchlistIds || watchlistIds.length === 0 || !watchlistConfigs) {
+  const rawWatchlistIds = entity?.entity?.attributes?.watchlists;
+  const watchlistIds = Array.isArray(rawWatchlistIds)
+    ? rawWatchlistIds.filter(
+        (watchlistId): watchlistId is string => typeof watchlistId === 'string'
+      )
+    : typeof rawWatchlistIds === 'string'
+    ? [rawWatchlistIds]
+    : [];
+  if (watchlistIds.length === 0 || !watchlistConfigs) {
     return [];
   }
 

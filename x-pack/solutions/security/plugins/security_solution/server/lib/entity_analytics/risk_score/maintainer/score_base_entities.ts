@@ -92,16 +92,14 @@ export const calculateBaseEntityScores = async function* ({
 
     const upper = buckets[buckets.length - 1].key.entity_id;
     afterKey = compositeAgg?.after_key;
-
-    const esqlResponse = await esClient.esql.query({
-      query: getBaseScoreESQL(
-        entityType,
-        { lower: previousPageUpperBound, upper },
-        sampleSize,
-        pageSize,
-        alertsIndex
-      ),
-    });
+    const query = getBaseScoreESQL(
+      entityType,
+      { lower: previousPageUpperBound, upper },
+      sampleSize,
+      pageSize,
+      alertsIndex
+    );
+    const esqlResponse = await esClient.esql.query({ query });
     previousPageUpperBound = upper;
 
     const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
@@ -159,7 +157,7 @@ export const scoreBaseEntities = async ({
       `[page:${pagesProcessed}] categorization: write_now=${categorized.write_now.length}, defer_to_phase_2=${categorized.defer_to_phase_2.length}, not_in_store=${categorized.not_in_store.length}`
     );
 
-    // `defer_to_phase_2` is currently written with `write_now`.
+    // `defer_to_phase_2` is currently written with `write_now` until phase 2 is implemented.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
     const bulkResponse = await writer.bulk({ [params.entityType]: riskIndexWrites });
     scoresWritten += bulkResponse.docs_written;
@@ -188,12 +186,12 @@ export const scoreBaseEntities = async ({
           } error(s): ${entityStoreErrors.join('; ')}`
         );
       }
+    }
 
-      if (categorized.not_in_store.length > 0) {
-        params.logger.debug(
-          `[page:${pagesProcessed}] skipped writes for ${categorized.not_in_store.length} not_in_store entities`
-        );
-      }
+    if (categorized.not_in_store.length > 0) {
+      params.logger.debug(
+        `[page:${pagesProcessed}] skipped writes for ${categorized.not_in_store.length} not_in_store entities`
+      );
     }
   }
 

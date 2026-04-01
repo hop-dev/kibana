@@ -16,6 +16,47 @@ interface FetchEntitiesByIdsParams {
   errorContext: string;
 }
 
+interface NormalizedModifierEntitySource {
+  entity?: { id?: string; attributes?: { watchlists?: unknown } };
+  asset?: RiskScoreModifierEntity['asset'];
+}
+
+const normalizeWatchlists = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((watchlistId): watchlistId is string => typeof watchlistId === 'string');
+  }
+  if (typeof value === 'string') {
+    return [value];
+  }
+  return [];
+};
+
+const normalizeModifierEntity = (
+  entity: NormalizedModifierEntitySource | undefined
+): RiskScoreModifierEntity | undefined => {
+  if (!entity) {
+    return undefined;
+  }
+  const id = entity.entity?.id;
+  if (!id) {
+    return undefined;
+  }
+
+  const watchlists = normalizeWatchlists(entity.entity?.attributes?.watchlists);
+
+  return {
+    entity: {
+      id,
+      attributes: {
+        watchlists,
+      },
+    },
+    asset: {
+      criticality: entity.asset?.criticality,
+    },
+  };
+};
+
 export const fetchEntitiesByIds = async ({
   crudClient,
   entityIds,
@@ -38,8 +79,9 @@ export const fetchEntitiesByIds = async ({
         source: ['entity.id', 'entity.attributes.watchlists', 'asset.criticality'],
       });
       for (const entity of batch) {
-        if (entity.entity?.id) {
-          entityMap.set(entity.entity.id, entity as RiskScoreModifierEntity);
+        const normalizedEntity = normalizeModifierEntity(entity);
+        if (normalizedEntity?.entity?.id) {
+          entityMap.set(normalizedEntity.entity.id, normalizedEntity);
         }
       }
       searchAfter = nextSearchAfter;
