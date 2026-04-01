@@ -68,8 +68,6 @@ interface RunMetrics {
   lookupPrunedDocs: number;
 }
 
-type AggregateMetrics = RunMetrics;
-
 export const createRiskScoreMaintainer = ({
   getStartServices,
   entityAnalyticsConfig,
@@ -177,7 +175,7 @@ export const createRiskScoreMaintainer = ({
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
       const maintainerRunStartedAtMs = Date.now();
-      const aggregateMetrics: AggregateMetrics = {
+      const aggregateMetrics: RunMetrics = {
         scoresWrittenBase: 0,
         scoresWrittenResolution: 0,
         scoresWrittenResetToZero: 0,
@@ -385,43 +383,27 @@ export const createRiskScoreMaintainer = ({
           runTelemetry.startResetStage().skipped();
         }
 
+        const runScoresWrittenTotal =
+          runMetrics.scoresWrittenBase +
+          runMetrics.scoresWrittenResolution +
+          runMetrics.scoresWrittenResetToZero;
         runTelemetry.completionSummary({
           runStatus,
           runErrorKind,
-          scoresWrittenBase: runMetrics.scoresWrittenBase,
-          scoresWrittenResolution: runMetrics.scoresWrittenResolution,
-          scoresWrittenResetToZero: runMetrics.scoresWrittenResetToZero,
-          pagesProcessed: runMetrics.pagesProcessed,
-          deferToPhase2Count: runMetrics.deferToPhase2Count,
-          notInStoreCount: runMetrics.notInStoreCount,
-          lookupDocsUpserted: runMetrics.lookupDocsUpserted,
-          lookupDocsDeleted: runMetrics.lookupDocsDeleted,
-          lookupPrunedDocs: runMetrics.lookupPrunedDocs,
+          ...runMetrics,
         });
         const entityRunDurationMs = Date.now() - entityRunStartedAtMs;
-        runLogger.info(
-          `run summary ${JSON.stringify({
-            entityType,
-            status: runStatus,
-            errorKind: runErrorKind,
-            durationMs: entityRunDurationMs,
-            scoresWrittenTotal:
-              runMetrics.scoresWrittenBase +
-              runMetrics.scoresWrittenResolution +
-              runMetrics.scoresWrittenResetToZero,
-            scoresWrittenBase: runMetrics.scoresWrittenBase,
-            scoresWrittenResolution: runMetrics.scoresWrittenResolution,
-            scoresWrittenResetToZero: runMetrics.scoresWrittenResetToZero,
-            pagesProcessed: runMetrics.pagesProcessed,
-            deferToPhase2Count: runMetrics.deferToPhase2Count,
-            notInStoreCount: runMetrics.notInStoreCount,
-            lookupDocsUpserted: runMetrics.lookupDocsUpserted,
-            lookupDocsDeleted: runMetrics.lookupDocsDeleted,
-            lookupPrunedDocs: runMetrics.lookupPrunedDocs,
-            idBasedRiskScoringEnabled,
-            namespace,
-          })}`
-        );
+        const runSummary = {
+          entityType,
+          status: runStatus,
+          errorKind: runErrorKind,
+          durationMs: entityRunDurationMs,
+          scoresWrittenTotal: runScoresWrittenTotal,
+          ...runMetrics,
+          idBasedRiskScoringEnabled,
+          namespace,
+        };
+        runLogger.info(`run summary ${JSON.stringify(runSummary)}`);
         aggregateMetrics.scoresWrittenBase += runMetrics.scoresWrittenBase;
         aggregateMetrics.scoresWrittenResolution += runMetrics.scoresWrittenResolution;
         aggregateMetrics.scoresWrittenResetToZero += runMetrics.scoresWrittenResetToZero;
@@ -437,25 +419,19 @@ export const createRiskScoreMaintainer = ({
       logger.info(
         `Risk score maintainer run completed for namespace "${namespace}" in ${maintainerRunDurationMs}ms`
       );
-      logger.info(
-        `maintainer totals ${JSON.stringify({
-          namespace,
-          durationMs: maintainerRunDurationMs,
-          entityTypesProcessed: entityTypes.length,
-          scoresWrittenTotal:
-            aggregateMetrics.scoresWrittenBase +
-            aggregateMetrics.scoresWrittenResolution +
-            aggregateMetrics.scoresWrittenResetToZero,
-          scoresWrittenBase: aggregateMetrics.scoresWrittenBase,
-          scoresWrittenResolution: aggregateMetrics.scoresWrittenResolution,
-          scoresWrittenResetToZero: aggregateMetrics.scoresWrittenResetToZero,
-          pagesProcessed: aggregateMetrics.pagesProcessed,
-          lookupDocsUpserted: aggregateMetrics.lookupDocsUpserted,
-          lookupDocsDeleted: aggregateMetrics.lookupDocsDeleted,
-          lookupPrunedDocs: aggregateMetrics.lookupPrunedDocs,
-          idBasedRiskScoringEnabled,
-        })}`
-      );
+      const aggregateScoresWrittenTotal =
+        aggregateMetrics.scoresWrittenBase +
+        aggregateMetrics.scoresWrittenResolution +
+        aggregateMetrics.scoresWrittenResetToZero;
+      const maintainerTotals = {
+        namespace,
+        durationMs: maintainerRunDurationMs,
+        entityTypesProcessed: entityTypes.length,
+        scoresWrittenTotal: aggregateScoresWrittenTotal,
+        ...aggregateMetrics,
+        idBasedRiskScoringEnabled,
+      };
+      logger.info(`maintainer totals ${JSON.stringify(maintainerTotals)}`);
       return status.state;
     },
   };
