@@ -18,6 +18,8 @@ import {
   indexListOfDocumentsFactory,
   riskScoreMaintainerScenarioFactory,
   createAndSyncRuleAndAlertsFactory,
+  setupMaintainerLogsDataStream,
+  cleanupMaintainerLogsDataStream,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -31,7 +33,8 @@ export default ({ getService }: FtrProviderContext): void => {
 
   describe('@ess Risk Score Maintainer in non-default space', () => {
     describe('with alerts in a non-default space', () => {
-      const testLogsIndex = 'ecs_compliant';
+      const testLogsIndex = 'logs-testlogs-default';
+      const testLogsTemplate = 'logs-testlogs-default-template';
       const namespace = uuidv4();
 
       const indexListOfDocuments = indexListOfDocumentsFactory({ es, log, index: testLogsIndex });
@@ -56,9 +59,19 @@ export default ({ getService }: FtrProviderContext): void => {
         await esArchiver.load(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );
+        await setupMaintainerLogsDataStream({
+          es,
+          index: testLogsIndex,
+          template: testLogsTemplate,
+        });
       });
 
       after(async () => {
+        await cleanupMaintainerLogsDataStream({
+          es,
+          index: testLogsIndex,
+          template: testLogsTemplate,
+        });
         await esArchiver.unload(
           'x-pack/solutions/security/test/fixtures/es_archives/security_solution/ecs_compliant'
         );

@@ -22,6 +22,8 @@ import {
   riskScoreMaintainerEntityBuilders,
   waitForEntityStoreEntities,
   indexListOfDocumentsFactory,
+  setupMaintainerLogsDataStream,
+  cleanupMaintainerLogsDataStream,
 } from '../../utils';
 import type { FtrProviderContext } from '../../../../ftr_provider_context';
 
@@ -76,50 +78,19 @@ export default ({ getService }: FtrProviderContext): void => {
       };
 
       before(async () => {
-        await es.indices.deleteIndexTemplate({ name: testLogsTemplate }, { ignore: [404] });
-        await es.indices.putIndexTemplate({
-          name: testLogsTemplate,
-          index_patterns: [testLogsIndex],
-          data_stream: {},
-          template: {
-            mappings: {
-              properties: {
-                '@timestamp': { type: 'date' },
-                data_stream: {
-                  properties: {
-                    type: { type: 'keyword' },
-                    dataset: { type: 'keyword' },
-                    namespace: { type: 'keyword' },
-                  },
-                },
-                event: {
-                  properties: {
-                    kind: { type: 'keyword' },
-                    category: { type: 'keyword' },
-                    type: { type: 'keyword' },
-                    outcome: { type: 'keyword' },
-                    module: { type: 'keyword' },
-                  },
-                },
-                user: {
-                  properties: {
-                    id: { type: 'keyword' },
-                    name: { type: 'keyword' },
-                    email: { type: 'keyword' },
-                    domain: { type: 'keyword' },
-                  },
-                },
-              },
-            },
-          },
+        await setupMaintainerLogsDataStream({
+          es,
+          index: testLogsIndex,
+          template: testLogsTemplate,
         });
-        await es.indices.deleteDataStream({ name: testLogsIndex }, { ignore: [404] });
-        await es.indices.createDataStream({ name: testLogsIndex });
       });
 
       after(async () => {
-        await es.indices.deleteDataStream({ name: testLogsIndex }, { ignore: [404] });
-        await es.indices.deleteIndexTemplate({ name: testLogsTemplate }, { ignore: [404] });
+        await cleanupMaintainerLogsDataStream({
+          es,
+          index: testLogsIndex,
+          template: testLogsTemplate,
+        });
       });
 
       beforeEach(async () => {
