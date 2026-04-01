@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { AnalyticsServiceSetup, ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { AnalyticsServiceSetup, Logger } from '@kbn/core/server';
 import type { AuditLogger } from '@kbn/security-plugin-types-server';
 import type { RegisterEntityMaintainerConfig } from '@kbn/entity-store/server';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,8 +15,6 @@ import type {
   EntityAnalyticsRoutesDeps,
   RiskEngineConfiguration,
 } from '../../types';
-import type { WatchlistObject } from '../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { EntityType } from '../../../../../common/entity_analytics/types';
 import { DEFAULT_RISK_SCORE_PAGE_SIZE } from '../../../../../common/constants';
 import {
   getEntityAnalyticsEntityTypes,
@@ -37,15 +35,13 @@ import { getIsIdBasedRiskScoringEnabled } from '../is_id_based_risk_scoring_enab
 import { resetToZero } from './reset_to_zero';
 import { buildAlertFilters } from './build_alert_filters';
 import { scoreBaseEntities } from './score_base_entities';
-import { persistRiskScoresToEntityStore } from '../persist_risk_scores_to_entity_store';
 import type { MaintainerErrorKind, MaintainerRunContext } from './telemetry_reporter';
 import { createRiskScoreMaintainerTelemetryReporter } from './telemetry_reporter';
 import { fetchWatchlistConfigs } from './utils/fetch_watchlist_configs';
 import { withLogContext } from './utils/with_log_context';
-import type { ScopedLogger } from './utils/with_log_context';
 import { ensureLookupIndex } from './lookup/lookup_index';
-import { scoreResolutionEntities } from './score_resolution_entities';
 import { pruneLookupIndex } from './lookup/prune_lookup_index';
+import { runResolutionScoringStep } from './run_resolution_scoring_step';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -61,6 +57,20 @@ type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 
 const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
 const PIPELINE_VERSION = 'v2_phase2_resolution';
 
+interface RunMetrics {
+  scoresWrittenBase: number;
+  scoresWrittenResolution: number;
+  scoresWrittenResetToZero: number;
+  pagesProcessed: number;
+  deferToPhase2Count: number;
+  notInStoreCount: number;
+  lookupDocsUpserted: number;
+  lookupDocsDeleted: number;
+  lookupPrunedDocs: number;
+}
+
+type AggregateMetrics = RunMetrics;
+
 export const createRiskScoreMaintainer = ({
   getStartServices,
   entityAnalyticsConfig,
@@ -74,151 +84,6 @@ export const createRiskScoreMaintainer = ({
     telemetry,
     pipelineVersion: PIPELINE_VERSION,
   });
-
-  const ensureRiskScoreResources = async ({
-    namespace,
-    esClient,
-    riskScoreDataClient,
-    soClient,
-  }: {
-    namespace: string;
-    esClient: ElasticsearchClient;
-    riskScoreDataClient: RiskScoreDataClient;
-    soClient: ReturnType<typeof buildScopedInternalSavedObjectsClientUnsafe>;
-  }) => {
-    logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
-    await initSavedObjects({ savedObjectsClient: soClient, namespace });
-    await riskScoreDataClient.init();
-    await ensureLookupIndex({ esClient, namespace });
-  };
-
-  const runResolutionScoring = async ({
-    esClient,
-    crudClient,
-    logger: runLogger,
-    entityType,
-    alertsIndex,
-    lookupIndex,
-    pageSize,
-    sampleSize,
-    now,
-    calculationRunId,
-    watchlistConfigs,
-    idBasedRiskScoringEnabled,
-    writer,
-  }: {
-    esClient: ElasticsearchClient;
-    crudClient: Parameters<RiskScoreMaintainerConfig['run']>[0]['crudClient'];
-    logger: ScopedLogger;
-    entityType: EntityType;
-    alertsIndex: string;
-    lookupIndex: string;
-    pageSize: number;
-    sampleSize: number;
-    now: string;
-    calculationRunId: string;
-    watchlistConfigs: Map<string, WatchlistObject>;
-    idBasedRiskScoringEnabled: boolean;
-    writer: Awaited<ReturnType<RiskScoreDataClient['getWriter']>>;
-  }): Promise<{
-    scoresWritten: number;
-    pagesProcessed: number;
-    skippedReason?: 'lookup_empty';
-  }> => {
-    runLogger.debug(
-      `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
-    );
-    const resolutionSummary = await scoreResolutionEntities({
-      esClient,
-      crudClient,
-      logger: runLogger,
-      entityType,
-      alertsIndex,
-      lookupIndex,
-      pageSize,
-      sampleSize,
-      now,
-      calculationRunId,
-      watchlistConfigs,
-    });
-
-    if (resolutionSummary.scores.length === 0) {
-      const skipReason =
-        resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
-      runLogger.debug(
-        `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${resolutionSummary.pagesProcessed}`
-      );
-      return {
-        scoresWritten: 0,
-        pagesProcessed: resolutionSummary.pagesProcessed,
-        skippedReason: resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : undefined,
-      };
-    }
-
-    const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
-    const scoresWrittenResolution = bulkResponse.docs_written;
-    runLogger.debug(
-      `phase 2 resolution write succeeded: attempted=${resolutionSummary.scores.length}, written=${scoresWrittenResolution}, pages=${resolutionSummary.pagesProcessed}, took=${bulkResponse.took}ms`
-    );
-    if (bulkResponse.errors.length > 0) {
-      runLogger.warn(
-        `phase 2 resolution write had ${
-          bulkResponse.errors.length
-        } error(s): ${bulkResponse.errors.join('; ')}`
-      );
-    }
-
-    if (idBasedRiskScoringEnabled) {
-      const entityStoreErrors = await persistRiskScoresToEntityStore({
-        crudClient,
-        logger: runLogger,
-        scores: { [entityType]: resolutionSummary.scores },
-      });
-      if (entityStoreErrors.length > 0) {
-        runLogger.warn(
-          `Entity store resolution write had ${
-            entityStoreErrors.length
-          } error(s): ${entityStoreErrors.join('; ')}`
-        );
-      }
-    }
-
-    return {
-      scoresWritten: scoresWrittenResolution,
-      pagesProcessed: resolutionSummary.pagesProcessed,
-    };
-  };
-
-  const runLookupPrune = async ({
-    esClient,
-    lookupIndex,
-    riskWindowStart,
-    runLogger,
-  }: {
-    esClient: ElasticsearchClient;
-    lookupIndex: string;
-    riskWindowStart: string;
-    runLogger: ScopedLogger;
-  }): Promise<{ prunedDocs: number; errorMessage?: string }> => {
-    try {
-      const prunedDocs = await pruneLookupIndex({
-        esClient,
-        index: lookupIndex,
-        riskWindowStart,
-      });
-
-      if (prunedDocs > 0) {
-        runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
-      }
-
-      return { prunedDocs };
-    } catch (error) {
-      return {
-        prunedDocs: 0,
-        errorMessage: telemetryReporter.getErrorMessage(error),
-      };
-    }
-  };
 
   return {
     setup: async ({ status }) => {
@@ -236,10 +101,14 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
+      logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
+      await initSavedObjects({ savedObjectsClient: soClient, namespace });
+      await riskScoreDataClient.init();
+      await ensureLookupIndex({ esClient, namespace });
       logger.info(`Risk score maintainer setup completed for namespace "${namespace}"`);
       return status.state;
     },
+    // eslint-disable-next-line complexity -- keep pipeline orchestration inline in this entrypoint
     run: async ({ status, crudClient }) => {
       // Two-Phased Risk Scoring pipeline:
       // - Phase 1: base scoring + lookup table synchronization.
@@ -259,7 +128,9 @@ export const createRiskScoreMaintainer = ({
         auditLogger,
       });
 
-      await ensureRiskScoreResources({ namespace, esClient, riskScoreDataClient, soClient });
+      logger.debug(`Ensuring risk score resources exist for namespace "${namespace}"`);
+      await initSavedObjects({ savedObjectsClient: soClient, namespace });
+      await riskScoreDataClient.init();
       const lookupIndex = await ensureLookupIndex({ esClient, namespace });
 
       const license = await pluginsStart.licensing.getLicense();
@@ -308,13 +179,17 @@ export const createRiskScoreMaintainer = ({
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
       const maintainerRunStartedAtMs = Date.now();
-      let aggregateScoresWrittenBase = 0;
-      let aggregateScoresWrittenResolution = 0;
-      let aggregateScoresWrittenResetToZero = 0;
-      let aggregatePagesProcessed = 0;
-      let aggregateLookupDocsUpserted = 0;
-      let aggregateLookupDocsDeleted = 0;
-      let aggregateLookupPrunedDocs = 0;
+      const aggregateMetrics: AggregateMetrics = {
+        scoresWrittenBase: 0,
+        scoresWrittenResolution: 0,
+        scoresWrittenResetToZero: 0,
+        pagesProcessed: 0,
+        deferToPhase2Count: 0,
+        notInStoreCount: 0,
+        lookupDocsUpserted: 0,
+        lookupDocsDeleted: 0,
+        lookupPrunedDocs: 0,
+      };
 
       telemetryReporter.clearGlobalSkipReason();
 
@@ -329,15 +204,17 @@ export const createRiskScoreMaintainer = ({
         );
         let runStatus: 'success' | 'error' = 'success';
         let runErrorKind: MaintainerErrorKind | undefined;
-        let scoresWrittenBase = 0;
-        let scoresWrittenResolution = 0;
-        let scoresWrittenResetToZero = 0;
-        let lookupDocsUpserted = 0;
-        let lookupDocsDeleted = 0;
-        let lookupPrunedDocs = 0;
-        let pagesProcessed = 0;
-        let deferToPhase2Count = 0;
-        let notInStoreCount = 0;
+        const runMetrics: RunMetrics = {
+          scoresWrittenBase: 0,
+          scoresWrittenResolution: 0,
+          scoresWrittenResetToZero: 0,
+          pagesProcessed: 0,
+          deferToPhase2Count: 0,
+          notInStoreCount: 0,
+          lookupDocsUpserted: 0,
+          lookupDocsDeleted: 0,
+          lookupPrunedDocs: 0,
+        };
         const runContext: MaintainerRunContext = {
           namespace,
           entityType,
@@ -376,12 +253,12 @@ export const createRiskScoreMaintainer = ({
             writer,
           });
           runLogger.debug('completed base scoring pass');
-          scoresWrittenBase = baseSummary.scoresWritten;
-          pagesProcessed = baseSummary.pagesProcessed;
-          deferToPhase2Count = baseSummary.deferToPhase2Count;
-          notInStoreCount = baseSummary.notInStoreCount;
-          lookupDocsUpserted = baseSummary.lookupDocsUpserted;
-          lookupDocsDeleted = baseSummary.lookupDocsDeleted;
+          runMetrics.scoresWrittenBase = baseSummary.scoresWritten;
+          runMetrics.pagesProcessed = baseSummary.pagesProcessed;
+          runMetrics.deferToPhase2Count = baseSummary.deferToPhase2Count;
+          runMetrics.notInStoreCount = baseSummary.notInStoreCount;
+          runMetrics.lookupDocsUpserted = baseSummary.lookupDocsUpserted;
+          runMetrics.lookupDocsDeleted = baseSummary.lookupDocsDeleted;
 
           baseStage.success({
             pagesProcessed: baseSummary.pagesProcessed,
@@ -410,14 +287,14 @@ export const createRiskScoreMaintainer = ({
           throw error;
         }
 
-        if (lookupDocsUpserted > 0) {
+        if (runMetrics.lookupDocsUpserted > 0) {
           await esClient.indices.refresh({ index: lookupIndex });
-          runLogger.debug(`refreshed lookup index after ${lookupDocsUpserted} upserts`);
+          runLogger.debug(`refreshed lookup index after ${runMetrics.lookupDocsUpserted} upserts`);
         }
 
         const resolutionStage = runTelemetry.startResolutionStage();
         try {
-          const resolutionResult = await runResolutionScoring({
+          const resolutionResult = await runResolutionScoringStep({
             esClient,
             crudClient,
             logger: runLogger,
@@ -432,7 +309,7 @@ export const createRiskScoreMaintainer = ({
             idBasedRiskScoringEnabled,
             writer,
           });
-          scoresWrittenResolution = resolutionResult.scoresWritten;
+          runMetrics.scoresWrittenResolution = resolutionResult.scoresWritten;
           if (resolutionResult.skippedReason) {
             resolutionStage.skipped(resolutionResult.skippedReason);
           } else {
@@ -467,7 +344,7 @@ export const createRiskScoreMaintainer = ({
               calculationRunId,
               now: runNow,
             });
-            scoresWrittenResetToZero = resetResult.scoresWritten;
+            runMetrics.scoresWrittenResetToZero = resetResult.scoresWritten;
             if (resetResult.scoresWritten > 0) {
               runLogger.info(`reset ${resetResult.scoresWritten} stale risk scores to zero`);
             } else {
@@ -488,17 +365,22 @@ export const createRiskScoreMaintainer = ({
           }
 
           const riskWindowStart = configuration.range?.start ?? 'now-30d';
-          const { prunedDocs, errorMessage } = await runLookupPrune({
-            esClient,
-            lookupIndex,
-            riskWindowStart,
-            runLogger,
-          });
-          lookupPrunedDocs = prunedDocs;
-          if (errorMessage) {
+          try {
+            const prunedDocs = await pruneLookupIndex({
+              esClient,
+              index: lookupIndex,
+              riskWindowStart,
+            });
+            runMetrics.lookupPrunedDocs = prunedDocs;
+            if (prunedDocs > 0) {
+              runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
+            }
+          } catch (error) {
             runStatus = 'error';
             runErrorKind = 'unexpected';
-            runLogger.error(`error pruning lookup index: ${errorMessage}`);
+            runLogger.error(
+              `error pruning lookup index: ${telemetryReporter.getErrorMessage(error)}`
+            );
           }
         } else {
           runLogger.debug('reset_to_zero disabled in configuration');
@@ -508,15 +390,15 @@ export const createRiskScoreMaintainer = ({
         runTelemetry.completionSummary({
           runStatus,
           runErrorKind,
-          scoresWrittenBase,
-          scoresWrittenResolution,
-          scoresWrittenResetToZero,
-          pagesProcessed,
-          deferToPhase2Count,
-          notInStoreCount,
-          lookupDocsUpserted,
-          lookupDocsDeleted,
-          lookupPrunedDocs,
+          scoresWrittenBase: runMetrics.scoresWrittenBase,
+          scoresWrittenResolution: runMetrics.scoresWrittenResolution,
+          scoresWrittenResetToZero: runMetrics.scoresWrittenResetToZero,
+          pagesProcessed: runMetrics.pagesProcessed,
+          deferToPhase2Count: runMetrics.deferToPhase2Count,
+          notInStoreCount: runMetrics.notInStoreCount,
+          lookupDocsUpserted: runMetrics.lookupDocsUpserted,
+          lookupDocsDeleted: runMetrics.lookupDocsDeleted,
+          lookupPrunedDocs: runMetrics.lookupPrunedDocs,
         });
         const entityRunDurationMs = Date.now() - entityRunStartedAtMs;
         runLogger.info(
@@ -526,28 +408,32 @@ export const createRiskScoreMaintainer = ({
             errorKind: runErrorKind,
             durationMs: entityRunDurationMs,
             scoresWrittenTotal:
-              scoresWrittenBase + scoresWrittenResolution + scoresWrittenResetToZero,
-            scoresWrittenBase,
-            scoresWrittenResolution,
-            scoresWrittenResetToZero,
-            pagesProcessed,
-            deferToPhase2Count,
-            notInStoreCount,
-            lookupDocsUpserted,
-            lookupDocsDeleted,
-            lookupPrunedDocs,
+              runMetrics.scoresWrittenBase +
+              runMetrics.scoresWrittenResolution +
+              runMetrics.scoresWrittenResetToZero,
+            scoresWrittenBase: runMetrics.scoresWrittenBase,
+            scoresWrittenResolution: runMetrics.scoresWrittenResolution,
+            scoresWrittenResetToZero: runMetrics.scoresWrittenResetToZero,
+            pagesProcessed: runMetrics.pagesProcessed,
+            deferToPhase2Count: runMetrics.deferToPhase2Count,
+            notInStoreCount: runMetrics.notInStoreCount,
+            lookupDocsUpserted: runMetrics.lookupDocsUpserted,
+            lookupDocsDeleted: runMetrics.lookupDocsDeleted,
+            lookupPrunedDocs: runMetrics.lookupPrunedDocs,
             idBasedRiskScoringEnabled,
             pipelineVersion: PIPELINE_VERSION,
             namespace,
           })}`
         );
-        aggregateScoresWrittenBase += scoresWrittenBase;
-        aggregateScoresWrittenResolution += scoresWrittenResolution;
-        aggregateScoresWrittenResetToZero += scoresWrittenResetToZero;
-        aggregatePagesProcessed += pagesProcessed;
-        aggregateLookupDocsUpserted += lookupDocsUpserted;
-        aggregateLookupDocsDeleted += lookupDocsDeleted;
-        aggregateLookupPrunedDocs += lookupPrunedDocs;
+        aggregateMetrics.scoresWrittenBase += runMetrics.scoresWrittenBase;
+        aggregateMetrics.scoresWrittenResolution += runMetrics.scoresWrittenResolution;
+        aggregateMetrics.scoresWrittenResetToZero += runMetrics.scoresWrittenResetToZero;
+        aggregateMetrics.pagesProcessed += runMetrics.pagesProcessed;
+        aggregateMetrics.lookupDocsUpserted += runMetrics.lookupDocsUpserted;
+        aggregateMetrics.lookupDocsDeleted += runMetrics.lookupDocsDeleted;
+        aggregateMetrics.lookupPrunedDocs += runMetrics.lookupPrunedDocs;
+        aggregateMetrics.deferToPhase2Count += runMetrics.deferToPhase2Count;
+        aggregateMetrics.notInStoreCount += runMetrics.notInStoreCount;
       }
 
       const maintainerRunDurationMs = Date.now() - maintainerRunStartedAtMs;
@@ -560,16 +446,16 @@ export const createRiskScoreMaintainer = ({
           durationMs: maintainerRunDurationMs,
           entityTypesProcessed: entityTypes.length,
           scoresWrittenTotal:
-            aggregateScoresWrittenBase +
-            aggregateScoresWrittenResolution +
-            aggregateScoresWrittenResetToZero,
-          scoresWrittenBase: aggregateScoresWrittenBase,
-          scoresWrittenResolution: aggregateScoresWrittenResolution,
-          scoresWrittenResetToZero: aggregateScoresWrittenResetToZero,
-          pagesProcessed: aggregatePagesProcessed,
-          lookupDocsUpserted: aggregateLookupDocsUpserted,
-          lookupDocsDeleted: aggregateLookupDocsDeleted,
-          lookupPrunedDocs: aggregateLookupPrunedDocs,
+            aggregateMetrics.scoresWrittenBase +
+            aggregateMetrics.scoresWrittenResolution +
+            aggregateMetrics.scoresWrittenResetToZero,
+          scoresWrittenBase: aggregateMetrics.scoresWrittenBase,
+          scoresWrittenResolution: aggregateMetrics.scoresWrittenResolution,
+          scoresWrittenResetToZero: aggregateMetrics.scoresWrittenResetToZero,
+          pagesProcessed: aggregateMetrics.pagesProcessed,
+          lookupDocsUpserted: aggregateMetrics.lookupDocsUpserted,
+          lookupDocsDeleted: aggregateMetrics.lookupDocsDeleted,
+          lookupPrunedDocs: aggregateMetrics.lookupPrunedDocs,
           idBasedRiskScoringEnabled,
           pipelineVersion: PIPELINE_VERSION,
         })}`
