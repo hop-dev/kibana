@@ -81,13 +81,11 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
       reportEvent(RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT.eventType, {
         namespace: runContext.namespace,
         entityType: runContext.entityType,
-        calculationRunId: runContext.calculationRunId,
         stage,
         status,
         durationMs,
         skipReason,
         errorKind,
-        errorMessage,
         pagesProcessed,
         scoresWritten,
         deferToPhase2Count,
@@ -163,10 +161,8 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
           namespace: runContext.namespace,
           entityType: runContext.entityType,
-          calculationRunId: runContext.calculationRunId,
           status: 'error',
           errorKind: input.errorKind,
-          errorMessage: input.errorMessage,
           durationMs: getRunDurationMs(),
           scoresWrittenTotal: 0,
           scoresWrittenBase: 0,
@@ -191,10 +187,8 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
         reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
           namespace: runContext.namespace,
           entityType: runContext.entityType,
-          calculationRunId: runContext.calculationRunId,
           status: input.runStatus,
           errorKind: input.runErrorKind,
-          errorMessage: input.runErrorMessage,
           durationMs: getRunDurationMs(),
           scoresWrittenTotal: input.scoresWrittenBase + input.scoresWrittenResetToZero,
           scoresWrittenBase: input.scoresWrittenBase,
@@ -223,7 +217,6 @@ export const createRiskScoreMaintainerTelemetryReporter = ({
       reportEvent(RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT.eventType, {
         namespace,
         entityType: 'all',
-        calculationRunId,
         status: 'skipped',
         skipReason,
         durationMs: 0,
