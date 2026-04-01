@@ -504,7 +504,7 @@ export const getBaseScoreESQL = (
   bounds: { lower?: string; upper?: string },
   sampleSize: number,
   pageSize: number,
-  index: string = '.alerts-security.alerts-default'
+  index: string
 ): string => {
   const euidEval = euid.esql.getEuidEvaluation(entityType, { withTypeId: true });
   const containsIdFilter = euid.esql.getEuidDocumentsContainsIdFilter(entityType);

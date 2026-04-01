@@ -206,7 +206,7 @@ export const createRiskScoreMaintainer = ({
         // - persists with temporary behavior for Phase 2 candidates
         //
         // Phase 1 lookup table synchronization is intentionally not in this branch.
-        const alertFilters = buildAlertFilters(configuration, entityType);
+        const alertFilters = buildAlertFilters(configuration, entityType, runLogger);
         const baseStage = runTelemetry.startBaseStage();
         try {
           const baseSummary = await scoreBaseEntities({
@@ -295,7 +295,7 @@ export const createRiskScoreMaintainer = ({
               errorKind: 'unexpected',
               errorMessage,
             });
-            runLogger.warn(`error resetting risk scores to zero: ${error}`);
+            runLogger.error(`error resetting risk scores to zero: ${error}`);
           }
         } else {
           runLogger.debug('reset_to_zero disabled in configuration');

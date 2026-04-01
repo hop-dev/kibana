@@ -12,10 +12,12 @@ import type { RiskEngineConfiguration } from '../../types';
 import type { EntityType } from '../../../../../common/search_strategy';
 import { filterFromRange } from '../helpers';
 import { convertRangeToISO } from '../tasks/helpers';
+import type { ScopedLogger } from './utils/with_log_context';
 
 export const buildAlertFilters = (
   configuration: RiskEngineConfiguration,
-  entityType: EntityType
+  entityType: EntityType,
+  logger?: ScopedLogger
 ): QueryDslQueryContainer[] => {
   const range = convertRangeToISO(configuration.range);
   const filters: QueryDslQueryContainer[] = [
@@ -58,8 +60,12 @@ export const buildAlertFilters = (
               bool: { must: esQuery },
             });
           }
-        } catch {
+        } catch (error) {
           // Ignore invalid KQL to avoid failing scoring runs due to bad user input.
+          // Emit a warning so misconfigurations are observable.
+          logger?.warn(
+            `Skipping invalid KQL custom filter for ${entityType}: "${customFilter.filter}" — ${error}`
+          );
         }
       });
   }
