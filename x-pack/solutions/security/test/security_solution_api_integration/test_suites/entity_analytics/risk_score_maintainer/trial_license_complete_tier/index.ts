@@ -14,6 +14,7 @@ export default function ({ loadTestFile }: FtrProviderContext) {
     loadTestFile(require.resolve('./task_execution_nondefault_spaces'));
     loadTestFile(require.resolve('./risk_score_calculation'));
     loadTestFile(require.resolve('./resolution_scoring'));
+    loadTestFile(require.resolve('./preview_api'));
     loadTestFile(require.resolve('./asset_criticality_csv_upload_v2'));
   });
 }

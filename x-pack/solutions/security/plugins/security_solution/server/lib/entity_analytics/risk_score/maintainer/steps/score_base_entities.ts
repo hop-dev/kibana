@@ -11,7 +11,11 @@ import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskEngineDataWriter } from '../../risk_engine_data_writer';
-import { getEuidCompositeQuery, getBaseScoreESQL } from '../../calculate_esql_risk_scores';
+import {
+  getEuidCompositeQuery,
+  getBaseScoreESQL,
+  type EuidCompositeAggregation,
+} from '../../calculate_esql_risk_scores';
 import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
 import type { ScoredEntityPage } from './pipeline_types';
@@ -83,12 +87,8 @@ export const calculateBaseEntityScores = async function* ({
       })
     );
 
-    interface CompositeAgg {
-      buckets: Array<{ key: Record<string, string> }>;
-      after_key?: Record<string, string>;
-    }
     const compositeAgg = (
-      compositeResponse.aggregations as { by_entity_id?: CompositeAgg } | undefined
+      compositeResponse.aggregations as { by_entity_id?: EuidCompositeAggregation } | undefined
     )?.by_entity_id;
     const buckets = compositeAgg?.buckets ?? [];
 

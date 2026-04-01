@@ -14,42 +14,50 @@ import { filterFromRange } from '../../helpers';
 import { convertRangeToISO } from '../../tasks/helpers';
 import type { ScopedLogger } from '../utils/with_log_context';
 
-export const buildAlertFilters = (
-  configuration: RiskEngineConfiguration,
+interface BuildCommonAlertFiltersParams {
+  range: { start: string; end: string };
+  filter?: unknown;
+  excludeAlertStatuses?: string[];
+  excludeAlertTags?: string[];
+  filters?: RiskEngineConfiguration['filters'];
+}
+
+export const buildCommonAlertFilters = (
+  params: BuildCommonAlertFiltersParams,
   entityType: EntityType,
   logger?: ScopedLogger
 ): QueryDslQueryContainer[] => {
-  const range = convertRangeToISO(configuration.range);
+  const { range, filter, excludeAlertStatuses, excludeAlertTags, filters: customFilters } = params;
   const filters: QueryDslQueryContainer[] = [
     filterFromRange(range),
     { exists: { field: 'kibana.alert.risk_score' } },
   ];
 
-  if (!isEmpty(configuration.filter)) {
-    filters.push(configuration.filter as QueryDslQueryContainer);
+  if (!isEmpty(filter)) {
+    filters.push(filter as QueryDslQueryContainer);
   }
 
-  if (configuration.excludeAlertStatuses && configuration.excludeAlertStatuses.length > 0) {
+  if (excludeAlertStatuses && excludeAlertStatuses.length > 0) {
     filters.push({
       bool: {
         must_not: {
-          terms: { 'kibana.alert.workflow_status': configuration.excludeAlertStatuses },
+          terms: { 'kibana.alert.workflow_status': excludeAlertStatuses },
         },
       },
     });
   }
 
-  if (configuration.excludeAlertTags && configuration.excludeAlertTags.length > 0) {
+  if (excludeAlertTags && excludeAlertTags.length > 0) {
     filters.push({
       bool: {
-        must_not: { terms: { 'kibana.alert.workflow_tags': configuration.excludeAlertTags } },
+        must_not: { terms: { 'kibana.alert.workflow_tags': excludeAlertTags } },
       },
     });
   }
 
   // Apply entity-specific custom filters from saved object configuration.
-  if (configuration.filters && configuration.filters.length > 0) {
-    configuration.filters
+  if (customFilters && customFilters.length > 0) {
+    customFilters
       .filter((customFilter) => customFilter.entity_types.includes(entityType))
       .forEach((customFilter) => {
         try {
@@ -71,4 +79,22 @@ export const buildAlertFilters = (
   }
 
   return filters;
+};
+
+export const buildAlertFilters = (
+  configuration: RiskEngineConfiguration,
+  entityType: EntityType,
+  logger?: ScopedLogger
+): QueryDslQueryContainer[] => {
+  return buildCommonAlertFilters(
+    {
+      range: convertRangeToISO(configuration.range),
+      filter: configuration.filter,
+      excludeAlertStatuses: configuration.excludeAlertStatuses,
+      excludeAlertTags: configuration.excludeAlertTags,
+      filters: configuration.filters,
+    },
+    entityType,
+    logger
+  );
 };

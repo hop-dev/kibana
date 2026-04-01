@@ -491,6 +491,11 @@ export const getEuidCompositeQuery = (
   };
 };
 
+export interface EuidCompositeAggregation {
+  buckets: Array<{ key: Record<string, string> }>;
+  after_key?: Record<string, string>;
+}
+
 /**
  * Returns an ES|QL query that:
  * 1. Filters documents where the entity has an identifiable EUID
