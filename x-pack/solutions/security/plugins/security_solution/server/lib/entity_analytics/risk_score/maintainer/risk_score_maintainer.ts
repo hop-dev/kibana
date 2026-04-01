@@ -42,6 +42,7 @@ import { withLogContext } from './utils/with_log_context';
 import { ensureLookupIndex } from './lookup/lookup_index';
 import { pruneLookupIndex } from './lookup/prune_lookup_index';
 import { runResolutionScoringStep } from './run_resolution_scoring_step';
+import { createRunMetricsTracker } from './utils/run_metrics_tracker';
 
 export interface RiskScoreMaintainerDeps {
   getStartServices: EntityAnalyticsRoutesDeps['getStartServices'];
@@ -55,18 +56,6 @@ export interface RiskScoreMaintainerDeps {
 
 type RiskScoreMaintainerConfig = Pick<RegisterEntityMaintainerConfig, 'setup' | 'run'>;
 const toRunTag = (calculationRunId: string) => calculationRunId.slice(0, 8);
-
-interface RunMetrics {
-  scoresWrittenBase: number;
-  scoresWrittenResolution: number;
-  scoresWrittenResetToZero: number;
-  pagesProcessed: number;
-  deferToPhase2Count: number;
-  notInStoreCount: number;
-  lookupDocsUpserted: number;
-  lookupDocsDeleted: number;
-  lookupPrunedDocs: number;
-}
 
 export const createRiskScoreMaintainer = ({
   getStartServices,
@@ -175,17 +164,7 @@ export const createRiskScoreMaintainer = ({
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
       const maintainerRunStartedAtMs = Date.now();
-      const aggregateMetrics: RunMetrics = {
-        scoresWrittenBase: 0,
-        scoresWrittenResolution: 0,
-        scoresWrittenResetToZero: 0,
-        pagesProcessed: 0,
-        deferToPhase2Count: 0,
-        notInStoreCount: 0,
-        lookupDocsUpserted: 0,
-        lookupDocsDeleted: 0,
-        lookupPrunedDocs: 0,
-      };
+      const metricsTracker = createRunMetricsTracker();
 
       telemetryReporter.clearGlobalSkipReason();
 
@@ -200,17 +179,7 @@ export const createRiskScoreMaintainer = ({
         );
         let runStatus: 'success' | 'error' = 'success';
         let runErrorKind: MaintainerErrorKind | undefined;
-        const runMetrics: RunMetrics = {
-          scoresWrittenBase: 0,
-          scoresWrittenResolution: 0,
-          scoresWrittenResetToZero: 0,
-          pagesProcessed: 0,
-          deferToPhase2Count: 0,
-          notInStoreCount: 0,
-          lookupDocsUpserted: 0,
-          lookupDocsDeleted: 0,
-          lookupPrunedDocs: 0,
-        };
+        const runMetrics = metricsTracker.newRun();
         const runContext: MaintainerRunContext = {
           namespace,
           entityType,
@@ -249,12 +218,7 @@ export const createRiskScoreMaintainer = ({
             writer,
           });
           runLogger.debug('completed base scoring pass');
-          runMetrics.scoresWrittenBase = baseSummary.scoresWritten;
-          runMetrics.pagesProcessed = baseSummary.pagesProcessed;
-          runMetrics.deferToPhase2Count = baseSummary.deferToPhase2Count;
-          runMetrics.notInStoreCount = baseSummary.notInStoreCount;
-          runMetrics.lookupDocsUpserted = baseSummary.lookupDocsUpserted;
-          runMetrics.lookupDocsDeleted = baseSummary.lookupDocsDeleted;
+          metricsTracker.recordBase(runMetrics, baseSummary);
 
           baseStage.success({
             pagesProcessed: baseSummary.pagesProcessed,
@@ -305,7 +269,7 @@ export const createRiskScoreMaintainer = ({
             idBasedRiskScoringEnabled,
             writer,
           });
-          runMetrics.scoresWrittenResolution = resolutionResult.scoresWritten;
+          metricsTracker.recordResolution(runMetrics, resolutionResult);
           if (resolutionResult.skippedReason) {
             resolutionStage.skipped(resolutionResult.skippedReason);
           } else {
@@ -340,7 +304,7 @@ export const createRiskScoreMaintainer = ({
               calculationRunId,
               now: runNow,
             });
-            runMetrics.scoresWrittenResetToZero = resetResult.scoresWritten;
+            metricsTracker.recordResetToZero(runMetrics, resetResult);
             if (resetResult.scoresWritten > 0) {
               runLogger.info(`reset ${resetResult.scoresWritten} stale risk scores to zero`);
             } else {
@@ -367,7 +331,7 @@ export const createRiskScoreMaintainer = ({
               index: lookupIndex,
               riskWindowStart,
             });
-            runMetrics.lookupPrunedDocs = prunedDocs;
+            metricsTracker.recordPrune(runMetrics, prunedDocs);
             if (prunedDocs > 0) {
               runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
             }
@@ -383,54 +347,34 @@ export const createRiskScoreMaintainer = ({
           runTelemetry.startResetStage().skipped();
         }
 
-        const runScoresWrittenTotal =
-          runMetrics.scoresWrittenBase +
-          runMetrics.scoresWrittenResolution +
-          runMetrics.scoresWrittenResetToZero;
         runTelemetry.completionSummary({
           runStatus,
           runErrorKind,
           ...runMetrics,
         });
         const entityRunDurationMs = Date.now() - entityRunStartedAtMs;
-        const runSummary = {
+        const runSummary = metricsTracker.toRunSummary(runMetrics, {
           entityType,
           status: runStatus,
           errorKind: runErrorKind,
           durationMs: entityRunDurationMs,
-          scoresWrittenTotal: runScoresWrittenTotal,
-          ...runMetrics,
           idBasedRiskScoringEnabled,
           namespace,
-        };
+        });
         runLogger.info(`run summary ${JSON.stringify(runSummary)}`);
-        aggregateMetrics.scoresWrittenBase += runMetrics.scoresWrittenBase;
-        aggregateMetrics.scoresWrittenResolution += runMetrics.scoresWrittenResolution;
-        aggregateMetrics.scoresWrittenResetToZero += runMetrics.scoresWrittenResetToZero;
-        aggregateMetrics.pagesProcessed += runMetrics.pagesProcessed;
-        aggregateMetrics.lookupDocsUpserted += runMetrics.lookupDocsUpserted;
-        aggregateMetrics.lookupDocsDeleted += runMetrics.lookupDocsDeleted;
-        aggregateMetrics.lookupPrunedDocs += runMetrics.lookupPrunedDocs;
-        aggregateMetrics.deferToPhase2Count += runMetrics.deferToPhase2Count;
-        aggregateMetrics.notInStoreCount += runMetrics.notInStoreCount;
+        metricsTracker.accumulate(runMetrics);
       }
 
       const maintainerRunDurationMs = Date.now() - maintainerRunStartedAtMs;
       logger.info(
         `Risk score maintainer run completed for namespace "${namespace}" in ${maintainerRunDurationMs}ms`
       );
-      const aggregateScoresWrittenTotal =
-        aggregateMetrics.scoresWrittenBase +
-        aggregateMetrics.scoresWrittenResolution +
-        aggregateMetrics.scoresWrittenResetToZero;
-      const maintainerTotals = {
+      const maintainerTotals = metricsTracker.toAggregateSummary({
         namespace,
         durationMs: maintainerRunDurationMs,
         entityTypesProcessed: entityTypes.length,
-        scoresWrittenTotal: aggregateScoresWrittenTotal,
-        ...aggregateMetrics,
         idBasedRiskScoringEnabled,
-      };
+      });
       logger.info(`maintainer totals ${JSON.stringify(maintainerTotals)}`);
       return status.state;
     },
