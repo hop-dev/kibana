@@ -188,6 +188,37 @@ export const createRiskScoreMaintainer = ({
     };
   };
 
+  const runLookupPrune = async ({
+    esClient,
+    lookupIndex,
+    riskWindowStart,
+    runLogger,
+  }: {
+    esClient: ElasticsearchClient;
+    lookupIndex: string;
+    riskWindowStart: string;
+    runLogger: Logger;
+  }): Promise<{ prunedDocs: number; errorMessage?: string }> => {
+    try {
+      const prunedDocs = await pruneLookupIndex({
+        esClient,
+        index: lookupIndex,
+        riskWindowStart,
+      });
+
+      if (prunedDocs > 0) {
+        runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
+      }
+
+      return { prunedDocs };
+    } catch (error) {
+      return {
+        prunedDocs: 0,
+        errorMessage: telemetryReporter.getErrorMessage(error),
+      };
+    }
+  };
+
   return {
     setup: async ({ status }) => {
       const namespace = status.metadata.namespace;
@@ -445,17 +476,6 @@ export const createRiskScoreMaintainer = ({
               scoresWritten: resetResult.scoresWritten,
               resetBatchLimitHit: resetResult.resetBatchLimitHit,
             });
-
-            const riskWindowStart = configuration.range?.start ?? 'now-30d';
-            const prunedDocs = await pruneLookupIndex({
-              esClient,
-              index: lookupIndex,
-              riskWindowStart,
-            });
-            lookupPrunedDocs = prunedDocs;
-            if (prunedDocs > 0) {
-              runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
-            }
           } catch (error) {
             const errorMessage = telemetryReporter.getErrorMessage(error);
             runStatus = 'error';
@@ -464,6 +484,20 @@ export const createRiskScoreMaintainer = ({
               errorKind: 'unexpected',
             });
             runLogger.error(`error resetting risk scores to zero: ${errorMessage}`);
+          }
+
+          const riskWindowStart = configuration.range?.start ?? 'now-30d';
+          const { prunedDocs, errorMessage } = await runLookupPrune({
+            esClient,
+            lookupIndex,
+            riskWindowStart,
+            runLogger,
+          });
+          lookupPrunedDocs = prunedDocs;
+          if (errorMessage) {
+            runStatus = 'error';
+            runErrorKind = 'unexpected';
+            runLogger.error(`error pruning lookup index: ${errorMessage}`);
           }
         } else {
           runLogger.debug('reset_to_zero disabled in configuration');
