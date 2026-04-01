@@ -288,7 +288,6 @@ export const createRiskScoreMaintainer = ({
         const runContext: MaintainerRunContext = {
           namespace,
           entityType,
-          calculationRunId,
           idBasedRiskScoringEnabled,
         };
         const runTelemetry = telemetryReporter.forRun(runContext);
@@ -302,7 +301,7 @@ export const createRiskScoreMaintainer = ({
         // - categorizes scores into write decisions
         // - persists with temporary behavior for Phase 2 candidates
         //
-        // Phase 1 lookup table synchronization is intentionally not in this branch.
+        // Phase 1 lookup synchronization runs inline with base scoring categorization.
         const alertFilters = buildAlertFilters(configuration, entityType, runLogger);
         const baseStage = runTelemetry.startBaseStage();
         const lookupStage = runTelemetry.startLookupSyncStage();

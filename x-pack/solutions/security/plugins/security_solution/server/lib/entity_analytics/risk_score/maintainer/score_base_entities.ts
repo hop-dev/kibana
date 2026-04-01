@@ -176,7 +176,8 @@ export const scoreBaseEntities = async ({
       `[page:${pagesProcessed}] lookup sync: upserts=${lookupSyncResult.upserted}, deletes=${lookupSyncResult.deleted}`
     );
 
-    // `defer_to_phase_2` is currently written with `write_now` until phase 2 is implemented.
+    // Keep dual-write semantics from phase 1 categorization:
+    // `defer_to_phase_2` remains persisted to the risk index for continuity.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
     const bulkResponse = await writer.bulk({ [params.entityType]: riskIndexWrites });
     scoresWritten += bulkResponse.docs_written;

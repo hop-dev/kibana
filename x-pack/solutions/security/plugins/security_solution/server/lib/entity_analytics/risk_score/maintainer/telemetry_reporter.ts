@@ -26,7 +26,6 @@ export type MaintainerErrorKind =
 export interface MaintainerRunContext {
   namespace: string;
   entityType: string;
-  calculationRunId: string;
   idBasedRiskScoringEnabled: boolean;
 }
 

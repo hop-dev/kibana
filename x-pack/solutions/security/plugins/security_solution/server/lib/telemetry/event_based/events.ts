@@ -439,7 +439,7 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
   schema: {
     namespace: { type: 'keyword', _meta: { description: 'Kibana space where scoring ran' } },
     entityType: { type: 'keyword', _meta: { description: 'Entity type scored (e.g. host, user)' } },
-    stage: { type: 'keyword', _meta: { description: 'Phase-1 stage identifier' } },
+    stage: { type: 'keyword', _meta: { description: 'Maintainer stage identifier' } },
     status: { type: 'keyword', _meta: { description: 'Stage outcome status' } },
     skipReason: {
       type: 'keyword',
