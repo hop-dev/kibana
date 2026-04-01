@@ -323,28 +323,28 @@ export const createRiskScoreMaintainer = ({
             });
             runLogger.error(`error resetting risk scores to zero: ${errorMessage}`);
           }
-
-          const riskWindowStart = configuration.range?.start ?? 'now-30d';
-          try {
-            const prunedDocs = await pruneLookupIndex({
-              esClient,
-              index: lookupIndex,
-              riskWindowStart,
-            });
-            metricsTracker.recordPrune(runMetrics, prunedDocs);
-            if (prunedDocs > 0) {
-              runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
-            }
-          } catch (error) {
-            runStatus = 'error';
-            runErrorKind = 'unexpected';
-            runLogger.error(
-              `error pruning lookup index: ${telemetryReporter.getErrorMessage(error)}`
-            );
-          }
         } else {
           runLogger.debug('reset_to_zero disabled in configuration');
           runTelemetry.startResetStage().skipped();
+        }
+
+        const riskWindowStart = configuration.range?.start ?? 'now-30d';
+        try {
+          const prunedDocs = await pruneLookupIndex({
+            esClient,
+            index: lookupIndex,
+            riskWindowStart,
+          });
+          metricsTracker.recordPrune(runMetrics, prunedDocs);
+          if (prunedDocs > 0) {
+            runLogger.debug(`pruned ${prunedDocs} stale lookup documents`);
+          }
+        } catch (error) {
+          runStatus = 'error';
+          runErrorKind = 'unexpected';
+          runLogger.error(
+            `error pruning lookup index: ${telemetryReporter.getErrorMessage(error)}`
+          );
         }
 
         runTelemetry.completionSummary({
