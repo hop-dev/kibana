@@ -188,7 +188,7 @@ export const scoreBaseEntities = async ({
         } error(s): ${bulkResponse.errors.join('; ')}`
       );
     } else {
-      params.logger.info(
+      params.logger.debug(
         `[page:${pagesProcessed}] risk score bulk write succeeded: attempted=${riskIndexWrites.length}, written=${bulkResponse.docs_written}, took=${bulkResponse.took}ms`
       );
     }

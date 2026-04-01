@@ -124,7 +124,7 @@ export const createRiskScoreMaintainer = ({
     pagesProcessed: number;
     skippedReason?: 'lookup_empty';
   }> => {
-    runLogger.info(
+    runLogger.debug(
       `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
     );
     const resolutionSummary = await scoreResolutionEntities({
@@ -144,7 +144,7 @@ export const createRiskScoreMaintainer = ({
     if (resolutionSummary.scores.length === 0) {
       const skipReason =
         resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
-      runLogger.info(
+      runLogger.debug(
         `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${resolutionSummary.pagesProcessed}`
       );
       return {
@@ -156,7 +156,7 @@ export const createRiskScoreMaintainer = ({
 
     const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
     const scoresWrittenResolution = bulkResponse.docs_written;
-    runLogger.info(
+    runLogger.debug(
       `phase 2 resolution write succeeded: attempted=${resolutionSummary.scores.length}, written=${scoresWrittenResolution}, pages=${resolutionSummary.pagesProcessed}, took=${bulkResponse.took}ms`
     );
     if (bulkResponse.errors.length > 0) {
@@ -275,10 +275,19 @@ export const createRiskScoreMaintainer = ({
       const entityTypes = configuration.identifierType
         ? [configuration.identifierType]
         : getEntityAnalyticsEntityTypes();
+      const maintainerRunStartedAtMs = Date.now();
+      let aggregateScoresWrittenBase = 0;
+      let aggregateScoresWrittenResolution = 0;
+      let aggregateScoresWrittenResetToZero = 0;
+      let aggregatePagesProcessed = 0;
+      let aggregateLookupDocsUpserted = 0;
+      let aggregateLookupDocsDeleted = 0;
+      let aggregateLookupPrunedDocs = 0;
 
       telemetryReporter.clearGlobalSkipReason();
 
       for (const entityType of entityTypes) {
+        const entityRunStartedAtMs = Date.now();
         const calculationRunId = uuidv4();
         const runNow = new Date().toISOString();
         const runTag = toRunTag(calculationRunId);
@@ -474,9 +483,62 @@ export const createRiskScoreMaintainer = ({
           lookupDocsDeleted,
           lookupPrunedDocs,
         });
+        const entityRunDurationMs = Date.now() - entityRunStartedAtMs;
+        runLogger.info(
+          `run summary ${JSON.stringify({
+            entityType,
+            status: runStatus,
+            errorKind: runErrorKind,
+            durationMs: entityRunDurationMs,
+            scoresWrittenTotal:
+              scoresWrittenBase + scoresWrittenResolution + scoresWrittenResetToZero,
+            scoresWrittenBase,
+            scoresWrittenResolution,
+            scoresWrittenResetToZero,
+            pagesProcessed,
+            deferToPhase2Count,
+            notInStoreCount,
+            lookupDocsUpserted,
+            lookupDocsDeleted,
+            lookupPrunedDocs,
+            idBasedRiskScoringEnabled,
+            pipelineVersion: PIPELINE_VERSION,
+            namespace,
+          })}`
+        );
+        aggregateScoresWrittenBase += scoresWrittenBase;
+        aggregateScoresWrittenResolution += scoresWrittenResolution;
+        aggregateScoresWrittenResetToZero += scoresWrittenResetToZero;
+        aggregatePagesProcessed += pagesProcessed;
+        aggregateLookupDocsUpserted += lookupDocsUpserted;
+        aggregateLookupDocsDeleted += lookupDocsDeleted;
+        aggregateLookupPrunedDocs += lookupPrunedDocs;
       }
 
-      logger.info(`Risk score maintainer run completed for namespace "${namespace}"`);
+      const maintainerRunDurationMs = Date.now() - maintainerRunStartedAtMs;
+      logger.info(
+        `Risk score maintainer run completed for namespace "${namespace}" in ${maintainerRunDurationMs}ms`
+      );
+      logger.info(
+        `maintainer totals ${JSON.stringify({
+          namespace,
+          durationMs: maintainerRunDurationMs,
+          entityTypesProcessed: entityTypes.length,
+          scoresWrittenTotal:
+            aggregateScoresWrittenBase +
+            aggregateScoresWrittenResolution +
+            aggregateScoresWrittenResetToZero,
+          scoresWrittenBase: aggregateScoresWrittenBase,
+          scoresWrittenResolution: aggregateScoresWrittenResolution,
+          scoresWrittenResetToZero: aggregateScoresWrittenResetToZero,
+          pagesProcessed: aggregatePagesProcessed,
+          lookupDocsUpserted: aggregateLookupDocsUpserted,
+          lookupDocsDeleted: aggregateLookupDocsDeleted,
+          lookupPrunedDocs: aggregateLookupPrunedDocs,
+          idBasedRiskScoringEnabled,
+          pipelineVersion: PIPELINE_VERSION,
+        })}`
+      );
       return status.state;
     },
   };
