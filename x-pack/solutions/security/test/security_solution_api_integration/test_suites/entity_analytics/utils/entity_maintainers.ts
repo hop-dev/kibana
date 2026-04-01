@@ -39,6 +39,15 @@ interface RetryServiceLike {
   ) => Promise<void>;
 }
 
+const isMaintainerAlreadyRunningError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('currently running') || message.includes('failed to run task');
+};
+
 export const entityMaintainerRouteHelpersFactory = (
   supertest: SuperTest.Agent,
   namespace?: string
@@ -135,22 +144,29 @@ export const waitForMaintainerRun = async ({
     // Maintainer may not exist yet
   }
 
-  // Trigger a manual run so we don't have to wait for the scheduled interval
+  let requiredNewRuns = minRuns;
+
+  // Trigger a manual run so we don't have to wait for the scheduled interval.
+  // If the task is already running, wait for one extra completion to guarantee
+  // we observe a run that starts after this helper is called.
   try {
     await routes.runMaintainer(maintainerId);
-  } catch {
+  } catch (error) {
+    if (isMaintainerAlreadyRunningError(error)) {
+      requiredNewRuns += 1;
+    }
     // May fail if maintainer isn't ready yet; the scheduled run will cover it
   }
 
   await retry.waitForWithTimeout(
-    `Entity maintainer "${maintainerId}" to complete at least ${minRuns} new run(s) (baseline: ${baselineRuns})`,
+    `Entity maintainer "${maintainerId}" to complete at least ${requiredNewRuns} new run(s) (baseline: ${baselineRuns})`,
     timeoutMs,
     async () => {
       const response = await routes.getMaintainers(200, [maintainerId]);
       const maintainer = response.body.maintainers.find(
         (m: { id: string; runs: number }) => m.id === maintainerId
       );
-      return maintainer !== undefined && maintainer.runs >= baselineRuns + minRuns;
+      return maintainer !== undefined && maintainer.runs >= baselineRuns + requiredNewRuns;
     }
   );
 };
