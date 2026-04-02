@@ -22,7 +22,7 @@ import { FormattedMessage } from '@kbn/i18n-react';
 import { ALERT_RULE_NAME } from '@kbn/rule-data-utils';
 import { get } from 'lodash/fp';
 import type { CriticalityLevel } from '../../../../../../common/entity_analytics/asset_criticality/types';
-import { useIsExperimentalFeatureEnabled } from '../../../../../common/hooks/use_experimental_features';
+import { getWatchlistName } from '../../../../../../common/entity_analytics/watchlists/constants';
 import { ALERT_PREVIEW_BANNER } from '../../../../../flyout/document_details/preview/constants';
 import { DocumentDetailsPreviewPanelKey } from '../../../../../flyout/document_details/shared/constants/panel_keys';
 import { useGlobalTime } from '../../../../../common/containers/use_global_time';
@@ -36,6 +36,7 @@ import { useRiskContributingAlerts } from '../../../../hooks/use_risk_contributi
 import { PreferenceFormattedDate } from '../../../../../common/components/formatted_date';
 
 import { useRiskScore } from '../../../../api/hooks/use_risk_score';
+import { useGetWatchlists } from '../../../../api/hooks/use_get_watchlists';
 import type { EntityRiskScore, EntityType } from '../../../../../../common/search_strategy';
 import { buildEntityNameFilter } from '../../../../../../common/search_strategy';
 import { AssetCriticalityBadge } from '../../../asset_criticality';
@@ -43,7 +44,18 @@ import { RiskInputsUtilityBar } from '../../components/utility_bar';
 import { ActionColumn } from '../../components/action_column';
 import { AskAiAssistant } from './ask_ai_assistant';
 import { useResolutionGroup } from '../../../entity_resolution/hooks/use_resolution_group';
-import { getEntityId } from '../../../entity_resolution/helpers';
+import {
+  getEntityId,
+  getEntityName,
+  getEntityRiskScore,
+  getEntitySource,
+} from '../../../entity_resolution/helpers';
+import {
+  ENTITY_ID_COLUMN,
+  ENTITY_NAME_COLUMN,
+  RISK_SCORE_COLUMN,
+  SOURCE_COLUMN,
+} from '../../../entity_resolution/translations';
 
 export interface RiskInputsTabProps<T extends EntityType> {
   entityType: T;
@@ -70,6 +82,7 @@ export const RiskInputsTab = <T extends EntityType>({
   const [selectedItems, setSelectedItems] = useState<InputAlert[]>([]);
   const [selectedView, setSelectedView] = useState<'entity' | 'resolution'>('entity');
   const { openPreviewPanel } = useExpandableFlyoutApi();
+  const { data: watchlists } = useGetWatchlists();
 
   const openAlertPreview = useCallback(
     (id: string, indexName: string) =>
@@ -114,9 +127,16 @@ export const RiskInputsTab = <T extends EntityType>({
   const resolutionFilterQuery = useMemo(
     () =>
       resolutionTargetEntityId
-        ? `entity.id: "${resolutionTargetEntityId}" AND score_type: "resolution"`
+        ? {
+            bool: {
+              filter: [
+                buildEntityNameFilter(entityType, [resolutionTargetEntityId]),
+                { term: { [`${entityType}.risk.score_type`]: 'resolution' } },
+              ],
+            },
+          }
         : undefined,
-    [resolutionTargetEntityId]
+    [entityType, resolutionTargetEntityId]
   );
   const {
     data: resolutionRiskScoreData,
@@ -142,6 +162,22 @@ export const RiskInputsTab = <T extends EntityType>({
   const activeInspectRiskScore = isResolutionView ? inspectResolutionRiskScore : inspectRiskScore;
   const activeRiskScoreLoading = isResolutionView ? loadingResolutionRiskScore : loadingRiskScore;
   const activeRiskScoreRefetch = isResolutionView ? refetchResolutionRiskScore : refetch;
+  const relatedEntityIds = useMemo(
+    () =>
+      activeRiskScore?.[entityType].risk.related_entities
+        ?.map((relatedEntity) => relatedEntity.entity_id)
+        .filter((relatedEntityId): relatedEntityId is string => Boolean(relatedEntityId)) ?? [],
+    [activeRiskScore, entityType]
+  );
+  const watchlistNamesById = useMemo(() => {
+    const map = new Map<string, string>();
+    (watchlists ?? []).forEach((watchlist) => {
+      if (watchlist.id) {
+        map.set(watchlist.id, watchlist.name);
+      }
+    });
+    return map;
+  }, [watchlists]);
 
   useQueryInspector({
     deleteQuery,
@@ -238,6 +274,60 @@ export const RiskInputsTab = <T extends EntityType>({
     ],
     [openAlertPreview]
   );
+  const contributingEntitiesRows = useMemo<ResolutionContributingEntityRow[]>(() => {
+    if (!isResolutionView || relatedEntityIds.length === 0) {
+      return [];
+    }
+
+    const relatedEntityIdSet = new Set(relatedEntityIds);
+    const resolutionEntities = resolutionGroup
+      ? [resolutionGroup.target, ...resolutionGroup.aliases]
+      : [];
+    const matchingResolutionEntities = resolutionEntities.filter((entity) =>
+      relatedEntityIdSet.has(getEntityId(entity))
+    );
+
+    if (matchingResolutionEntities.length > 0) {
+      return matchingResolutionEntities.map((entity) => ({
+        entityName: getEntityName(entity),
+        entityId: getEntityId(entity),
+        source: getEntitySource(entity),
+        riskScore: getEntityRiskScore(entity),
+      }));
+    }
+
+    return relatedEntityIds.map((entityIdentifier) => ({
+      entityName: entityIdentifier,
+      entityId: entityIdentifier,
+      source: '-',
+      riskScore: undefined,
+    }));
+  }, [isResolutionView, relatedEntityIds, resolutionGroup]);
+  const contributingEntitiesColumns: Array<EuiBasicTableColumn<ResolutionContributingEntityRow>> =
+    useMemo(
+      () => [
+        {
+          field: 'entityName',
+          name: ENTITY_NAME_COLUMN,
+        },
+        {
+          field: 'entityId',
+          name: ENTITY_ID_COLUMN,
+        },
+        {
+          field: 'source',
+          name: SOURCE_COLUMN,
+        },
+        {
+          field: 'riskScore',
+          name: RISK_SCORE_COLUMN,
+          align: 'right',
+          render: (riskScore: ResolutionContributingEntityRow['riskScore']) =>
+            riskScore != null ? Math.round(riskScore) : '-',
+        },
+      ],
+      []
+    );
 
   if (riskScoreError) {
     return (
@@ -262,58 +352,36 @@ export const RiskInputsTab = <T extends EntityType>({
     );
   }
 
+  const contributingEntitiesSection =
+    isResolutionView && contributingEntitiesRows.length > 0 ? (
+      <>
+        <EuiTitle size="xs" data-test-subj="risk-input-related-entities-title">
+          <h3>
+            <FormattedMessage
+              id="xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTitle"
+              defaultMessage="Contributing entities"
+            />
+          </h3>
+        </EuiTitle>
+        <EuiSpacer size="xs" />
+        <EuiInMemoryTable
+          compressed
+          data-test-subj="risk-input-related-entities-table"
+          items={contributingEntitiesRows}
+          columns={contributingEntitiesColumns}
+          sorting={true}
+          tableCaption={i18n.translate(
+            'xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTableCaption',
+            {
+              defaultMessage: 'Entities contributing to the resolution risk score',
+            }
+          )}
+        />
+      </>
+    ) : null;
+
   const riskInputsAlertSection = (
     <>
-      {hasResolutionScore && (
-        <>
-          <EuiButtonGroup
-            legend={i18n.translate(
-              'xpack.securitySolution.flyout.entityDetails.riskInputs.scoreViewLegend',
-              { defaultMessage: 'Risk score view' }
-            )}
-            buttonSize="compressed"
-            options={[
-              {
-                id: 'entity',
-                label: i18n.translate(
-                  'xpack.securitySolution.flyout.entityDetails.riskInputs.entityScoreViewLabel',
-                  { defaultMessage: 'Entity risk score' }
-                ),
-              },
-              {
-                id: 'resolution',
-                label: i18n.translate(
-                  'xpack.securitySolution.flyout.entityDetails.riskInputs.resolutionScoreViewLabel',
-                  { defaultMessage: 'Resolution group risk score' }
-                ),
-              },
-            ]}
-            idSelected={selectedView}
-            onChange={(id) => setSelectedView(id as 'entity' | 'resolution')}
-            data-test-subj="risk-input-score-view-toggle"
-          />
-          <EuiSpacer size="s" />
-        </>
-      )}
-      {isResolutionView && (activeRiskScore?.[entityType].risk.related_entities?.length ?? 0) > 0 && (
-        <>
-          <EuiCallOut
-            size="s"
-            iconType="users"
-            title={i18n.translate(
-              'xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTitle',
-              { defaultMessage: 'Contributing entities' }
-            )}
-            data-test-subj="risk-input-related-entities-callout"
-          >
-            {activeRiskScore?.[entityType].risk.related_entities
-              ?.map((relatedEntity) => relatedEntity.entity_id)
-              .filter((relatedEntityId): relatedEntityId is string => Boolean(relatedEntityId))
-              .join(', ')}
-          </EuiCallOut>
-          <EuiSpacer size="s" />
-        </>
-      )}
       <EuiTitle size="xs" data-test-subj="risk-input-alert-title">
         <h3>
           <FormattedMessage
@@ -346,10 +414,44 @@ export const RiskInputsTab = <T extends EntityType>({
 
   return (
     <>
+      {hasResolutionScore && (
+        <>
+          <EuiButtonGroup
+            legend={i18n.translate(
+              'xpack.securitySolution.flyout.entityDetails.riskInputs.scoreViewLegend',
+              { defaultMessage: 'Risk score view' }
+            )}
+            buttonSize="compressed"
+            options={[
+              {
+                id: 'entity',
+                label: i18n.translate(
+                  'xpack.securitySolution.flyout.entityDetails.riskInputs.entityScoreViewLabel',
+                  { defaultMessage: 'Entity risk score' }
+                ),
+              },
+              {
+                id: 'resolution',
+                label: i18n.translate(
+                  'xpack.securitySolution.flyout.entityDetails.riskInputs.resolutionScoreViewLabel',
+                  { defaultMessage: 'Resolution group risk score' }
+                ),
+              },
+            ]}
+            idSelected={selectedView}
+            onChange={(id) => setSelectedView(id as 'entity' | 'resolution')}
+            data-test-subj="risk-input-score-view-toggle"
+          />
+          <EuiSpacer size="m" />
+        </>
+      )}
+      {contributingEntitiesSection}
+      {contributingEntitiesSection && <EuiSpacer size="m" />}
       <ContextsSection<T>
         loading={activeRiskScoreLoading}
         riskScore={activeRiskScore}
         entityType={entityType}
+        watchlistNamesById={watchlistNamesById}
       />
       <EuiSpacer size="m" />
       {riskInputsAlertSection}
@@ -364,49 +466,48 @@ interface ContextsSectionProps<T extends EntityType> {
   riskScore?: EntityRiskScore<T>;
   entityType: T;
   loading: boolean;
+  watchlistNamesById: Map<string, string>;
 }
 
 const ContextsSection = <T extends EntityType>({
   riskScore,
   loading,
   entityType,
+  watchlistNamesById,
 }: ContextsSectionProps<T>) => {
-  const isPrivmonEnabled = useIsExperimentalFeatureEnabled('enableRiskScorePrivmonModifier');
   const contributions = useMemo(() => {
     if (!riskScore) {
       return undefined;
     }
 
-    const privmon = riskScore[entityType].risk.modifiers?.find(
-      (mod) => mod.type === 'watchlist' && mod.subtype === 'privmon'
-    );
+    const modifiers = riskScore[entityType].risk.modifiers ?? [];
     const criticality = riskScore[entityType].risk.modifiers?.find(
       (mod) => mod.type === 'asset_criticality'
     );
+    const watchlists = modifiers.filter((mod) => mod.type === 'watchlist');
+
+    if (!criticality && watchlists.length === 0) {
+      return undefined;
+    }
 
     return {
       criticality: {
-        level: isPrivmonEnabled
-          ? (criticality?.metadata?.criticality_level as CriticalityLevel)
-          : riskScore[entityType].risk.criticality_level,
-        contribution: isPrivmonEnabled
-          ? criticality?.contribution
-          : riskScore[entityType].risk.category_2_score,
+        level: (criticality?.metadata?.criticality_level as CriticalityLevel) ?? null,
+        contribution: criticality?.contribution,
       },
-      privmon: {
-        isPrivileged: privmon ? Boolean(privmon.metadata?.is_privileged_user) : false,
-        contribution: privmon?.contribution ?? 0,
-      },
+      watchlists,
     };
-  }, [entityType, riskScore, isPrivmonEnabled]);
+  }, [entityType, riskScore]);
 
   if (loading || contributions === undefined) {
     return null;
   }
-  const { criticality, privmon } = contributions;
+  const { criticality, watchlists } = contributions;
 
-  const items = [
-    {
+  const items: ContextRow[] = [];
+
+  if (criticality.level != null && criticality.contribution != null) {
+    items.push({
       field: (
         <FormattedMessage
           id="xpack.securitySolution.flyout.entityDetails.riskInputs.assetCriticalityField"
@@ -419,27 +520,58 @@ const ContextsSection = <T extends EntityType>({
           dataTestSubj="risk-inputs-asset-criticality-badge"
         />
       ),
-      contribution: formatContribution(criticality.contribution || 0),
-    },
-  ];
+      contribution: formatContribution(criticality.contribution),
+    });
+  }
 
-  if (isPrivmonEnabled) {
+  watchlists.forEach((watchlist) => {
+    const watchlistMetadata = watchlist.metadata as
+      | {
+          watchlist_id?: string;
+          is_privileged_user?: boolean;
+        }
+      | undefined;
+    const watchlistId =
+      typeof watchlistMetadata?.watchlist_id === 'string' ? watchlistMetadata.watchlist_id : '';
+    const watchlistLabel = watchlistId
+      ? watchlistNamesById.get(watchlistId) ?? getWatchlistName(watchlistId)
+      : i18n.translate(
+          'xpack.securitySolution.flyout.entityDetails.riskInputs.unknownWatchlistLabel',
+          {
+            defaultMessage: 'Unknown watchlist',
+          }
+        );
+
     items.push({
       field: (
         <FormattedMessage
-          id="xpack.securitySolution.flyout.entityDetails.riskInputs.privmonField"
-          defaultMessage="Privileged user"
+          id="xpack.securitySolution.flyout.entityDetails.riskInputs.watchlistField"
+          defaultMessage="Watchlist"
         />
       ),
       value: (
         <FormattedMessage
-          id="xpack.securitySolution.flyout.entityDetails.riskInputs.privmonValue"
-          defaultMessage="{value}"
-          values={{ value: privmon.isPrivileged ? 'Yes' : 'No' }}
+          id="xpack.securitySolution.flyout.entityDetails.riskInputs.watchlistValue"
+          defaultMessage="{watchlistName}{privilegedTag}"
+          values={{
+            watchlistName: watchlistLabel,
+            privilegedTag: watchlistMetadata?.is_privileged_user
+              ? i18n.translate(
+                  'xpack.securitySolution.flyout.entityDetails.riskInputs.privilegedWatchlistSuffix',
+                  {
+                    defaultMessage: ' (privileged user)',
+                  }
+                )
+              : '',
+          }}
         />
       ),
-      contribution: formatContribution(privmon.contribution || 0),
+      contribution: formatContribution(watchlist.contribution),
     });
+  });
+
+  if (items.length === 0) {
+    return null;
   }
 
   return (
@@ -572,3 +704,10 @@ const formatContribution = (value: number): string => {
 
   return fixedValue;
 };
+
+interface ResolutionContributingEntityRow {
+  entityName: string;
+  entityId: string;
+  source: string;
+  riskScore?: number;
+}

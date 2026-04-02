@@ -36,6 +36,12 @@ jest.mock('../../../../api/hooks/use_risk_score', () => ({
   useRiskScore: (params: unknown) => mockUseRiskScore(params),
 }));
 
+const mockUseGetWatchlists = jest.fn().mockReturnValue({ data: [] });
+
+jest.mock('../../../../api/hooks/use_get_watchlists', () => ({
+  useGetWatchlists: () => mockUseGetWatchlists(),
+}));
+
 const mockUseResolutionGroup = jest.fn().mockReturnValue({ data: undefined });
 
 jest.mock('../../../entity_resolution/hooks/use_resolution_group', () => ({
@@ -71,11 +77,34 @@ const riskScoreWithAssetCriticalityContribution = (contribution: number) => {
 };
 
 describe('RiskInputsTab', () => {
+  const isResolutionFilter = (params?: { filterQuery?: unknown }): boolean => {
+    const filters = (
+      params?.filterQuery as
+        | {
+            bool?: { filter?: Array<{ term?: Record<string, string> }> };
+          }
+        | undefined
+    )?.bool?.filter;
+
+    if (!Array.isArray(filters)) {
+      return false;
+    }
+
+    return filters.some((clause) => Object.values(clause.term ?? {}).includes('resolution'));
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseResolutionGroup.mockReturnValue({ data: undefined });
-    mockUseRiskScore.mockImplementation((params?: { filterQuery?: string }) =>
-      params?.filterQuery?.includes('score_type: "resolution"')
+    mockUseGetWatchlists.mockReturnValue({ data: [] });
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: unknown; skip?: boolean }) =>
+      params?.skip
+        ? {
+            loading: false,
+            error: false,
+            data: [],
+          }
+        : isResolutionFilter(params)
         ? {
             loading: false,
             error: false,
@@ -309,8 +338,8 @@ describe('RiskInputsTab', () => {
         group_size: 1,
       },
     });
-    mockUseRiskScore.mockImplementation((params?: { filterQuery?: string }) =>
-      params?.filterQuery?.includes('score_type: "resolution"')
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: unknown }) =>
+      isResolutionFilter(params)
         ? {
             loading: false,
             error: false,
@@ -344,7 +373,83 @@ describe('RiskInputsTab', () => {
 
     fireEvent.click(getByText('Resolution group risk score'));
 
-    expect(getByTestId('risk-input-related-entities-callout')).toBeInTheDocument();
-    expect(getByTestId('risk-input-related-entities-callout')).toHaveTextContent('user:entity-1');
+    expect(getByTestId('risk-input-related-entities-table')).toBeInTheDocument();
+    expect(getByTestId('risk-input-related-entities-table')).toHaveTextContent('user:entity-1');
+  });
+
+  it('renders watchlist modifiers in context section', () => {
+    const riskScoreWithWatchlistModifier = {
+      '@timestamp': '2021-08-19T16:00:00.000Z',
+      user: {
+        name: 'elastic',
+        risk: {
+          ...riskScore.user.risk,
+          modifiers: [
+            {
+              type: 'watchlist',
+              contribution: 8.75,
+              metadata: {
+                watchlist_id: 'wl-123',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    mockUseRiskScore.mockReturnValue({
+      loading: false,
+      error: false,
+      data: [riskScoreWithWatchlistModifier],
+    });
+
+    const { getByTestId } = render(
+      <TestProviders>
+        <RiskInputsTab entityType={EntityType.user} entityName="elastic" scopeId={'scopeId'} />
+      </TestProviders>
+    );
+
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('Watchlist');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('wl-123');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('+8.75');
+  });
+
+  it('renders custom watchlist name from watchlists API data', () => {
+    mockUseGetWatchlists.mockReturnValue({
+      data: [{ id: 'wl-123', name: 'High Risk Vendors', managed: false, riskModifier: 1.5 }],
+    });
+
+    const riskScoreWithWatchlistModifier = {
+      '@timestamp': '2021-08-19T16:00:00.000Z',
+      user: {
+        name: 'elastic',
+        risk: {
+          ...riskScore.user.risk,
+          modifiers: [
+            {
+              type: 'watchlist',
+              contribution: 2.5,
+              metadata: {
+                watchlist_id: 'wl-123',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    mockUseRiskScore.mockReturnValue({
+      loading: false,
+      error: false,
+      data: [riskScoreWithWatchlistModifier],
+    });
+
+    const { getByTestId } = render(
+      <TestProviders>
+        <RiskInputsTab entityType={EntityType.user} entityName="elastic" scopeId={'scopeId'} />
+      </TestProviders>
+    );
+
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('High Risk Vendors');
   });
 });
