@@ -76,25 +76,54 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
 }: RiskSummaryProps<T>) => {
   const { telemetry } = useKibana().services;
   const { data } = riskScoreData;
-  const riskData = data && data.length > 0 ? data[0] : undefined;
-  const entityData = getEntityData<T>(entityType, riskData);
+  const fallbackRiskData = data && data.length > 0 ? data[0] : undefined;
   const { euiTheme } = useEuiTheme();
   const spaceId = useSpaceId();
+  const entityRiskFilterQueryDsl = useMemo(
+    () =>
+      entityId
+        ? {
+            bool: {
+              filter: [{ term: { [`${entityType}.risk.id_value`]: entityId } }],
+              must_not: [{ term: { [`${entityType}.risk.score_type`]: 'resolution' } }],
+            },
+          }
+        : undefined,
+    [entityId, entityType]
+  );
+  const nonResolutionRiskScoreData = useRiskScore({
+    riskEntity: entityType,
+    filterQuery: entityRiskFilterQueryDsl,
+    onlyLatest: false,
+    pagination: FIRST_RECORD_PAGINATION,
+    skip: !entityId,
+  });
+  const nonResolutionRiskData =
+    nonResolutionRiskScoreData.data && nonResolutionRiskScoreData.data.length > 0
+      ? nonResolutionRiskScoreData.data[0]
+      : undefined;
+  const riskData = nonResolutionRiskData ?? fallbackRiskData;
+  const entityData = getEntityData<T>(entityType, riskData);
   const lensAttributes = useMemo(() => {
     const entityName = entityData?.name ?? '';
-    const fieldName = EntityTypeToIdentifierField[entityType];
     const query = entityId
-      ? `entity.id: "${entityId}" AND entity.EngineMetadata.Type: "${entityType}"`
-      : `${fieldName}: "${entityName}"`;
+      ? `${entityType}.risk.id_value: "${entityId}" AND NOT ${entityType}.risk.score_type: "resolution"`
+      : `${EntityTypeToIdentifierField[entityType]}: "${entityName}" AND NOT ${entityType}.risk.score_type: "resolution"`;
 
     return getRiskScoreSummaryAttributes({
       severity: entityData?.risk?.calculated_level,
       query,
       spaceId,
       riskEntity: entityType,
-      entityId,
+      dataSource: 'risk_index',
+      metricLabel: i18n.translate(
+        'xpack.securitySolution.flyout.entityDetails.riskSummary.entityRiskScoreLabel',
+        {
+          defaultMessage: 'Entity risk score',
+        }
+      ),
     });
-  }, [entityData?.name, entityData?.risk?.calculated_level, entityType, spaceId, entityId]);
+  }, [entityData?.name, entityData?.risk?.calculated_level, entityType, entityId, spaceId]);
 
   const xsFontSize = useEuiFontSize('xxs').fontSize;
   const isPrivmonModifierEnabled = useIsExperimentalFeatureEnabled(
@@ -165,16 +194,23 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
     () => (resolutionGroup?.target ? getEntityId(resolutionGroup.target) : undefined),
     [resolutionGroup?.target]
   );
-  const resolutionRiskFilterQuery = useMemo(
+  const resolutionRiskFilterQueryDsl = useMemo(
     () =>
       resolutionTargetEntityId
-        ? `entity.id: "${resolutionTargetEntityId}" AND score_type: "resolution"`
+        ? {
+            bool: {
+              filter: [
+                { term: { [`${entityType}.risk.id_value`]: resolutionTargetEntityId } },
+                { term: { [`${entityType}.risk.score_type`]: 'resolution' } },
+              ],
+            },
+          }
         : undefined,
-    [resolutionTargetEntityId]
+    [entityType, resolutionTargetEntityId]
   );
   const resolutionRiskScoreData = useRiskScore({
     riskEntity: entityType,
-    filterQuery: resolutionRiskFilterQuery,
+    filterQuery: resolutionRiskFilterQueryDsl,
     onlyLatest: false,
     pagination: FIRST_RECORD_PAGINATION,
     skip: !resolutionTargetEntityId,
@@ -196,10 +232,16 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
 
     return getRiskScoreSummaryAttributes({
       severity: resolutionEntityData?.risk?.calculated_level,
-      query: `entity.id: "${resolutionTargetEntityId}" AND score_type: "resolution"`,
+      query: `${entityType}.risk.id_value: "${resolutionTargetEntityId}" AND ${entityType}.risk.score_type: "resolution"`,
       spaceId,
       riskEntity: entityType,
       dataSource: 'risk_index',
+      metricLabel: i18n.translate(
+        'xpack.securitySolution.flyout.entityDetails.riskSummary.resolutionGroupRiskScoreLabel',
+        {
+          defaultMessage: 'Resolution group risk score',
+        }
+      ),
     });
   }, [entityType, resolutionEntityData?.risk?.calculated_level, resolutionTargetEntityId, spaceId]);
   const resolutionCasesAttachmentMetadata = useMemo(
@@ -366,7 +408,11 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
                   columns={columnsArray}
                   items={rows}
                   compressed
-                  loading={riskScoreData.loading || recalculatingScore}
+                  loading={
+                    riskScoreData.loading ||
+                    nonResolutionRiskScoreData.loading ||
+                    recalculatingScore
+                  }
                 />
               </div>
             </InspectButtonContainer>

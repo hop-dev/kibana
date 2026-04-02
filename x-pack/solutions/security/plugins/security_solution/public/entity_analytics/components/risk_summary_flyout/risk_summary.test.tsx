@@ -203,7 +203,9 @@ describe('FlyoutRiskSummary', () => {
     );
     const firstColumn = Object.values(datasourceLayers[0].columns)[0];
 
-    expect((lensAttributes.state.query as Query).query).toEqual('host.name: "test"');
+    expect((lensAttributes.state.query as Query).query).toEqual(
+      'host.name: "test" AND NOT host.risk.score_type: "resolution"'
+    );
     expect(firstColumn).toEqual(
       expect.objectContaining({
         sourceField: 'host.risk.calculated_score_norm',
@@ -280,7 +282,9 @@ describe('FlyoutRiskSummary', () => {
     );
     const firstColumn = Object.values(datasourceLayers[0].columns)[0];
 
-    expect((lensAttributes.state.query as Query).query).toEqual('user.name: "test"');
+    expect((lensAttributes.state.query as Query).query).toEqual(
+      'user.name: "test" AND NOT user.risk.score_type: "resolution"'
+    );
     expect(firstColumn).toEqual(
       expect.objectContaining({
         sourceField: 'user.risk.calculated_score_norm',
@@ -327,7 +331,22 @@ describe('FlyoutRiskSummary', () => {
     expect(getAllByTestId('visualization-embeddable')).toHaveLength(2);
     expect(mockUseRiskScore).toHaveBeenCalledWith(
       expect.objectContaining({
-        filterQuery: 'entity.id: "host:target-entity" AND score_type: "resolution"',
+        filterQuery: expect.objectContaining({
+          bool: expect.objectContaining({
+            filter: expect.arrayContaining([
+              expect.objectContaining({
+                term: expect.objectContaining({
+                  'host.risk.id_value': 'host:target-entity',
+                }),
+              }),
+              expect.objectContaining({
+                term: expect.objectContaining({
+                  'host.risk.score_type': 'resolution',
+                }),
+              }),
+            ]),
+          }),
+        }),
       })
     );
   });
