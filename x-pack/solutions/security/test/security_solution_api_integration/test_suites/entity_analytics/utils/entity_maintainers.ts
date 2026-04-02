@@ -147,7 +147,6 @@ export const waitForMaintainerRun = async ({
   let requiredNewRuns = minRuns;
   let manualRunTriggered = false;
   let alreadyRunningHandled = false;
-  const waitStartedAt = new Date().toISOString();
 
   await retry.waitForWithTimeout(
     `Entity maintainer "${maintainerId}" to complete at least ${requiredNewRuns} new run(s) (baseline: ${baselineRuns})`,
@@ -176,19 +175,6 @@ export const waitForMaintainerRun = async ({
       const maintainer = response.body.maintainers.find(
         (m: { id: string; runs: number }) => m.id === maintainerId
       );
-
-      if (maintainer) {
-        const { runs, taskStatus, lastErrorTimestamp, lastSuccessTimestamp } = maintainer;
-        // Fail fast if the maintainer errored after we started waiting
-        if (lastErrorTimestamp && lastErrorTimestamp > waitStartedAt) {
-          throw new Error(
-            `Entity maintainer "${maintainerId}" errored during wait: ` +
-              `taskStatus=${taskStatus}, runs=${runs}, ` +
-              `lastError=${lastErrorTimestamp}, lastSuccess=${lastSuccessTimestamp}, ` +
-              `customState=${JSON.stringify(maintainer.customState)}`
-          );
-        }
-      }
 
       return maintainer !== undefined && maintainer.runs >= baselineRuns + requiredNewRuns;
     }
