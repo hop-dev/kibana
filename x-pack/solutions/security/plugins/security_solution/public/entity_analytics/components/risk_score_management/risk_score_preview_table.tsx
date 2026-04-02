@@ -27,11 +27,6 @@ type RiskScoreColumn = EuiBasicTableColumn<EntityRiskScoreRecord> & {
 
 const PREVIEW_TABLE_SCOPE_ID = 'risk-score-preview';
 
-const stripEuidPrefix = (idValue: string): string => {
-  const colonIndex = idValue.indexOf(':');
-  return colonIndex >= 0 ? idValue.substring(colonIndex + 1) : idValue;
-};
-
 const EntityFlyoutLink = ({
   entityId,
   displayName,
@@ -84,9 +79,7 @@ export const RiskScorePreviewTable = ({
       ),
       render: (idValue: string, record: EntityRiskScoreRecord) => {
         if (record.id_field === 'entity.id') {
-          return (
-            <EntityFlyoutLink entityId={idValue} displayName={idValue} entityType={type} />
-          );
+          return <EntityFlyoutLink entityId={idValue} displayName={idValue} entityType={type} />;
         }
         return <EntityDetailsLink entityName={idValue} entityType={type} />;
       },
