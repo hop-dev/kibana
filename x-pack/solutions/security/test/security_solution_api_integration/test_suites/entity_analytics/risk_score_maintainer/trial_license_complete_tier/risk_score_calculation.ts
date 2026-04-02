@@ -217,6 +217,10 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           await waitForEntityStoreEntities({ es, log, count: 1 });
 
+          // Stop the maintainer while we set up modifiers so a stale run
+          // doesn't race ahead before the entity has both attributes.
+          await maintainerRoutes.stopMaintainer('risk-score');
+
           await maintainerScenario.setEntityCriticality({
             testEntity: host,
             criticalityLevel: 'high_impact',
@@ -248,6 +252,7 @@ export default ({ getService }: FtrProviderContext): void => {
             requiredWatchlistId: watchlistId,
           });
 
+          await maintainerRoutes.startMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
           let risk: Record<string, unknown> = {};
@@ -435,6 +440,11 @@ export default ({ getService }: FtrProviderContext): void => {
             dataViewPattern: testLogsIndex,
           });
           await waitForEntityStoreDoc({ es, retry, entityId: testHost.expectedEuid });
+
+          // Stop the maintainer while we update criticality so a stale run
+          // doesn't score the entity before the modifier is in place.
+          await maintainerRoutes.stopMaintainer('risk-score');
+
           await maintainerScenario.setEntityCriticality({
             testEntity: testHost,
             criticalityLevel: 'high_impact',
@@ -445,6 +455,8 @@ export default ({ getService }: FtrProviderContext): void => {
             entityId: testHost.expectedEuid,
             requireCriticality: 'high_impact',
           });
+
+          await maintainerRoutes.startMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           const score = await waitForRiskScoreForId({
             es,
@@ -511,7 +523,10 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           const baseNormScore = baseScore.calculated_score_norm!;
 
-          // Update the entity in the entity store to add watchlist membership
+          // Stop the maintainer while we update watchlist membership so a stale
+          // run doesn't score the entity before the modifier is in place.
+          await maintainerRoutes.stopMaintainer('risk-score');
+
           await maintainerScenario.setEntityWatchlists({
             testEntity: idpUser,
             watchlistIds: [watchlistId],
@@ -532,6 +547,7 @@ export default ({ getService }: FtrProviderContext): void => {
             | undefined;
           expect(entityDoc?.entity?.attributes?.watchlists ?? []).to.contain(watchlistId);
 
+          await maintainerRoutes.startMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await retry.waitForWithTimeout(
             `risk score with watchlist modifier for ${idpUser.expectedEuid}`,
@@ -725,6 +741,10 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           await waitForEntityStoreEntities({ es, log, count: testEntities.length });
 
+          // Stop the maintainer while we set up modifiers so a stale run
+          // doesn't score entities before criticality and watchlists are in place.
+          await maintainerRoutes.stopMaintainer('risk-score');
+
           // Assign criticality to first 4 entities (2 hosts + 2 users)
           const criticalEntities = testEntities.slice(0, 4);
           for (const entity of criticalEntities) {
@@ -766,6 +786,7 @@ export default ({ getService }: FtrProviderContext): void => {
             requiredWatchlistId: watchlistId,
           });
 
+          await maintainerRoutes.startMaintainer('risk-score');
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await waitForRiskScoresToBePresent({ es, log, scoreCount: testEntities.length });
 
