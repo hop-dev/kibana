@@ -194,6 +194,61 @@ export default ({ getService }: FtrProviderContext): void => {
         );
         expect(aliasBase).to.not.be(undefined);
         expect(aliasBase!.calculated_score_norm).to.be.greaterThan(0);
+
+        // Wait until the entity store has both individual and resolution risk
+        await retry.waitForWithTimeout(
+          `entity store dual-write for ${targetUser.expectedEuid}`,
+          60_000,
+          async () => {
+            const response = await es.search({
+              index: entityStoreIndex,
+              size: 1,
+              query: { term: { 'entity.id': targetUser.expectedEuid } },
+            });
+            const doc = response.hits.hits[0]?._source as
+              | {
+                  entity?: {
+                    risk?: { calculated_score_norm?: number };
+                    relationships?: {
+                      resolution?: { risk?: { calculated_score_norm?: number } };
+                    };
+                  };
+                }
+              | undefined;
+            return (
+              (doc?.entity?.risk?.calculated_score_norm ?? 0) > 0 &&
+              (doc?.entity?.relationships?.resolution?.risk?.calculated_score_norm ?? 0) > 0
+            );
+          }
+        );
+
+        const response = await es.search({
+          index: entityStoreIndex,
+          size: 1,
+          query: { term: { 'entity.id': targetUser.expectedEuid } },
+        });
+        const entityDoc = response.hits.hits[0]!._source as {
+          entity: {
+            risk: { calculated_score_norm: number; calculated_level: string };
+            relationships: {
+              resolution: {
+                risk: { calculated_score_norm: number; calculated_level: string };
+              };
+            };
+          };
+        };
+
+        expect(entityDoc.entity.risk.calculated_score_norm).to.be.greaterThan(0);
+        expect(entityDoc.entity.risk.calculated_level).to.be.a('string');
+
+        const resolutionRisk = entityDoc.entity.relationships.resolution.risk;
+        expect(resolutionRisk.calculated_score_norm).to.be.greaterThan(0);
+        expect(resolutionRisk.calculated_level).to.be.a('string');
+
+        // Resolution risk aggregates more alerts, so it should be higher
+        expect(resolutionRisk.calculated_score_norm).to.be.greaterThan(
+          entityDoc.entity.risk.calculated_score_norm
+        );
       });
 
       it('aggregates a multi-alias group into a single resolution score', async () => {
@@ -305,93 +360,6 @@ export default ({ getService }: FtrProviderContext): void => {
 
         const allScores = normalizeScores(await readRiskScores(es));
         expect(allScores.some((s) => s.score_type === 'resolution')).to.be(false);
-      });
-
-      it('dual-writes resolution risk to the target entity in the entity store', async () => {
-        const shortId = uuidv4().slice(0, 8);
-        const { documentIds, testEntities } = await maintainerScenario.seedEntities([
-          riskScoreMaintainerEntityBuilders.idpUser({ userName: `dw-target-${shortId}` }),
-          riskScoreMaintainerEntityBuilders.idpUser({ userName: `dw-alias-${shortId}` }),
-        ]);
-        const [targetUser, aliasUser] = testEntities;
-
-        await maintainerScenario.createAlertsForDocumentIds({
-          documentIds,
-          alerts: 2,
-          riskScore: 40,
-        });
-
-        await entityStoreUtils.installEntityStoreV2({
-          entityTypes: ['user', 'host'],
-          dataViewPattern: testLogsIndex,
-        });
-        await waitForEntityStoreEntities({ es, log, count: 2 });
-
-        await maintainerRoutes.stopMaintainer('risk-score');
-
-        await maintainerScenario.setEntityResolutionTarget({
-          testEntity: aliasUser,
-          resolvedToEntityId: targetUser.expectedEuid,
-        });
-        await waitForResolutionRelationship(aliasUser.expectedEuid, targetUser.expectedEuid);
-
-        await maintainerRoutes.startMaintainer('risk-score');
-        await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
-
-        // Wait until the entity store has both individual and resolution risk
-        await retry.waitForWithTimeout(
-          `entity store dual-write for ${targetUser.expectedEuid}`,
-          60_000,
-          async () => {
-            const response = await es.search({
-              index: entityStoreIndex,
-              size: 1,
-              query: { term: { 'entity.id': targetUser.expectedEuid } },
-            });
-            const doc = response.hits.hits[0]?._source as
-              | {
-                  entity?: {
-                    risk?: { calculated_score_norm?: number };
-                    relationships?: {
-                      resolution?: { risk?: { calculated_score_norm?: number } };
-                    };
-                  };
-                }
-              | undefined;
-            return (
-              (doc?.entity?.risk?.calculated_score_norm ?? 0) > 0 &&
-              (doc?.entity?.relationships?.resolution?.risk?.calculated_score_norm ?? 0) > 0
-            );
-          }
-        );
-
-        const response = await es.search({
-          index: entityStoreIndex,
-          size: 1,
-          query: { term: { 'entity.id': targetUser.expectedEuid } },
-        });
-        const entityDoc = response.hits.hits[0]!._source as {
-          entity: {
-            risk: { calculated_score_norm: number; calculated_level: string };
-            relationships: {
-              resolution: {
-                risk: { calculated_score_norm: number; calculated_level: string };
-              };
-            };
-          };
-        };
-
-        expect(entityDoc.entity.risk.calculated_score_norm).to.be.greaterThan(0);
-        expect(entityDoc.entity.risk.calculated_level).to.be.a('string');
-
-        const resolutionRisk = entityDoc.entity.relationships.resolution.risk;
-        expect(resolutionRisk.calculated_score_norm).to.be.greaterThan(0);
-        expect(resolutionRisk.calculated_level).to.be.a('string');
-
-        // Resolution risk aggregates more alerts, so it should be higher
-        expect(resolutionRisk.calculated_score_norm).to.be.greaterThan(
-          entityDoc.entity.risk.calculated_score_norm
-        );
       });
 
       describe('@skipInServerless resolution group-level modifiers', () => {
