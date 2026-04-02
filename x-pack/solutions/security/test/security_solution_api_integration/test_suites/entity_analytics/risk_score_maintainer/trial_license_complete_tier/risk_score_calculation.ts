@@ -55,14 +55,10 @@ export default ({ getService }: FtrProviderContext): void => {
     watchlistRoutes: ReturnType<typeof watchlistRouteHelpersFactory>,
     watchlistId: string
   ) => {
-    await retry.waitForWithTimeout(
-      `watchlist ${watchlistId} to be listed`,
-      30_000,
-      async () => {
-        const list = await watchlistRoutes.list();
-        return list.body.some((watchlist) => watchlist.id === watchlistId);
-      }
-    );
+    await retry.waitForWithTimeout(`watchlist ${watchlistId} to be listed`, 30_000, async () => {
+      const list = await watchlistRoutes.list();
+      return list.body.some((watchlist) => watchlist.id === watchlistId);
+    });
   };
 
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
