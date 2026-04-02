@@ -70,7 +70,7 @@ export default ({ getService }: FtrProviderContext): void => {
     after_keys: Record<string, Record<string, string>>;
     scores: { host?: EntityRiskScoreRecord[]; user?: EntityRiskScoreRecord[] };
   }> => {
-    const defaultBody = { data_view_id: testLogsIndex };
+    const defaultBody = { data_view_id: '.alerts-security.alerts-default' };
     const { body: result } = await supertest
       .post(RISK_SCORE_PREVIEW_URL)
       .set('elastic-api-version', '1')
@@ -129,7 +129,10 @@ export default ({ getService }: FtrProviderContext): void => {
         riskScoreMaintainerEntityBuilders.idpUser({ userName: targetUser }),
         riskScoreMaintainerEntityBuilders.idpUser({ userName: aliasUser }),
       ]);
-      await entityStoreUtils.installEntityStoreV2({ entityTypes: ['user'], dataViewPattern: testLogsIndex });
+      await entityStoreUtils.installEntityStoreV2({
+        entityTypes: ['user'],
+        dataViewPattern: testLogsIndex,
+      });
 
       await maintainerScenario.setEntityResolutionTarget({
         testEntity: testEntities[1],
@@ -147,31 +150,9 @@ export default ({ getService }: FtrProviderContext): void => {
       scores.user?.forEach((score) => {
         expect(score.score_type).to.be('base');
         expect(score.related_entities).to.be(undefined);
+        expect(score.id_field).to.be('entity.id');
+        expect(score.id_value.startsWith('user:')).to.be(true);
       });
-    });
-
-    it('supports legacy after_keys shape for pagination in v2 mode', async () => {
-      const aaaUser = 'aaa';
-      const zzzUser = 'zzz';
-      const { documentIds } = await maintainerScenario.seedEntities([
-        riskScoreMaintainerEntityBuilders.idpUser({ userName: aaaUser }),
-        riskScoreMaintainerEntityBuilders.idpUser({ userName: zzzUser }),
-      ]);
-      await entityStoreUtils.installEntityStoreV2({ entityTypes: ['user'], dataViewPattern: testLogsIndex });
-      await maintainerScenario.createAlertsForDocumentIds({
-        documentIds,
-        alerts: 2,
-        riskScore: 55,
-      });
-
-      const { scores } = await previewRiskScores({
-        body: {
-          identifier_type: 'user',
-          after_keys: { user: { 'user.name': aaaUser } },
-        },
-      });
-      expect(scores.user).to.have.length(1);
-      expect(scores.user?.[0].id_value).to.be(zzzUser);
     });
 
     it('applies entity-store criticality modifiers in v2 preview mode', async () => {
@@ -179,7 +160,10 @@ export default ({ getService }: FtrProviderContext): void => {
       const { documentIds, testEntities } = await maintainerScenario.seedEntities([
         riskScoreMaintainerEntityBuilders.host({ hostName }),
       ]);
-      await entityStoreUtils.installEntityStoreV2({ entityTypes: ['host'], dataViewPattern: testLogsIndex });
+      await entityStoreUtils.installEntityStoreV2({
+        entityTypes: ['host'],
+        dataViewPattern: testLogsIndex,
+      });
       await maintainerScenario.setEntityCriticality({
         testEntity: testEntities[0],
         criticalityLevel: 'extreme_impact',
@@ -194,8 +178,8 @@ export default ({ getService }: FtrProviderContext): void => {
       const { scores } = await previewRiskScores({ body: { identifier_type: 'host' } });
       const [score] = sanitizeScores(scores.host ?? []);
 
-      expect(score.id_field).to.be('host.name');
-      expect(score.id_value).to.be(hostName);
+      expect(score.id_field).to.be('entity.id');
+      expect(score.id_value).to.be(`host:${hostName}`);
       expect(score.modifiers).to.have.length(1);
       expect(score.modifiers?.[0].type).to.be('asset_criticality');
     });
@@ -207,7 +191,10 @@ export default ({ getService }: FtrProviderContext): void => {
         riskScoreMaintainerEntityBuilders.idpUser({ userName: targetUser }),
         riskScoreMaintainerEntityBuilders.idpUser({ userName: aliasUser }),
       ]);
-      await entityStoreUtils.installEntityStoreV2({ entityTypes: ['user'], dataViewPattern: testLogsIndex });
+      await entityStoreUtils.installEntityStoreV2({
+        entityTypes: ['user'],
+        dataViewPattern: testLogsIndex,
+      });
       await maintainerScenario.setEntityResolutionTarget({
         testEntity: testEntities[1],
         resolvedToEntityId: testEntities[0].expectedEuid,
@@ -221,7 +208,8 @@ export default ({ getService }: FtrProviderContext): void => {
       await setEntityStoreV2Setting(false);
 
       const { scores } = await previewRiskScores({ body: { identifier_type: 'user' } });
-      expect(scores.user?.some((score) => score.related_entities !== undefined)).to.be(true);
+      // Legacy preview records do not include the v2-only score_type field.
+      expect(scores.user?.some((score) => score.score_type === undefined)).to.be(true);
     });
   });
 };

@@ -10,7 +10,6 @@ import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { RiskScoresPreviewResponse } from '../../../../../common/api/entity_analytics';
 import type { CalculateScoresParams } from '../../types';
 import type { EntityType } from '../../../../../common/search_strategy';
-import { EntityTypeToIdentifierField } from '../../../../../common/entity_analytics/types';
 import { getEntityAnalyticsEntityTypes } from '../../../../../common/entity_analytics/utils';
 import {
   getEuidCompositeQuery,
@@ -31,9 +30,10 @@ interface CalculateScoresWithESQLV2Params extends CalculateScoresParams {
   namespace: string;
 }
 
+const ENTITY_ID_FIELD = 'entity.id';
+
 const getEntityAfterKey = (
-  afterKey: Record<string, string> | undefined,
-  entityType: EntityType
+  afterKey: Record<string, string> | undefined
 ): Record<string, string> | undefined => {
   if (!afterKey) return undefined;
 
@@ -41,42 +41,22 @@ const getEntityAfterKey = (
     return { entity_id: afterKey.entity_id };
   }
 
-  const identifierField = EntityTypeToIdentifierField[entityType];
-  const identifierValue = afterKey[identifierField];
-  if (typeof identifierValue === 'string') {
-    if (identifierValue.startsWith(`${entityType}:`)) {
-      return { entity_id: identifierValue };
-    }
-    return { entity_id: `${entityType}:${identifierValue}` };
+  const entityIdValue = afterKey[ENTITY_ID_FIELD];
+  if (typeof entityIdValue === 'string') {
+    return { entity_id: entityIdValue };
   }
 
-  const fallback = Object.values(afterKey).find(
-    (value): value is string => typeof value === 'string'
-  );
-  return fallback ? { entity_id: fallback } : undefined;
+  return undefined;
 };
 
 const toResponseAfterKey = (
-  afterKey: Record<string, string> | undefined,
-  entityType: EntityType
+  afterKey: Record<string, string> | undefined
 ): Record<string, string> => {
   if (!afterKey?.entity_id) {
     return {};
   }
 
-  const identifierField = EntityTypeToIdentifierField[entityType];
-  const prefix = `${entityType}:`;
-  const entityIdValue = afterKey.entity_id;
-  const identifierValue = entityIdValue.startsWith(prefix)
-    ? entityIdValue.slice(prefix.length)
-    : entityIdValue;
-
-  return { [identifierField]: identifierValue };
-};
-
-const toLegacyPreviewId = (entityType: EntityType, entityId: string): string => {
-  const prefix = `${entityType}:`;
-  return entityId.startsWith(prefix) ? entityId.slice(prefix.length) : entityId;
+  return { [ENTITY_ID_FIELD]: afterKey.entity_id };
 };
 
 export const calculateScoresWithESQLV2 = async ({
@@ -107,7 +87,7 @@ export const calculateScoresWithESQLV2 = async ({
   const response: RiskScoresPreviewResponse = { after_keys: {}, scores: {} };
 
   for (const currentEntityType of identifierTypes) {
-    const entityAfterKey = getEntityAfterKey(afterKeys[currentEntityType], currentEntityType);
+    const entityAfterKey = getEntityAfterKey(afterKeys[currentEntityType]);
     const entityFilters = buildCommonAlertFilters(
       {
         range,
@@ -131,10 +111,7 @@ export const calculateScoresWithESQLV2 = async ({
       compositeResponse.aggregations as { by_entity_id?: EuidCompositeAggregation } | undefined
     )?.by_entity_id;
     const buckets = compositeAgg?.buckets ?? [];
-    response.after_keys[currentEntityType] = toResponseAfterKey(
-      compositeAgg?.after_key,
-      currentEntityType
-    );
+    response.after_keys[currentEntityType] = toResponseAfterKey(compositeAgg?.after_key);
 
     if (buckets.length === 0) {
       response.scores[currentEntityType] = [];
@@ -171,8 +148,8 @@ export const calculateScoresWithESQLV2 = async ({
         watchlistConfigs,
       }).map((score) => ({
         ...score,
-        id_field: EntityTypeToIdentifierField[currentEntityType],
-        id_value: toLegacyPreviewId(currentEntityType, score.id_value),
+        id_field: ENTITY_ID_FIELD,
+        id_value: score.id_value,
       }));
 
       response.scores[currentEntityType] = scores;
