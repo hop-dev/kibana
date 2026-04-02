@@ -179,6 +179,28 @@ export const waitForMaintainerRun = async ({
       return maintainer !== undefined && maintainer.runs >= baselineRuns + requiredNewRuns;
     }
   );
+
+  // runSoon (called above via runMaintainer) can cause the task manager to
+  // schedule an immediate follow-up run once the current one finishes.  If
+  // the caller stops the maintainer while that follow-up is still saving its
+  // state, a version_conflict_engine_exception wedges the task permanently.
+  // Wait for the runs count to stabilise across two consecutive polls so the
+  // task is idle before we hand control back.
+  let lastSeenRuns = -1;
+  await retry.waitForWithTimeout(
+    `Entity maintainer "${maintainerId}" to settle after run`,
+    30_000,
+    async () => {
+      const response = await routes.getMaintainers(200, [maintainerId]);
+      const maintainer = response.body.maintainers.find(
+        (m: { id: string; runs: number }) => m.id === maintainerId
+      );
+      const runs = maintainer?.runs ?? 0;
+      if (runs === lastSeenRuns) return true;
+      lastSeenRuns = runs;
+      return false;
+    }
+  );
 };
 
 export const cleanUpRiskScoreMaintainer = async ({
