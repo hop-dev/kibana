@@ -228,10 +228,11 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           await waitForEntityStoreEntities({ es, log, count: 1 });
 
-          // Stop the maintainer while we set up modifiers so a stale run
-          // doesn't race ahead before the entity has both attributes.
-          await maintainerRoutes.stopMaintainer('risk-score');
-
+          // Set up both modifiers while the maintainer runs freely in the
+          // background. Any scoring runs that happen before both modifiers
+          // are in place will produce stale scores — that's fine because we
+          // trigger a fresh run below and the final assertion retries until
+          // a score with both modifiers appears.
           await maintainerScenario.setEntityCriticality({
             testEntity: host,
             criticalityLevel: 'high_impact',
@@ -264,7 +265,9 @@ export default ({ getService }: FtrProviderContext): void => {
             requiredWatchlistId: watchlistId,
           });
 
-          await maintainerRoutes.startMaintainer('risk-score');
+          // Both modifiers are confirmed in the entity store. Capture the
+          // current run count as the baseline and trigger a fresh run — any
+          // run that starts now will see both modifiers.
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
           let risk: Record<string, unknown> = {};
