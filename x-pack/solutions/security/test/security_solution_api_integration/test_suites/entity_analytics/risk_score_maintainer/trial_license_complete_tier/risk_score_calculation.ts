@@ -538,10 +538,9 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           const baseNormScore = baseScore.calculated_score_norm!;
 
-          // Stop the maintainer while we update watchlist membership so a stale
-          // run doesn't score the entity before the modifier is in place.
-          await maintainerRoutes.stopMaintainer('risk-score');
-
+          // Set up watchlist membership while the maintainer runs freely.
+          // Any stale run before the modifier is in place is harmless — the
+          // retry below filters by run_id and checks for the watchlist modifier.
           await maintainerScenario.setEntityWatchlists({
             testEntity: idpUser,
             watchlistIds: [watchlistId],
@@ -562,7 +561,7 @@ export default ({ getService }: FtrProviderContext): void => {
             | undefined;
           expect(entityDoc?.entity?.attributes?.watchlists ?? []).to.contain(watchlistId);
 
-          await maintainerRoutes.startMaintainer('risk-score');
+          // Watchlist confirmed in entity store — trigger a fresh run.
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await retry.waitForWithTimeout(
             `risk score with watchlist modifier for ${idpUser.expectedEuid}`,
