@@ -12,6 +12,7 @@ import type { WatchlistObject } from '../../../../../../common/api/entity_analyt
 import type { RiskScoreDataClient } from '../../risk_score_data_client';
 import { calculateResolutionEntityScores } from './score_resolution_entities';
 import { persistScoresToEntityStore, persistScoresToRiskIndex } from './persist_scores';
+import type { ResolutionStepResult } from './pipeline_types';
 import type { ScopedLogger } from '../utils/with_log_context';
 
 interface RunResolutionScoringParams {
@@ -44,11 +45,7 @@ export const runResolutionScoringStep = async ({
   watchlistConfigs,
   idBasedRiskScoringEnabled,
   writer,
-}: RunResolutionScoringParams): Promise<{
-  scoresWritten: number;
-  pagesProcessed: number;
-  skippedReason?: 'lookup_empty';
-}> => {
+}: RunResolutionScoringParams): Promise<ResolutionStepResult> => {
   runLogger.debug(
     `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
   );

@@ -18,7 +18,7 @@ import {
 } from '../../calculate_esql_risk_scores';
 import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
-import type { ScoredEntityPage } from './pipeline_types';
+import type { ScoredEntityPage, StepResult } from './pipeline_types';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
 import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
 import type { ScopedLogger } from '../utils/with_log_context';
@@ -45,12 +45,10 @@ interface ScoreAndPersistBaseEntitiesParams extends ScoreBaseEntitiesParams {
   lookupIndex: string;
 }
 
-export interface Phase1BaseScoringSummary {
-  pagesProcessed: number;
+export interface Phase1BaseScoringSummary extends StepResult {
   writeNowCount: number;
   deferToPhase2Count: number;
   notInStoreCount: number;
-  scoresWritten: number;
   lookupDocsUpserted: number;
   lookupDocsDeleted: number;
 }
