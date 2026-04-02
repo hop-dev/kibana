@@ -9,6 +9,7 @@ import type { ElasticsearchClient } from '@kbn/core/server';
 import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
 import {
   getResolutionCompositeQuery,
   getResolutionScoreESQL,
@@ -19,7 +20,7 @@ import { buildResolutionModifierEntity } from './resolution_modifiers';
 import { parseEsqlResolutionScoreRow } from './parse_esql_row';
 import type { ParsedResolutionScore } from './parse_esql_row';
 import type { ScopedLogger } from '../utils/with_log_context';
-import type { RiskScoreModifierEntity, ScoringSummaryBase } from './pipeline_types';
+import type { RiskScoreModifierEntity } from './pipeline_types';
 
 interface ScoreResolutionEntitiesParams {
   esClient: ElasticsearchClient;
@@ -35,15 +36,13 @@ interface ScoreResolutionEntitiesParams {
   watchlistConfigs: Map<string, WatchlistObject>;
 }
 
-export type ResolutionScoringSummary = ScoringSummaryBase;
-
 interface ResolutionPageResult {
   upperBound: string;
   bucketCount: number;
   afterKey: Record<string, string> | undefined;
 }
 
-export const scoreResolutionEntities = async ({
+export const calculateResolutionEntityScores = async function* ({
   esClient,
   crudClient,
   logger,
@@ -55,11 +54,10 @@ export const scoreResolutionEntities = async ({
   now,
   calculationRunId,
   watchlistConfigs,
-}: ScoreResolutionEntitiesParams): Promise<ResolutionScoringSummary> => {
+}: ScoreResolutionEntitiesParams): AsyncGenerator<EntityRiskScoreRecord[], number> {
   let afterKey: Record<string, string> | undefined;
   let previousUpperBound: string | undefined;
   let pagesProcessed = 0;
-  const scoredDocuments: ResolutionScoringSummary['scores'] = [];
 
   do {
     // Per page: fetch groups, score them, then apply merged group modifiers.
@@ -93,6 +91,7 @@ export const scoreResolutionEntities = async ({
       `[resolution][page:${pagesProcessed}] parsed_scores=${parsedScores.length}, esql_rows=${esqlRows}`
     );
 
+    let modifiedScores: EntityRiskScoreRecord[] = [];
     if (parsedScores.length > 0) {
       const allMemberIds = collectMemberEntityIds(parsedScores);
       const memberEntities = await fetchEntitiesByIds({
@@ -106,7 +105,7 @@ export const scoreResolutionEntities = async ({
         `[resolution][page:${pagesProcessed}] member_entities_requested=${allMemberIds.size}, fetched=${memberEntities.size}`
       );
 
-      const modifiedScores = applyResolutionModifiers({
+      modifiedScores = applyResolutionModifiers({
         parsedScores,
         memberEntities,
         now,
@@ -114,20 +113,12 @@ export const scoreResolutionEntities = async ({
         calculationRunId,
         watchlistConfigs,
       });
-
-      scoredDocuments.push(...modifiedScores);
-      logger.debug(
-        `[resolution][page:${pagesProcessed}] modified_scores=${modifiedScores.length}, cumulative_resolution_docs=${scoredDocuments.length}`
-      );
     }
+    yield modifiedScores;
+    logger.debug(`[resolution][page:${pagesProcessed}] modified_scores=${modifiedScores.length}`);
   } while (afterKey !== undefined);
 
-  logger.debug(`resolution scoring produced ${scoredDocuments.length} documents`);
-
-  return {
-    pagesProcessed,
-    scores: scoredDocuments,
-  };
+  return pagesProcessed;
 };
 
 const fetchNextResolutionPage = async ({
@@ -221,7 +212,7 @@ const applyResolutionModifiers = ({
   entityType: EntityType;
   calculationRunId: string;
   watchlistConfigs: Map<string, WatchlistObject>;
-}): ResolutionScoringSummary['scores'] => {
+}): EntityRiskScoreRecord[] => {
   const mergedModifierEntities = new Map(
     parsedScores.map((score) => [
       score.resolution_target_id,

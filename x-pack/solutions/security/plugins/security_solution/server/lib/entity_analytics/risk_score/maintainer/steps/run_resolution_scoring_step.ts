@@ -10,8 +10,8 @@ import type { EntityUpdateClient } from '@kbn/entity-store/server';
 import type { EntityType } from '../../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
 import type { RiskScoreDataClient } from '../../risk_score_data_client';
-import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
-import { scoreResolutionEntities } from './score_resolution_entities';
+import { calculateResolutionEntityScores } from './score_resolution_entities';
+import { persistScoresToEntityStore, persistScoresToRiskIndex } from './persist_scores';
 import type { ScopedLogger } from '../utils/with_log_context';
 
 interface RunResolutionScoringParams {
@@ -52,7 +52,10 @@ export const runResolutionScoringStep = async ({
   runLogger.debug(
     `starting phase 2 resolution scoring: page_size=${pageSize}, sample_size=${sampleSize}`
   );
-  const resolutionSummary = await scoreResolutionEntities({
+  let pagesProcessed = 0;
+  let scoresWrittenResolution = 0;
+
+  for await (const pageScores of calculateResolutionEntityScores({
     esClient,
     crudClient,
     logger: runLogger,
@@ -64,51 +67,43 @@ export const runResolutionScoringStep = async ({
     now,
     calculationRunId,
     watchlistConfigs,
-  });
-
-  if (resolutionSummary.scores.length === 0) {
-    const skipReason =
-      resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
-    runLogger.debug(
-      `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${resolutionSummary.pagesProcessed}`
-    );
-    return {
-      scoresWritten: 0,
-      pagesProcessed: resolutionSummary.pagesProcessed,
-      skippedReason: resolutionSummary.pagesProcessed === 0 ? 'lookup_empty' : undefined,
-    };
-  }
-
-  const bulkResponse = await writer.bulk({ [entityType]: resolutionSummary.scores });
-  const scoresWrittenResolution = bulkResponse.docs_written;
-  runLogger.debug(
-    `phase 2 resolution write succeeded: attempted=${resolutionSummary.scores.length}, written=${scoresWrittenResolution}, pages=${resolutionSummary.pagesProcessed}, took=${bulkResponse.took}ms`
-  );
-  if (bulkResponse.errors.length > 0) {
-    runLogger.warn(
-      `phase 2 resolution write had ${
-        bulkResponse.errors.length
-      } error(s): ${bulkResponse.errors.join('; ')}`
-    );
-  }
-
-  if (idBasedRiskScoringEnabled) {
-    const entityStoreErrors = await persistRiskScoresToEntityStore({
-      crudClient,
-      logger: runLogger,
-      scores: { [entityType]: resolutionSummary.scores },
-    });
-    if (entityStoreErrors.length > 0) {
-      runLogger.warn(
-        `Entity store resolution write had ${
-          entityStoreErrors.length
-        } error(s): ${entityStoreErrors.join('; ')}`
-      );
+  })) {
+    pagesProcessed += 1;
+    if (pageScores.length > 0) {
+      scoresWrittenResolution += await persistScoresToRiskIndex({
+        writer,
+        entityType,
+        scores: pageScores,
+        logger: runLogger,
+      });
+      await persistScoresToEntityStore({
+        crudClient,
+        logger: runLogger,
+        entityType,
+        scores: pageScores,
+        enabled: idBasedRiskScoringEnabled,
+      });
     }
   }
 
+  if (scoresWrittenResolution === 0) {
+    const skipReason = pagesProcessed === 0 ? 'lookup_empty' : 'no_matching_alerts';
+    runLogger.debug(
+      `phase 2 resolution scoring produced no writes: reason=${skipReason}, pages=${pagesProcessed}`
+    );
+    return {
+      scoresWritten: 0,
+      pagesProcessed,
+      skippedReason: pagesProcessed === 0 ? 'lookup_empty' : undefined,
+    };
+  }
+
+  runLogger.debug(
+    `phase 2 resolution scoring wrote ${scoresWrittenResolution} docs across ${pagesProcessed} page(s)`
+  );
+
   return {
     scoresWritten: scoresWrittenResolution,
-    pagesProcessed: resolutionSummary.pagesProcessed,
+    pagesProcessed,
   };
 };

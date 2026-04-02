@@ -17,11 +17,11 @@ import type { WatchlistObject } from '../../../../../../common/api/entity_analyt
 import type { RiskScoreDataClient } from '../../risk_score_data_client';
 import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
 import { getIndexPatternDataStream } from '../../configurations';
-import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
 import type { ScopedLogger } from '../utils/with_log_context';
 import type { ParsedRiskScore } from './parse_esql_row';
 import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
+import { persistScoresToEntityStore } from './persist_scores';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
@@ -181,21 +181,13 @@ export const resetToZero = async ({
     throw e;
   });
 
-  if (idBasedRiskScoringEnabled) {
-    const entityStoreErrors = await persistRiskScoresToEntityStore({
-      crudClient,
-      logger,
-      scores: { [entityType]: scores },
-    });
-
-    if (entityStoreErrors.length > 0) {
-      logger.warn(
-        `Entity store v2 write had ${
-          entityStoreErrors.length
-        } error(s) during reset: ${entityStoreErrors.join('; ')}`
-      );
-    }
-  }
+  await persistScoresToEntityStore({
+    crudClient,
+    logger,
+    entityType,
+    scores,
+    enabled: idBasedRiskScoringEnabled,
+  });
 
   return { scoresWritten: scores.length, resetBatchLimitHit };
 };

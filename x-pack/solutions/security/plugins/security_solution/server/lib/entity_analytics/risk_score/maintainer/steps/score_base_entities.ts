@@ -20,10 +20,10 @@ import { parseEsqlBaseScoreRow } from './parse_esql_row';
 import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
 import type { ScoredEntityPage } from './pipeline_types';
 import { categorizePhase1Entities } from './categorize_phase1_entities';
-import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
 import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
 import type { ScopedLogger } from '../utils/with_log_context';
 import { syncLookupIndexForCategorizedPage } from '../lookup/sync_lookup_index';
+import { persistScoresToEntityStore, persistScoresToRiskIndex } from './persist_scores';
 
 interface ScoreBaseEntitiesParams {
   esClient: ElasticsearchClient;
@@ -168,14 +168,13 @@ export const scoreBaseEntities = async ({
     // Keep dual-write semantics from phase 1 categorization:
     // `defer_to_phase_2` remains persisted to the risk index for continuity.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
-    scoresWritten += await persistPageToRiskIndex({
+    scoresWritten += await persistScoresToRiskIndex({
       writer,
       entityType: params.entityType,
-      riskIndexWrites,
+      scores: riskIndexWrites,
       logger: params.logger,
-      pageNumber: pagesProcessed,
     });
-    await persistPageToEntityStore({
+    await persistScoresToEntityStore({
       crudClient: params.crudClient,
       logger: params.logger,
       entityType: params.entityType,
@@ -313,63 +312,4 @@ const enrichWithModifiers = async ({
   });
 
   return { entityIds: euidValues, scores: finalScores, entities: entityMap };
-};
-
-const persistPageToRiskIndex = async ({
-  writer,
-  entityType,
-  riskIndexWrites,
-  logger,
-  pageNumber,
-}: {
-  writer: RiskEngineDataWriter;
-  entityType: EntityType;
-  riskIndexWrites: ScoredEntityPage['scores'];
-  logger: ScopedLogger;
-  pageNumber: number;
-}): Promise<number> => {
-  const bulkResponse = await writer.bulk({ [entityType]: riskIndexWrites });
-  if (bulkResponse.errors.length > 0) {
-    logger.warn(
-      `[page:${pageNumber}] risk score bulk write had ${
-        bulkResponse.errors.length
-      } error(s): ${bulkResponse.errors.join('; ')}`
-    );
-  } else {
-    logger.debug(
-      `[page:${pageNumber}] risk score bulk write succeeded: attempted=${riskIndexWrites.length}, written=${bulkResponse.docs_written}, took=${bulkResponse.took}ms`
-    );
-  }
-  return bulkResponse.docs_written;
-};
-
-const persistPageToEntityStore = async ({
-  crudClient,
-  logger,
-  entityType,
-  scores,
-  enabled,
-}: {
-  crudClient: EntityUpdateClient;
-  logger: ScopedLogger;
-  entityType: EntityType;
-  scores: ScoredEntityPage['scores'];
-  enabled: boolean;
-}): Promise<void> => {
-  if (!enabled) {
-    return;
-  }
-
-  const entityStoreErrors = await persistRiskScoresToEntityStore({
-    crudClient,
-    logger,
-    scores: { [entityType]: scores },
-  });
-  if (entityStoreErrors.length > 0) {
-    logger.warn(
-      `Entity store dual-write had ${entityStoreErrors.length} error(s): ${entityStoreErrors.join(
-        '; '
-      )}`
-    );
-  }
 };
