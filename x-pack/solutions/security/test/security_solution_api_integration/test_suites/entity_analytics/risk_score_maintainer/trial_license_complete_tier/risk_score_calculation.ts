@@ -8,6 +8,7 @@
 import expect from '@kbn/expect';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteAllAlerts, deleteAllRules } from '@kbn/detections-response-ftr-services';
+import type { WatchlistObject } from '@kbn/security-solution-plugin/common/api/entity_analytics/watchlists/management/common.gen';
 import {
   createAndSyncRuleAndAlertsFactory,
   readRiskScores,
@@ -55,14 +56,10 @@ export default ({ getService }: FtrProviderContext): void => {
     watchlistRoutes: ReturnType<typeof watchlistRouteHelpersFactory>,
     watchlistId: string
   ) => {
-    await retry.waitForWithTimeout(
-      `watchlist ${watchlistId} to be listed`,
-      30_000,
-      async () => {
-        const list = await watchlistRoutes.list();
-        return list.body.some((watchlist) => watchlist.id === watchlistId);
-      }
-    );
+    await retry.waitForWithTimeout(`watchlist ${watchlistId} to be listed`, 30_000, async () => {
+      const list = await watchlistRoutes.list();
+      return list.body.some((watchlist: WatchlistObject) => watchlist.id === watchlistId);
+    });
   };
 
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
