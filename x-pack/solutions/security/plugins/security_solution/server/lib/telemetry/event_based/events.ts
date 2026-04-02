@@ -353,7 +353,6 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
   lookupDocsDeleted: number;
   lookupPrunedDocs: number;
   idBasedRiskScoringEnabled: boolean;
-  pipelineVersion: string;
 }> = {
   eventType: 'risk_score_maintainer_run_summary',
   schema: {
@@ -429,7 +428,6 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
   lookupDocsDeleted?: number;
   resetBatchLimitHit?: boolean;
   idBasedRiskScoringEnabled: boolean;
-  pipelineVersion: string;
 }> = {
   eventType: 'risk_score_maintainer_stage_summary',
   schema: {
