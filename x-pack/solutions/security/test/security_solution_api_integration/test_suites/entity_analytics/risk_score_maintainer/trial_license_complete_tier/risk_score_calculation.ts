@@ -51,6 +51,20 @@ export default ({ getService }: FtrProviderContext): void => {
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
 
+  const waitForWatchlistToBeListed = async (
+    watchlistRoutes: ReturnType<typeof watchlistRouteHelpersFactory>,
+    watchlistId: string
+  ) => {
+    await retry.waitForWithTimeout(
+      `watchlist ${watchlistId} to be listed`,
+      30_000,
+      async () => {
+        const list = await watchlistRoutes.list();
+        return list.body.some((watchlist) => watchlist.id === watchlistId);
+      }
+    );
+  };
+
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
     this.tags(['esGate']);
 
@@ -240,6 +254,7 @@ export default ({ getService }: FtrProviderContext): void => {
             throw new Error(`Failed to create watchlist: ${JSON.stringify(wlResponse.body)}`);
           }
           const watchlistId = wlResponse.body.id!;
+          await waitForWatchlistToBeListed(watchlistRoutes, watchlistId);
           await maintainerScenario.setEntityWatchlists({
             testEntity: host,
             watchlistIds: [watchlistId],
