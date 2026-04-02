@@ -42,9 +42,7 @@ const emptyMetrics = (): RunMetrics => ({
 });
 
 const scoresWrittenTotal = (metrics: RunMetrics): number =>
-  metrics.scoresWrittenBase +
-  metrics.scoresWrittenResolution +
-  metrics.scoresWrittenResetToZero;
+  metrics.scoresWrittenBase + metrics.scoresWrittenResolution + metrics.scoresWrittenResetToZero;
 
 interface SummaryContext {
   namespace: string;
