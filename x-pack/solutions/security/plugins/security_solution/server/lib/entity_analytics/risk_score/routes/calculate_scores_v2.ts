@@ -126,7 +126,10 @@ export const calculateScoresWithESQLV2 = async ({
         pageSize,
         index
       );
-      const esqlResponse = await esClient.esql.query({ query });
+      const esqlResponse = await esClient.esql.query({
+        query,
+        filter: { bool: { filter: entityFilters } },
+      });
       const baseScores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(index));
       const entityIds = baseScores.map((score) => score.entity_id);
       const entities = await fetchEntitiesByIds({

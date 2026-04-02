@@ -103,7 +103,10 @@ export const calculateBaseEntityScores = async function* ({
       pageSize,
       alertsIndex
     );
-    const esqlResponse = await esClient.esql.query({ query });
+    const esqlResponse = await esClient.esql.query({
+      query,
+      filter: { bool: { filter: alertFilters } },
+    });
     previousPageUpperBound = upper;
 
     const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
