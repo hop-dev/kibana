@@ -6,7 +6,11 @@
  */
 
 import { isEmpty, omit } from 'lodash';
-import type { FieldValue, QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
+import type {
+  FieldValue,
+  MappingRuntimeFields,
+  QueryDslQueryContainer,
+} from '@elastic/elasticsearch/lib/api/types';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { fromKueryExpression, toElasticsearchQuery } from '@kbn/es-query';
 import {
@@ -470,6 +474,7 @@ export const getEuidCompositeQuery = (
     index: string;
     pageSize: number;
     afterKey?: Record<string, string>;
+    runtimeMappings?: MappingRuntimeFields;
   }
 ) => {
   const runtimeMapping = euid.painless.getEuidRuntimeMapping(entityType);
@@ -477,7 +482,7 @@ export const getEuidCompositeQuery = (
   return {
     index: params.index,
     size: 0,
-    runtime_mappings: { entity_id: runtimeMapping },
+    runtime_mappings: { ...params.runtimeMappings, entity_id: runtimeMapping },
     query: filter.length > 0 ? { bool: { filter } } : { match_all: {} },
     aggs: {
       by_entity_id: {

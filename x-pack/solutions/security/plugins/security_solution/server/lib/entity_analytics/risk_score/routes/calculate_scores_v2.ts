@@ -65,6 +65,7 @@ export const calculateScoresWithESQLV2 = async ({
   index,
   pageSize,
   range,
+  runtimeMappings,
   filter,
   weights,
   alertSampleSizePerShard,
@@ -104,6 +105,7 @@ export const calculateScoresWithESQLV2 = async ({
         index,
         pageSize,
         afterKey: entityAfterKey,
+        runtimeMappings,
       })
     );
 
