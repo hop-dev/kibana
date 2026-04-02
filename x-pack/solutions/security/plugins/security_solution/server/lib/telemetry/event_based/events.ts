@@ -410,10 +410,6 @@ export const RISK_SCORE_MAINTAINER_RUN_SUMMARY_EVENT: EventTypeOpts<{
       type: 'boolean',
       _meta: { description: 'Whether Entity Store dual-write was enabled' },
     },
-    pipelineVersion: {
-      type: 'keyword',
-      _meta: { description: 'Version identifier for V2 telemetry evolution' },
-    },
   },
 };
 
@@ -481,10 +477,6 @@ export const RISK_SCORE_MAINTAINER_STAGE_SUMMARY_EVENT: EventTypeOpts<{
     idBasedRiskScoringEnabled: {
       type: 'boolean',
       _meta: { description: 'Whether Entity Store dual-write was enabled' },
-    },
-    pipelineVersion: {
-      type: 'keyword',
-      _meta: { description: 'Version identifier for V2 telemetry evolution' },
     },
   },
 };
