@@ -14,19 +14,19 @@ import {
   type EntityType,
 } from '../../../../../../common/entity_analytics/types';
 import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
-import type { RiskScoreDataClient } from '../../risk_score_data_client';
+import type { RiskEngineDataWriter } from '../../risk_engine_data_writer';
 import { applyScoreModifiersFromEntities } from '../../modifiers/apply_modifiers_from_entities';
 import { getIndexPatternDataStream } from '../../configurations';
 import { fetchEntitiesByIds } from '../utils/fetch_entities_by_ids';
 import type { ScopedLogger } from '../utils/with_log_context';
 import type { ParsedRiskScore } from './parse_esql_row';
 import type { EntityRiskScoreRecord } from '../../../../../../common/api/entity_analytics/common';
-import { persistScoresToEntityStore } from './persist_scores';
+import { persistScoresToEntityStore, persistScoresToRiskIndex } from './persist_scores';
 import type { StepResult } from './pipeline_types';
 
 export interface ResetToZeroDependencies {
   esClient: ElasticsearchClient;
-  dataClient: RiskScoreDataClient;
+  writer: RiskEngineDataWriter;
   spaceId: string;
   entityType: EntityType;
   logger: ScopedLogger;
@@ -53,7 +53,7 @@ export interface ResetToZeroSummary extends StepResult {
 
 export const resetToZero = async ({
   esClient,
-  dataClient,
+  writer,
   spaceId,
   entityType,
   logger,
@@ -174,11 +174,11 @@ export const resetToZero = async ({
   });
 
   const scores = [...baseScores, ...resolutionScores];
-
-  const writer = await dataClient.getWriter({ namespace: spaceId });
-  await writer.bulk({ [entityType]: scores }).catch((e) => {
-    logger.error(`Error resetting ${entityType} risk scores to zero: ${e.message}`);
-    throw e;
+  const scoresWritten = await persistScoresToRiskIndex({
+    writer,
+    entityType,
+    scores,
+    logger,
   });
 
   await persistScoresToEntityStore({
@@ -189,5 +189,5 @@ export const resetToZero = async ({
     enabled: idBasedRiskScoringEnabled,
   });
 
-  return { scoresWritten: scores.length, pagesProcessed: 0, resetBatchLimitHit };
+  return { scoresWritten, pagesProcessed: 0, resetBatchLimitHit };
 };

@@ -434,7 +434,7 @@ const executeEntityTypeRun = async ({
     try {
       const resetResult = await resetToZero({
         esClient: runContext.esClient,
-        dataClient: runContext.riskScoreDataClient,
+        writer: runConfig.writer,
         spaceId: runContext.namespace,
         entityType,
         logger: runLogger,

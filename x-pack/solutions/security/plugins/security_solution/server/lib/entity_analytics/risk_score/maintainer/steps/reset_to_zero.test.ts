@@ -9,19 +9,18 @@ import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { elasticsearchServiceMock, loggingSystemMock } from '@kbn/core/server/mocks';
 import type { EntityStoreCRUDClient } from '@kbn/entity-store/server';
 import type { Entity } from '@kbn/entity-store/common';
-import { riskScoreDataClientMock } from '../../risk_score_data_client.mock';
-import type { RiskScoreDataClient } from '../../risk_score_data_client';
 import { resetToZero } from './reset_to_zero';
 import { EntityType } from '../../../../../../common/entity_analytics/types';
 import { persistRiskScoresToEntityStore } from '../../persist_risk_scores_to_entity_store';
 import type { WatchlistObject } from '../../../../../../common/api/entity_analytics/watchlists/management/common.gen';
+import type { RiskEngineDataWriter } from '../../risk_engine_data_writer';
 
 jest.mock('../../persist_risk_scores_to_entity_store');
 
 describe('resetToZero (maintainer)', () => {
   let esClient: ElasticsearchClient;
   let logger: Logger;
-  let dataClient: RiskScoreDataClient;
+  let writer: RiskEngineDataWriter;
   let writerBulkMock: jest.Mock;
   let crudClient: jest.Mocked<EntityStoreCRUDClient>;
   const emptyWatchlistConfigs = new Map<string, WatchlistObject>();
@@ -30,9 +29,8 @@ describe('resetToZero (maintainer)', () => {
   beforeEach(() => {
     esClient = elasticsearchServiceMock.createScopedClusterClient().asCurrentUser;
     logger = loggingSystemMock.createLogger();
-    dataClient = riskScoreDataClientMock.create();
     writerBulkMock = jest.fn().mockResolvedValue({ errors: [], docs_written: 1 });
-    (dataClient.getWriter as jest.Mock).mockResolvedValue({ bulk: writerBulkMock });
+    writer = { bulk: writerBulkMock } as unknown as RiskEngineDataWriter;
     (persistRiskScoresToEntityStore as jest.Mock).mockResolvedValue([]);
     (esClient.indices.exists as jest.Mock).mockResolvedValue(true);
     crudClient = {
@@ -59,7 +57,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -70,7 +68,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 1, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
         expect.objectContaining({
@@ -101,7 +99,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -117,7 +115,7 @@ describe('resetToZero (maintainer)', () => {
         filter: { terms: { 'entity.id': ['host:host-1'] } },
       })
     );
-    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 1, pagesProcessed: 0, resetBatchLimitHit: false });
 
     expect(writerBulkMock).toHaveBeenCalledWith({
       host: [
@@ -167,7 +165,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.user,
       logger,
@@ -178,7 +176,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 1, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(writerBulkMock).toHaveBeenCalledWith({
       user: [
         expect.objectContaining({
@@ -201,7 +199,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.service,
       logger,
@@ -212,7 +210,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 1, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(writerBulkMock).toHaveBeenCalledWith({
       service: [
         expect.objectContaining({
@@ -236,7 +234,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -247,7 +245,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 1, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 1, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('Error fetching entities for reset-to-zero')
     );
@@ -269,7 +267,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -280,7 +278,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 0, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 0, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(writerBulkMock).not.toHaveBeenCalled();
   });
 
@@ -289,7 +287,7 @@ describe('resetToZero (maintainer)', () => {
 
     const result = await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -300,7 +298,7 @@ describe('resetToZero (maintainer)', () => {
       watchlistConfigs: emptyWatchlistConfigs,
     });
 
-    expect(result).toEqual({ scoresWritten: 0, resetBatchLimitHit: false });
+    expect(result).toEqual({ scoresWritten: 0, pagesProcessed: 0, resetBatchLimitHit: false });
     expect(esClient.esql.query).not.toHaveBeenCalled();
     expect(writerBulkMock).not.toHaveBeenCalled();
   });
@@ -316,7 +314,7 @@ describe('resetToZero (maintainer)', () => {
 
     await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
@@ -344,7 +342,7 @@ describe('resetToZero (maintainer)', () => {
 
     await resetToZero({
       esClient,
-      dataClient,
+      writer,
       spaceId: 'default',
       entityType: EntityType.host,
       logger,
