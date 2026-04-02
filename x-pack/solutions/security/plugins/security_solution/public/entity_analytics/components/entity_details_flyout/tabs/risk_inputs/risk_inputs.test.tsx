@@ -15,9 +15,18 @@ import { RiskSeverity } from '../../../../../../common/search_strategy';
 import { EntityType } from '../../../../../../common/entity_analytics/types';
 
 const mockUseRiskContributingAlerts = jest.fn().mockReturnValue({ loading: false, data: [] });
+const mockGetEuidFromObject = jest.fn().mockReturnValue('user:entity-1');
 
 jest.mock('../../../../hooks/use_risk_contributing_alerts', () => ({
   useRiskContributingAlerts: () => mockUseRiskContributingAlerts(),
+}));
+
+jest.mock('@kbn/entity-store/public', () => ({
+  useEntityStoreEuidApi: () => ({
+    euid: {
+      getEuidFromObject: (...args: unknown[]) => mockGetEuidFromObject(...args),
+    },
+  }),
 }));
 
 const mockUseUiSetting = jest.fn().mockReturnValue([false]);
@@ -95,6 +104,7 @@ describe('RiskInputsTab', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetEuidFromObject.mockReturnValue('user:entity-1');
     mockUseResolutionGroup.mockReturnValue({ data: undefined });
     mockUseGetWatchlists.mockReturnValue({ data: [] });
     mockUseRiskScore.mockImplementation((params?: { filterQuery?: unknown; skip?: boolean }) =>
@@ -320,7 +330,13 @@ describe('RiskInputsTab', () => {
           ...riskScore.user.risk,
           category_1_count: 2,
           category_1_score: 11,
-          related_entities: [{ entity_id: 'user:entity-1', relationship_type: 'resolved_to' }],
+          modifiers: [
+            {
+              type: 'watchlist',
+              contribution: 1.25,
+              metadata: { watchlist_id: 'wl-123' },
+            },
+          ],
           inputs: [
             {
               ...alertInputDataMock.input,
@@ -333,8 +349,20 @@ describe('RiskInputsTab', () => {
 
     mockUseResolutionGroup.mockReturnValue({
       data: {
-        target: { entity: { id: 'user:elastic' } },
-        aliases: [],
+        target: {
+          entity: { id: 'user:elastic', name: 'elastic', attributes: { watchlists: [] } },
+          asset: { criticality: 'high_impact' },
+        },
+        aliases: [
+          {
+            entity: {
+              id: 'user:entity-1',
+              name: 'entity-1',
+              attributes: { watchlists: ['wl-123'] },
+            },
+            asset: { criticality: 'extreme_impact' },
+          },
+        ],
         group_size: 1,
       },
     });
@@ -373,8 +401,153 @@ describe('RiskInputsTab', () => {
 
     fireEvent.click(getByText('Resolution group risk score'));
 
-    expect(getByTestId('risk-input-related-entities-table')).toBeInTheDocument();
-    expect(getByTestId('risk-input-related-entities-table')).toHaveTextContent('user:entity-1');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('Entity');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('entity-1');
+    expect(getByTestId('risk-input-alert-title').parentElement).toHaveTextContent('Entity');
+    expect(getByTestId('risk-input-table-description-cell')).toHaveTextContent('Rule Name');
+  });
+
+  it('shows entity attribution for alerts in resolution view', () => {
+    const resolutionRiskScore = {
+      '@timestamp': '2021-08-19T16:00:00.000Z',
+      user: {
+        name: 'elastic',
+        risk: {
+          ...riskScore.user.risk,
+          category_1_count: 1,
+          category_1_score: 10,
+          inputs: [{ ...alertInputDataMock.input, id: 'resolution-alert-id' }],
+        },
+      },
+    };
+
+    mockUseResolutionGroup.mockReturnValue({
+      data: {
+        target: {
+          entity: { id: 'user:elastic', name: 'elastic', attributes: { watchlists: [] } },
+        },
+        aliases: [
+          {
+            entity: { id: 'user:entity-1', name: 'entity-1', attributes: { watchlists: [] } },
+          },
+        ],
+        group_size: 2,
+      },
+    });
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: unknown }) =>
+      isResolutionFilter(params)
+        ? {
+            loading: false,
+            error: false,
+            data: [resolutionRiskScore],
+          }
+        : {
+            loading: false,
+            error: false,
+            data: [riskScore],
+          }
+    );
+    mockUseRiskContributingAlerts.mockReturnValue({
+      loading: false,
+      error: false,
+      data: [{ ...alertInputDataMock, _id: 'resolution-alert-id' }],
+    });
+
+    const { getByText, getByTestId } = render(
+      <TestProviders>
+        <RiskInputsTab
+          entityType={EntityType.user}
+          entityName="elastic"
+          scopeId={'scopeId'}
+          entityId="user:elastic"
+        />
+      </TestProviders>
+    );
+
+    fireEvent.click(getByText('Resolution group risk score'));
+
+    expect(getByTestId('risk-input-alert-title').parentElement).toHaveTextContent('entity-1');
+  });
+
+  it('shows entity attribution for context rows in resolution view', () => {
+    const resolutionRiskScore = {
+      '@timestamp': '2021-08-19T16:00:00.000Z',
+      user: {
+        name: 'elastic',
+        risk: {
+          ...riskScore.user.risk,
+          modifiers: [
+            {
+              type: 'asset_criticality',
+              contribution: 4.5,
+              metadata: { criticality_level: 'high_impact' },
+            },
+            {
+              type: 'watchlist',
+              contribution: 2.5,
+              metadata: { watchlist_id: 'wl-123' },
+            },
+          ],
+          category_1_count: 1,
+          category_1_score: 10,
+          inputs: [{ ...alertInputDataMock.input, id: 'resolution-alert-id' }],
+        },
+      },
+    };
+
+    mockUseResolutionGroup.mockReturnValue({
+      data: {
+        target: {
+          entity: {
+            id: 'user:elastic',
+            name: 'elastic',
+            attributes: { watchlists: ['wl-123'] },
+          },
+          asset: { criticality: 'high_impact' },
+        },
+        aliases: [
+          {
+            entity: {
+              id: 'user:entity-1',
+              name: 'entity-1',
+              attributes: { watchlists: ['wl-123'] },
+            },
+            asset: { criticality: 'medium_impact' },
+          },
+        ],
+        group_size: 2,
+      },
+    });
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: unknown }) =>
+      isResolutionFilter(params)
+        ? {
+            loading: false,
+            error: false,
+            data: [resolutionRiskScore],
+          }
+        : {
+            loading: false,
+            error: false,
+            data: [riskScore],
+          }
+    );
+
+    const { getByText, getByTestId } = render(
+      <TestProviders>
+        <RiskInputsTab
+          entityType={EntityType.user}
+          entityName="elastic"
+          scopeId={'scopeId'}
+          entityId="user:elastic"
+        />
+      </TestProviders>
+    );
+
+    fireEvent.click(getByText('Resolution group risk score'));
+
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('Entity');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('elastic');
+    expect(getByTestId('risk-input-contexts-table')).toHaveTextContent('entity-1');
   });
 
   it('renders watchlist modifiers in context section', () => {

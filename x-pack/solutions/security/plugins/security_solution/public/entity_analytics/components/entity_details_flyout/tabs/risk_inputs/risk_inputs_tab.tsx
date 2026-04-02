@@ -6,6 +6,7 @@
  */
 
 import { i18n } from '@kbn/i18n';
+import { useEntityStoreEuidApi } from '@kbn/entity-store/public';
 import type { EuiBasicTableColumn } from '@elastic/eui';
 import {
   EuiButtonGroup,
@@ -44,18 +45,7 @@ import { RiskInputsUtilityBar } from '../../components/utility_bar';
 import { ActionColumn } from '../../components/action_column';
 import { AskAiAssistant } from './ask_ai_assistant';
 import { useResolutionGroup } from '../../../entity_resolution/hooks/use_resolution_group';
-import {
-  getEntityId,
-  getEntityName,
-  getEntityRiskScore,
-  getEntitySource,
-} from '../../../entity_resolution/helpers';
-import {
-  ENTITY_ID_COLUMN,
-  ENTITY_NAME_COLUMN,
-  RISK_SCORE_COLUMN,
-  SOURCE_COLUMN,
-} from '../../../entity_resolution/translations';
+import { getEntityId, getEntityField, getEntityName } from '../../../entity_resolution/helpers';
 
 export interface RiskInputsTabProps<T extends EntityType> {
   entityType: T;
@@ -81,6 +71,7 @@ export const RiskInputsTab = <T extends EntityType>({
   const { setQuery, deleteQuery } = useGlobalTime();
   const [selectedItems, setSelectedItems] = useState<InputAlert[]>([]);
   const [selectedView, setSelectedView] = useState<'entity' | 'resolution'>('entity');
+  const euidApi = useEntityStoreEuidApi();
   const { openPreviewPanel } = useExpandableFlyoutApi();
   const { data: watchlists } = useGetWatchlists();
 
@@ -162,13 +153,6 @@ export const RiskInputsTab = <T extends EntityType>({
   const activeInspectRiskScore = isResolutionView ? inspectResolutionRiskScore : inspectRiskScore;
   const activeRiskScoreLoading = isResolutionView ? loadingResolutionRiskScore : loadingRiskScore;
   const activeRiskScoreRefetch = isResolutionView ? refetchResolutionRiskScore : refetch;
-  const relatedEntityIds = useMemo(
-    () =>
-      activeRiskScore?.[entityType].risk.related_entities
-        ?.map((relatedEntity) => relatedEntity.entity_id)
-        .filter((relatedEntityId): relatedEntityId is string => Boolean(relatedEntityId)) ?? [],
-    [activeRiskScore, entityType]
-  );
   const watchlistNamesById = useMemo(() => {
     const map = new Map<string, string>();
     (watchlists ?? []).forEach((watchlist) => {
@@ -189,6 +173,40 @@ export const RiskInputsTab = <T extends EntityType>({
   });
 
   const alerts = useRiskContributingAlerts<T>({ riskScore: activeRiskScore, entityType });
+  const entityNameByEuid = useMemo(() => {
+    const map = new Map<string, string>();
+
+    if (!resolutionGroup) {
+      return map;
+    }
+
+    [resolutionGroup.target, ...resolutionGroup.aliases].forEach((entity) => {
+      const entityIdValue = getEntityId(entity);
+      if (entityIdValue) {
+        map.set(entityIdValue, getEntityName(entity) || entityIdValue);
+      }
+    });
+
+    return map;
+  }, [resolutionGroup]);
+  const alertEntityById = useMemo(() => {
+    const map = new Map<string, string>();
+
+    if (!isResolutionView || !euidApi || !alerts.data) {
+      return map;
+    }
+
+    alerts.data.forEach((alert) => {
+      const sourceEntityId =
+        alert.input.entity_id ?? euidApi.euid.getEuidFromObject(entityType, alert.rawSource);
+
+      if (sourceEntityId) {
+        map.set(alert._id, entityNameByEuid.get(sourceEntityId) ?? sourceEntityId);
+      }
+    });
+
+    return map;
+  }, [alerts.data, entityNameByEuid, entityType, euidApi, isResolutionView]);
 
   const euiTableSelectionProps = useMemo(
     () => ({
@@ -199,8 +217,8 @@ export const RiskInputsTab = <T extends EntityType>({
     []
   );
 
-  const inputColumns: Array<EuiBasicTableColumn<InputAlert>> = useMemo(
-    () => [
+  const inputColumns: Array<EuiBasicTableColumn<InputAlert>> = useMemo(() => {
+    const columns: Array<EuiBasicTableColumn<InputAlert>> = [
       {
         render: (data: InputAlert) => (
           <EuiButtonIcon
@@ -271,63 +289,22 @@ export const RiskInputsTab = <T extends EntityType>({
         align: 'right',
         render: formatContribution,
       },
-    ],
-    [openAlertPreview]
-  );
-  const contributingEntitiesRows = useMemo<ResolutionContributingEntityRow[]>(() => {
-    if (!isResolutionView || relatedEntityIds.length === 0) {
-      return [];
+    ];
+
+    if (isResolutionView) {
+      columns.splice(4, 0, {
+        name: (
+          <FormattedMessage
+            id="xpack.securitySolution.flyout.entityDetails.riskInputs.entityColumn"
+            defaultMessage="Entity"
+          />
+        ),
+        render: (data: InputAlert) => alertEntityById.get(data._id) ?? '-',
+      });
     }
 
-    const relatedEntityIdSet = new Set(relatedEntityIds);
-    const resolutionEntities = resolutionGroup
-      ? [resolutionGroup.target, ...resolutionGroup.aliases]
-      : [];
-    const matchingResolutionEntities = resolutionEntities.filter((entity) =>
-      relatedEntityIdSet.has(getEntityId(entity))
-    );
-
-    if (matchingResolutionEntities.length > 0) {
-      return matchingResolutionEntities.map((entity) => ({
-        entityName: getEntityName(entity),
-        entityId: getEntityId(entity),
-        source: getEntitySource(entity),
-        riskScore: getEntityRiskScore(entity),
-      }));
-    }
-
-    return relatedEntityIds.map((entityIdentifier) => ({
-      entityName: entityIdentifier,
-      entityId: entityIdentifier,
-      source: '-',
-      riskScore: undefined,
-    }));
-  }, [isResolutionView, relatedEntityIds, resolutionGroup]);
-  const contributingEntitiesColumns: Array<EuiBasicTableColumn<ResolutionContributingEntityRow>> =
-    useMemo(
-      () => [
-        {
-          field: 'entityName',
-          name: ENTITY_NAME_COLUMN,
-        },
-        {
-          field: 'entityId',
-          name: ENTITY_ID_COLUMN,
-        },
-        {
-          field: 'source',
-          name: SOURCE_COLUMN,
-        },
-        {
-          field: 'riskScore',
-          name: RISK_SCORE_COLUMN,
-          align: 'right',
-          render: (riskScore: ResolutionContributingEntityRow['riskScore']) =>
-            riskScore != null ? Math.round(riskScore) : '-',
-        },
-      ],
-      []
-    );
+    return columns;
+  }, [alertEntityById, isResolutionView, openAlertPreview]);
 
   if (riskScoreError) {
     return (
@@ -351,34 +328,6 @@ export const RiskInputsTab = <T extends EntityType>({
       </EuiCallOut>
     );
   }
-
-  const contributingEntitiesSection =
-    isResolutionView && contributingEntitiesRows.length > 0 ? (
-      <>
-        <EuiTitle size="xs" data-test-subj="risk-input-related-entities-title">
-          <h3>
-            <FormattedMessage
-              id="xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTitle"
-              defaultMessage="Contributing entities"
-            />
-          </h3>
-        </EuiTitle>
-        <EuiSpacer size="xs" />
-        <EuiInMemoryTable
-          compressed
-          data-test-subj="risk-input-related-entities-table"
-          items={contributingEntitiesRows}
-          columns={contributingEntitiesColumns}
-          sorting={true}
-          tableCaption={i18n.translate(
-            'xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTableCaption',
-            {
-              defaultMessage: 'Entities contributing to the resolution risk score',
-            }
-          )}
-        />
-      </>
-    ) : null;
 
   const riskInputsAlertSection = (
     <>
@@ -445,12 +394,12 @@ export const RiskInputsTab = <T extends EntityType>({
           <EuiSpacer size="m" />
         </>
       )}
-      {contributingEntitiesSection}
-      {contributingEntitiesSection && <EuiSpacer size="m" />}
       <ContextsSection<T>
         loading={activeRiskScoreLoading}
         riskScore={activeRiskScore}
         entityType={entityType}
+        isResolutionView={isResolutionView}
+        resolutionGroup={resolutionGroup}
         watchlistNamesById={watchlistNamesById}
       />
       <EuiSpacer size="m" />
@@ -466,6 +415,11 @@ interface ContextsSectionProps<T extends EntityType> {
   riskScore?: EntityRiskScore<T>;
   entityType: T;
   loading: boolean;
+  isResolutionView: boolean;
+  resolutionGroup?: {
+    target: Record<string, unknown>;
+    aliases: Array<Record<string, unknown>>;
+  };
   watchlistNamesById: Map<string, string>;
 }
 
@@ -473,8 +427,67 @@ const ContextsSection = <T extends EntityType>({
   riskScore,
   loading,
   entityType,
+  isResolutionView,
+  resolutionGroup,
   watchlistNamesById,
 }: ContextsSectionProps<T>) => {
+  const memberEntities = useMemo(
+    () => (resolutionGroup ? [resolutionGroup.target, ...resolutionGroup.aliases] : []),
+    [resolutionGroup]
+  );
+  const watchlistEntityNames = useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    if (!isResolutionView) {
+      return map;
+    }
+
+    memberEntities.forEach((member) => {
+      const entityName = getEntityName(member) || getEntityId(member) || '-';
+      const watchlistsValue = getEntityField(member, 'entity.attributes.watchlists');
+      if (!Array.isArray(watchlistsValue)) {
+        return;
+      }
+
+      watchlistsValue.forEach((watchlistId) => {
+        if (typeof watchlistId !== 'string') {
+          return;
+        }
+
+        const matchingEntities = map.get(watchlistId) ?? [];
+        if (!matchingEntities.includes(entityName)) {
+          matchingEntities.push(entityName);
+        }
+        map.set(watchlistId, matchingEntities);
+      });
+    });
+
+    return map;
+  }, [isResolutionView, memberEntities]);
+  const criticalityEntityNames = useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    if (!isResolutionView) {
+      return map;
+    }
+
+    memberEntities.forEach((member) => {
+      const entityName = getEntityName(member) || getEntityId(member) || '-';
+      const criticalityLevel = getEntityField(member, 'asset.criticality');
+
+      if (typeof criticalityLevel !== 'string') {
+        return;
+      }
+
+      const matchingEntities = map.get(criticalityLevel) ?? [];
+      if (!matchingEntities.includes(entityName)) {
+        matchingEntities.push(entityName);
+      }
+      map.set(criticalityLevel, matchingEntities);
+    });
+
+    return map;
+  }, [isResolutionView, memberEntities]);
   const contributions = useMemo(() => {
     if (!riskScore) {
       return undefined;
@@ -507,6 +520,9 @@ const ContextsSection = <T extends EntityType>({
   const items: ContextRow[] = [];
 
   if (criticality.level != null && criticality.contribution != null) {
+    const relatedEntities = isResolutionView
+      ? criticalityEntityNames.get(criticality.level)?.join(', ') ?? '-'
+      : '';
     items.push({
       field: (
         <FormattedMessage
@@ -521,6 +537,7 @@ const ContextsSection = <T extends EntityType>({
         />
       ),
       contribution: formatContribution(criticality.contribution),
+      entities: relatedEntities,
     });
   }
 
@@ -567,6 +584,7 @@ const ContextsSection = <T extends EntityType>({
         />
       ),
       contribution: formatContribution(watchlist.contribution),
+      entities: isResolutionView ? watchlistEntityNames.get(watchlistId)?.join(', ') ?? '-' : '',
     });
   });
 
@@ -589,7 +607,7 @@ const ContextsSection = <T extends EntityType>({
         compressed={true}
         loading={loading}
         data-test-subj="risk-input-contexts-table"
-        columns={contextColumns}
+        columns={getContextColumns(isResolutionView)}
         items={items}
         tableCaption={i18n.translate(
           'xpack.securitySolution.flyout.entityDetails.riskInputs.contextsTableCaption',
@@ -606,34 +624,52 @@ interface ContextRow {
   field: ReactNode;
   value: ReactNode;
   contribution: string;
+  entities: string;
 }
 
-const contextColumns: Array<EuiBasicTableColumn<ContextRow>> = [
-  {
-    field: 'field',
-    name: (
-      <FormattedMessage
-        id="xpack.securitySolution.flyout.entityDetails.riskInputs.fieldColumn"
-        defaultMessage="Field"
-      />
-    ),
-    width: '30%',
-    render: (field: ContextRow['field']) => field,
-  },
-  {
-    field: 'value',
-    name: (
-      <FormattedMessage
-        id="xpack.securitySolution.flyout.entityDetails.riskInputs.valueColumn"
-        defaultMessage="Value"
-      />
-    ),
-    width: '30%',
-    render: (val: ContextRow['value']) => val,
-  },
-  {
+const getContextColumns = (isResolutionView: boolean): Array<EuiBasicTableColumn<ContextRow>> => {
+  const columns: Array<EuiBasicTableColumn<ContextRow>> = [
+    {
+      field: 'field',
+      name: (
+        <FormattedMessage
+          id="xpack.securitySolution.flyout.entityDetails.riskInputs.fieldColumn"
+          defaultMessage="Field"
+        />
+      ),
+      width: '25%',
+      render: (field: ContextRow['field']) => field,
+    },
+    {
+      field: 'value',
+      name: (
+        <FormattedMessage
+          id="xpack.securitySolution.flyout.entityDetails.riskInputs.valueColumn"
+          defaultMessage="Value"
+        />
+      ),
+      width: isResolutionView ? '30%' : '35%',
+      render: (val: ContextRow['value']) => val,
+    },
+  ];
+
+  if (isResolutionView) {
+    columns.push({
+      field: 'entities',
+      name: (
+        <FormattedMessage
+          id="xpack.securitySolution.flyout.entityDetails.riskInputs.entityColumn"
+          defaultMessage="Entity"
+        />
+      ),
+      width: '25%',
+      render: (entities: ContextRow['entities']) => entities || '-',
+    });
+  }
+
+  columns.push({
     field: 'contribution',
-    width: '30%',
+    width: isResolutionView ? '20%' : '40%',
     align: 'right',
     name: (
       <FormattedMessage
@@ -642,8 +678,10 @@ const contextColumns: Array<EuiBasicTableColumn<ContextRow>> = [
       />
     ),
     render: (score: ContextRow['contribution']) => score,
-  },
-];
+  });
+
+  return columns;
+};
 
 interface ExtraAlertsMessageProps<T extends EntityType> {
   riskScore?: EntityRiskScore<T>;
@@ -704,10 +742,3 @@ const formatContribution = (value: number): string => {
 
   return fixedValue;
 };
-
-interface ResolutionContributingEntityRow {
-  entityName: string;
-  entityId: string;
-  source: string;
-  riskScore?: number;
-}
