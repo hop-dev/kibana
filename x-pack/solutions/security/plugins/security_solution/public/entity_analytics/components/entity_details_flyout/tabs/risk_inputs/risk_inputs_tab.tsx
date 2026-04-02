@@ -257,7 +257,7 @@ export const RiskInputsTab = <T extends EntityType>({
         truncateText: false,
         mobileOptions: { show: true },
         sortable: true,
-        width: '30%',
+        width: isResolutionView ? '20%' : '30%',
         render: (timestamp: string) => <PreferenceFormattedDate value={new Date(timestamp)} />,
       },
       {
@@ -299,6 +299,7 @@ export const RiskInputsTab = <T extends EntityType>({
             defaultMessage="Entity"
           />
         ),
+        width: '25%',
         render: (data: InputAlert) => alertEntityById.get(data._id) ?? '-',
       });
     }
@@ -343,7 +344,7 @@ export const RiskInputsTab = <T extends EntityType>({
       <RiskInputsUtilityBar riskInputs={selectedItems} />
       <EuiInMemoryTable
         compressed
-        loading={activeRiskScoreLoading || alerts.loading}
+        loading={(activeRiskScoreLoading || alerts.loading) && (alerts.data?.length ?? 0) === 0}
         items={alerts.data || []}
         columns={inputColumns}
         sorting
@@ -512,7 +513,7 @@ const ContextsSection = <T extends EntityType>({
     };
   }, [entityType, riskScore]);
 
-  if (loading || contributions === undefined) {
+  if (contributions === undefined) {
     return null;
   }
   const { criticality, watchlists } = contributions;
@@ -605,7 +606,7 @@ const ContextsSection = <T extends EntityType>({
       <EuiSpacer size="xs" />
       <EuiInMemoryTable
         compressed={true}
-        loading={loading}
+        loading={loading && items.length === 0}
         data-test-subj="risk-input-contexts-table"
         columns={getContextColumns(isResolutionView)}
         items={items}
