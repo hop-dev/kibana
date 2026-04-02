@@ -55,6 +55,16 @@ export interface Phase1BaseScoringSummary {
   lookupDocsDeleted: number;
 }
 
+interface EuidPageBounds {
+  lower: string | undefined;
+  upper: string;
+}
+
+interface EuidPageResult {
+  upperBound: string;
+  afterKey: Record<string, string> | undefined;
+}
+
 /**
  * Computes base risk scores for one entity type and streams paginated results.
  *
@@ -78,64 +88,39 @@ export const calculateBaseEntityScores = async function* ({
   let previousPageUpperBound: string | undefined;
 
   do {
-    // Composite paging gives deterministic bounds for the ES|QL score query.
-    const compositeResponse = await esClient.search(
-      getEuidCompositeQuery(entityType, alertFilters, {
-        index: alertsIndex,
-        pageSize,
-        afterKey,
-      })
-    );
-
-    const compositeAgg = (
-      compositeResponse.aggregations as { by_entity_id?: EuidCompositeAggregation } | undefined
-    )?.by_entity_id;
-    const buckets = compositeAgg?.buckets ?? [];
-
-    if (buckets.length === 0) break;
-
-    const upper = buckets[buckets.length - 1].key.entity_id;
-    afterKey = compositeAgg?.after_key;
-    const query = getBaseScoreESQL(
+    // Per page: find this page's start/end IDs for scoring, then apply entity modifiers.
+    const pageResult = await fetchNextEuidPage({
+      esClient,
       entityType,
-      { lower: previousPageUpperBound, upper },
+      alertFilters,
+      alertsIndex,
+      pageSize,
+      afterKey,
+    });
+    if (!pageResult) break;
+
+    afterKey = pageResult.afterKey;
+    const scores = await scorePageFromAlerts({
+      esClient,
+      entityType,
+      bounds: { lower: previousPageUpperBound, upper: pageResult.upperBound },
       sampleSize,
       pageSize,
-      alertsIndex
-    );
-    const esqlResponse = await esClient.esql.query({
-      query,
-      filter: { bool: { filter: alertFilters } },
+      alertsIndex,
+      alertFilters,
     });
-    previousPageUpperBound = upper;
-
-    const scores = (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
+    previousPageUpperBound = pageResult.upperBound;
 
     if (scores.length > 0) {
-      const euidValues = scores.map((score) => score.entity_id);
-      const entityMap = await fetchEntitiesByIds({
+      yield await enrichWithModifiers({
         crudClient,
-        entityIds: euidValues,
         logger,
-        errorContext:
-          'Error fetching entities for modifier application. Scoring will proceed without modifiers',
-      });
-
-      const finalScores = applyScoreModifiersFromEntities({
+        scores,
         now,
-        identifierType: entityType,
-        scoreType: 'base',
+        entityType,
         calculationRunId,
-        weights: [],
-        page: {
-          scores,
-          identifierField: 'entity_id',
-        },
-        entities: entityMap,
         watchlistConfigs,
       });
-
-      yield { entityIds: euidValues, scores: finalScores, entities: entityMap };
     }
   } while (afterKey !== undefined);
 };
@@ -156,6 +141,7 @@ export const scoreBaseEntities = async ({
   let lookupDocsDeleted = 0;
 
   for await (const page of calculateBaseEntityScores(params)) {
+    // Per page: split docs by write path, sync lookup docs, then write scores.
     pagesProcessed += 1;
     const categorized = categorizePhase1Entities(page);
     const lookupSyncResult = await syncLookupIndexForCategorizedPage({
@@ -182,34 +168,20 @@ export const scoreBaseEntities = async ({
     // Keep dual-write semantics from phase 1 categorization:
     // `defer_to_phase_2` remains persisted to the risk index for continuity.
     const riskIndexWrites = [...categorized.write_now, ...categorized.defer_to_phase_2];
-    const bulkResponse = await writer.bulk({ [params.entityType]: riskIndexWrites });
-    scoresWritten += bulkResponse.docs_written;
-    if (bulkResponse.errors.length > 0) {
-      params.logger.warn(
-        `[page:${pagesProcessed}] risk score bulk write had ${
-          bulkResponse.errors.length
-        } error(s): ${bulkResponse.errors.join('; ')}`
-      );
-    } else {
-      params.logger.debug(
-        `[page:${pagesProcessed}] risk score bulk write succeeded: attempted=${riskIndexWrites.length}, written=${bulkResponse.docs_written}, took=${bulkResponse.took}ms`
-      );
-    }
-
-    if (idBasedRiskScoringEnabled) {
-      const entityStoreErrors = await persistRiskScoresToEntityStore({
-        crudClient: params.crudClient,
-        logger: params.logger,
-        scores: { [params.entityType]: riskIndexWrites },
-      });
-      if (entityStoreErrors.length > 0) {
-        params.logger.warn(
-          `Entity store dual-write had ${
-            entityStoreErrors.length
-          } error(s): ${entityStoreErrors.join('; ')}`
-        );
-      }
-    }
+    scoresWritten += await persistPageToRiskIndex({
+      writer,
+      entityType: params.entityType,
+      riskIndexWrites,
+      logger: params.logger,
+      pageNumber: pagesProcessed,
+    });
+    await persistPageToEntityStore({
+      crudClient: params.crudClient,
+      logger: params.logger,
+      entityType: params.entityType,
+      scores: riskIndexWrites,
+      enabled: idBasedRiskScoringEnabled,
+    });
 
     if (categorized.not_in_store.length > 0) {
       params.logger.debug(
@@ -234,4 +206,170 @@ export const scoreBaseEntities = async ({
     lookupDocsUpserted,
     lookupDocsDeleted,
   };
+};
+
+const fetchNextEuidPage = async ({
+  esClient,
+  entityType,
+  alertFilters,
+  alertsIndex,
+  pageSize,
+  afterKey,
+}: {
+  esClient: ElasticsearchClient;
+  entityType: EntityType;
+  alertFilters: QueryDslQueryContainer[];
+  alertsIndex: string;
+  pageSize: number;
+  afterKey: Record<string, string> | undefined;
+}): Promise<EuidPageResult | null> => {
+  // Composite paging gives stable ID boundaries for each score query.
+  const compositeResponse = await esClient.search(
+    getEuidCompositeQuery(entityType, alertFilters, {
+      index: alertsIndex,
+      pageSize,
+      afterKey,
+    })
+  );
+
+  const compositeAgg = (
+    compositeResponse.aggregations as { by_entity_id?: EuidCompositeAggregation } | undefined
+  )?.by_entity_id;
+  const buckets = compositeAgg?.buckets ?? [];
+  if (buckets.length === 0) {
+    return null;
+  }
+
+  return {
+    upperBound: buckets[buckets.length - 1].key.entity_id,
+    afterKey: compositeAgg?.after_key,
+  };
+};
+
+const scorePageFromAlerts = async ({
+  esClient,
+  entityType,
+  bounds,
+  sampleSize,
+  pageSize,
+  alertsIndex,
+  alertFilters,
+}: {
+  esClient: ElasticsearchClient;
+  entityType: EntityType;
+  bounds: EuidPageBounds;
+  sampleSize: number;
+  pageSize: number;
+  alertsIndex: string;
+  alertFilters: QueryDslQueryContainer[];
+}) => {
+  const query = getBaseScoreESQL(entityType, bounds, sampleSize, pageSize, alertsIndex);
+  const esqlResponse = await esClient.esql.query({
+    query,
+    filter: { bool: { filter: alertFilters } },
+  });
+
+  return (esqlResponse.values ?? []).map(parseEsqlBaseScoreRow(alertsIndex));
+};
+
+const enrichWithModifiers = async ({
+  crudClient,
+  logger,
+  scores,
+  now,
+  entityType,
+  calculationRunId,
+  watchlistConfigs,
+}: {
+  crudClient: EntityUpdateClient;
+  logger: ScopedLogger;
+  scores: ReturnType<ReturnType<typeof parseEsqlBaseScoreRow>>[];
+  now: string;
+  entityType: EntityType;
+  calculationRunId: string;
+  watchlistConfigs: Map<string, WatchlistObject>;
+}): Promise<ScoredEntityPage> => {
+  const euidValues = scores.map((score) => score.entity_id);
+  const entityMap = await fetchEntitiesByIds({
+    crudClient,
+    entityIds: euidValues,
+    logger,
+    errorContext:
+      'Error fetching entities for modifier application. Scoring will proceed without modifiers',
+  });
+
+  const finalScores = applyScoreModifiersFromEntities({
+    now,
+    identifierType: entityType,
+    scoreType: 'base',
+    calculationRunId,
+    weights: [],
+    page: {
+      scores,
+      identifierField: 'entity_id',
+    },
+    entities: entityMap,
+    watchlistConfigs,
+  });
+
+  return { entityIds: euidValues, scores: finalScores, entities: entityMap };
+};
+
+const persistPageToRiskIndex = async ({
+  writer,
+  entityType,
+  riskIndexWrites,
+  logger,
+  pageNumber,
+}: {
+  writer: RiskEngineDataWriter;
+  entityType: EntityType;
+  riskIndexWrites: ScoredEntityPage['scores'];
+  logger: ScopedLogger;
+  pageNumber: number;
+}): Promise<number> => {
+  const bulkResponse = await writer.bulk({ [entityType]: riskIndexWrites });
+  if (bulkResponse.errors.length > 0) {
+    logger.warn(
+      `[page:${pageNumber}] risk score bulk write had ${
+        bulkResponse.errors.length
+      } error(s): ${bulkResponse.errors.join('; ')}`
+    );
+  } else {
+    logger.debug(
+      `[page:${pageNumber}] risk score bulk write succeeded: attempted=${riskIndexWrites.length}, written=${bulkResponse.docs_written}, took=${bulkResponse.took}ms`
+    );
+  }
+  return bulkResponse.docs_written;
+};
+
+const persistPageToEntityStore = async ({
+  crudClient,
+  logger,
+  entityType,
+  scores,
+  enabled,
+}: {
+  crudClient: EntityUpdateClient;
+  logger: ScopedLogger;
+  entityType: EntityType;
+  scores: ScoredEntityPage['scores'];
+  enabled: boolean;
+}): Promise<void> => {
+  if (!enabled) {
+    return;
+  }
+
+  const entityStoreErrors = await persistRiskScoresToEntityStore({
+    crudClient,
+    logger,
+    scores: { [entityType]: scores },
+  });
+  if (entityStoreErrors.length > 0) {
+    logger.warn(
+      `Entity store dual-write had ${entityStoreErrors.length} error(s): ${entityStoreErrors.join(
+        '; '
+      )}`
+    );
+  }
 };
