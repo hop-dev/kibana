@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import type { StepResult } from '../steps/pipeline_types';
+
 export interface RunMetrics {
   scoresWrittenBase: number;
   scoresWrittenResolution: number;
@@ -86,11 +88,11 @@ export const createRunMetricsTracker = () => {
       target.lookupDocsDeleted = summary.lookupDocsDeleted;
     },
 
-    recordResolution: (target: RunMetrics, result: { scoresWritten: number }) => {
+    recordResolution: (target: RunMetrics, result: StepResult) => {
       target.scoresWrittenResolution = result.scoresWritten;
     },
 
-    recordResetToZero: (target: RunMetrics, result: { scoresWritten: number }) => {
+    recordResetToZero: (target: RunMetrics, result: StepResult) => {
       target.scoresWrittenResetToZero = result.scoresWritten;
     },
 

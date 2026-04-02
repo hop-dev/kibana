@@ -8,6 +8,7 @@
 import expect from '@kbn/expect';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteAllAlerts, deleteAllRules } from '@kbn/detections-response-ftr-services';
+import type { WatchlistObject } from '@kbn/security-solution-plugin/common/api/entity_analytics/watchlists/management/common.gen';
 import {
   createAndSyncRuleAndAlertsFactory,
   readRiskScores,
@@ -55,14 +56,10 @@ export default ({ getService }: FtrProviderContext): void => {
     watchlistRoutes: ReturnType<typeof watchlistRouteHelpersFactory>,
     watchlistId: string
   ) => {
-    await retry.waitForWithTimeout(
-      `watchlist ${watchlistId} to be listed`,
-      30_000,
-      async () => {
-        const list = await watchlistRoutes.list();
-        return list.body.some((watchlist) => watchlist.id === watchlistId);
-      }
-    );
+    await retry.waitForWithTimeout(`watchlist ${watchlistId} to be listed`, 30_000, async () => {
+      const list = await watchlistRoutes.list();
+      return list.body.some((watchlist: WatchlistObject) => watchlist.id === watchlistId);
+    });
   };
 
   describe('@ess @serverless @serverlessQA Risk Score Maintainer Entity Calculation', function () {
@@ -231,10 +228,11 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           await waitForEntityStoreEntities({ es, log, count: 1 });
 
-          // Stop the maintainer while we set up modifiers so a stale run
-          // doesn't race ahead before the entity has both attributes.
-          await maintainerRoutes.stopMaintainer('risk-score');
-
+          // Set up both modifiers while the maintainer runs freely in the
+          // background. Any scoring runs that happen before both modifiers
+          // are in place will produce stale scores — that's fine because we
+          // trigger a fresh run below and the final assertion retries until
+          // a score with both modifiers appears.
           await maintainerScenario.setEntityCriticality({
             testEntity: host,
             criticalityLevel: 'high_impact',
@@ -267,7 +265,9 @@ export default ({ getService }: FtrProviderContext): void => {
             requiredWatchlistId: watchlistId,
           });
 
-          await maintainerRoutes.startMaintainer('risk-score');
+          // Both modifiers are confirmed in the entity store. Capture the
+          // current run count as the baseline and trigger a fresh run — any
+          // run that starts now will see both modifiers.
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
           let risk: Record<string, unknown> = {};
@@ -538,10 +538,9 @@ export default ({ getService }: FtrProviderContext): void => {
           });
           const baseNormScore = baseScore.calculated_score_norm!;
 
-          // Stop the maintainer while we update watchlist membership so a stale
-          // run doesn't score the entity before the modifier is in place.
-          await maintainerRoutes.stopMaintainer('risk-score');
-
+          // Set up watchlist membership while the maintainer runs freely.
+          // Any stale run before the modifier is in place is harmless — the
+          // retry below filters by run_id and checks for the watchlist modifier.
           await maintainerScenario.setEntityWatchlists({
             testEntity: idpUser,
             watchlistIds: [watchlistId],
@@ -562,7 +561,7 @@ export default ({ getService }: FtrProviderContext): void => {
             | undefined;
           expect(entityDoc?.entity?.attributes?.watchlists ?? []).to.contain(watchlistId);
 
-          await maintainerRoutes.startMaintainer('risk-score');
+          // Watchlist confirmed in entity store — trigger a fresh run.
           await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
           await retry.waitForWithTimeout(
             `risk score with watchlist modifier for ${idpUser.expectedEuid}`,

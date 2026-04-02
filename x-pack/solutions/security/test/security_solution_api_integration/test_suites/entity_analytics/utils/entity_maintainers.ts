@@ -145,27 +145,37 @@ export const waitForMaintainerRun = async ({
   }
 
   let requiredNewRuns = minRuns;
-
-  // Trigger a manual run so we don't have to wait for the scheduled interval.
-  // If the task is already running, wait for one extra completion to guarantee
-  // we observe a run that starts after this helper is called.
-  try {
-    await routes.runMaintainer(maintainerId);
-  } catch (error) {
-    if (isMaintainerAlreadyRunningError(error)) {
-      requiredNewRuns += 1;
-    }
-    // May fail if maintainer isn't ready yet; the scheduled run will cover it
-  }
+  let manualRunTriggered = false;
+  let alreadyRunningHandled = false;
 
   await retry.waitForWithTimeout(
     `Entity maintainer "${maintainerId}" to complete at least ${requiredNewRuns} new run(s) (baseline: ${baselineRuns})`,
     timeoutMs,
     async () => {
+      // Keep trying to trigger a manual run until the task accepts it.
+      // After stop/start a previous run may still be in-flight; when we
+      // see "already running" we need one extra completion but must keep
+      // retrying so we can trigger the additional run once the current
+      // one finishes.
+      if (!manualRunTriggered) {
+        try {
+          await routes.runMaintainer(maintainerId);
+          manualRunTriggered = true;
+        } catch (error) {
+          if (isMaintainerAlreadyRunningError(error)) {
+            if (!alreadyRunningHandled) {
+              requiredNewRuns += 1;
+              alreadyRunningHandled = true;
+            }
+          }
+        }
+      }
+
       const response = await routes.getMaintainers(200, [maintainerId]);
       const maintainer = response.body.maintainers.find(
         (m: { id: string; runs: number }) => m.id === maintainerId
       );
+
       return maintainer !== undefined && maintainer.runs >= baselineRuns + requiredNewRuns;
     }
   );

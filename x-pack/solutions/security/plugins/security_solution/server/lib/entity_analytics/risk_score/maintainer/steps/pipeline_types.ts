@@ -45,8 +45,13 @@ export interface ScoredEntityPage {
   entities: Map<string, RiskScoreModifierEntity>;
 }
 
-/** Minimal summary fields returned by scorer modules. */
-export interface ScoringSummaryBase {
+/** Common summary fields returned by scorer modules. */
+export interface StepResult {
   pagesProcessed: number;
-  scores: EntityRiskScoreRecord[];
+  scoresWritten: number;
+}
+
+/** Phase 2 scoring summary with optional skip reason. */
+export interface ResolutionStepResult extends StepResult {
+  skippedReason?: 'lookup_empty';
 }
