@@ -670,7 +670,6 @@ export default ({ getService }: FtrProviderContext): void => {
           expect(hostScores.every((s) => (s.calculated_score_norm ?? 0) > 0)).to.be(true);
         });
       });
-
     });
   });
 };
