@@ -19,19 +19,44 @@ import type {
 } from '../../../common/components/visualization_actions/types';
 import type { Query } from '@kbn/es-query';
 import { EntityType } from '../../../../common/search_strategy';
+import type { RiskScoreState } from '../../api/hooks/use_risk_score';
 
 const mockVisualizationEmbeddable = jest
   .fn()
   .mockReturnValue(<div data-test-subj="visualization-embeddable" />);
+const mockUseRiskScore = jest.fn();
+const mockUseResolutionGroup = jest.fn();
 
 jest.mock('../../../common/components/visualization_actions/visualization_embeddable', () => ({
   VisualizationEmbeddable: (props: VisualizationEmbeddableProps) =>
     mockVisualizationEmbeddable(props),
 }));
 
+jest.mock('../../api/hooks/use_risk_score', () => {
+  const actual = jest.requireActual('../../api/hooks/use_risk_score');
+  return {
+    ...actual,
+    useRiskScore: (params: unknown) => mockUseRiskScore(params),
+  };
+});
+
+jest.mock('../entity_resolution/hooks/use_resolution_group', () => ({
+  useResolutionGroup: (entityId: string) => mockUseResolutionGroup(entityId),
+}));
+
 describe('FlyoutRiskSummary', () => {
   beforeEach(() => {
     mockVisualizationEmbeddable.mockClear();
+    mockUseResolutionGroup.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    });
+    mockUseRiskScore.mockReturnValue({
+      ...(mockHostRiskScoreState as RiskScoreState<EntityType.host>),
+      data: undefined,
+    });
   });
 
   it('renders risk summary table with context and totals', () => {
@@ -259,6 +284,50 @@ describe('FlyoutRiskSummary', () => {
     expect(firstColumn).toEqual(
       expect.objectContaining({
         sourceField: 'user.risk.calculated_score_norm',
+      })
+    );
+  });
+
+  it('renders resolution risk score block when resolution score exists', () => {
+    mockUseResolutionGroup.mockReturnValue({
+      data: {
+        target: {
+          entity: {
+            id: 'host:target-entity',
+          },
+        },
+        aliases: [],
+        group_size: 1,
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    });
+    mockUseRiskScore.mockReturnValue({
+      ...(mockHostRiskScoreState as RiskScoreState<EntityType.host>),
+      data: mockHostRiskScoreState.data,
+      loading: false,
+    });
+
+    const { getByTestId, getAllByTestId } = render(
+      <TestProviders>
+        <FlyoutRiskSummary
+          riskScoreData={mockHostRiskScoreState}
+          queryId={'testQuery'}
+          openDetailsPanel={() => {}}
+          recalculatingScore={false}
+          isPreviewMode={false}
+          entityType={EntityType.host}
+          entityId="host:alias-entity"
+        />
+      </TestProviders>
+    );
+
+    expect(getByTestId('resolution-risk-summary-table')).toBeInTheDocument();
+    expect(getAllByTestId('visualization-embeddable')).toHaveLength(2);
+    expect(mockUseRiskScore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filterQuery: 'entity.id: "host:target-entity" AND score_type: "resolution"',
       })
     );
   });

@@ -26,18 +26,20 @@ interface GetRiskScoreSummaryAttributesProps {
   severity?: RiskSeverity;
   riskEntity: EntityType;
   entityId?: string;
+  dataSource?: 'auto' | 'entity_store' | 'risk_index';
 }
 
 export const getRiskScoreSummaryAttributes: (
   props: GetRiskScoreSummaryAttributesProps
-) => LensAttributes = ({ spaceId, query, severity, riskEntity, entityId }) => {
+) => LensAttributes = ({ spaceId, query, severity, riskEntity, entityId, dataSource = 'auto' }) => {
   const layerIds = [`layer-id1-${uuidv4()}`, `layer-id2-${uuidv4()}`];
   const internalReferenceId = `internal-reference-id-${uuidv4()}`;
   const columnIds = [`column-id1-${uuidv4()}`, `column-id2-${uuidv4()}`, `column-id3-${uuidv4()}`];
-  const sourceField = entityId
+  const useEntityStoreSource = dataSource === 'entity_store' || (dataSource === 'auto' && !!entityId);
+  const sourceField = useEntityStoreSource
     ? ENTITY_STORE_V2_RISK_SCORE_FIELD
     : EntityTypeToScoreField[riskEntity];
-  const dataViewIndexPattern = entityId
+  const dataViewIndexPattern = useEntityStoreSource
     ? getEntityStoreV2IndexPattern(spaceId)
     : `risk-score.risk-score-${spaceId ?? 'default'}`;
   return {

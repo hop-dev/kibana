@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import React from 'react';
 import { TestProviders } from '../../../../../common/mock';
 import { times } from 'lodash/fp';
@@ -33,7 +33,13 @@ jest.mock('@kbn/kibana-react-plugin/public', () => {
 const mockUseRiskScore = jest.fn().mockReturnValue({ loading: false, data: [] });
 
 jest.mock('../../../../api/hooks/use_risk_score', () => ({
-  useRiskScore: () => mockUseRiskScore(),
+  useRiskScore: (params: unknown) => mockUseRiskScore(params),
+}));
+
+const mockUseResolutionGroup = jest.fn().mockReturnValue({ data: undefined });
+
+jest.mock('../../../entity_resolution/hooks/use_resolution_group', () => ({
+  useResolutionGroup: (entityId: string) => mockUseResolutionGroup(entityId),
 }));
 
 const riskScore = {
@@ -67,6 +73,20 @@ const riskScoreWithAssetCriticalityContribution = (contribution: number) => {
 describe('RiskInputsTab', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseResolutionGroup.mockReturnValue({ data: undefined });
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: string }) =>
+      params?.filterQuery?.includes('score_type: "resolution"')
+        ? {
+            loading: false,
+            error: false,
+            data: [],
+          }
+        : {
+            loading: false,
+            error: false,
+            data: [riskScore],
+          }
+    );
   });
 
   it('renders', () => {
@@ -245,5 +265,86 @@ describe('RiskInputsTab', () => {
     );
 
     expect(queryByTestId('risk-input-extra-alerts-message')).toBeInTheDocument();
+  });
+
+  it('does not show score view toggle without resolution score', () => {
+    const { queryByTestId } = render(
+      <TestProviders>
+        <RiskInputsTab
+          entityType={EntityType.user}
+          entityName="elastic"
+          scopeId={'scopeId'}
+          entityId="user:elastic"
+        />
+      </TestProviders>
+    );
+
+    expect(queryByTestId('risk-input-score-view-toggle')).not.toBeInTheDocument();
+  });
+
+  it('shows score view toggle and switches to resolution contributions', () => {
+    const resolutionRiskScore = {
+      '@timestamp': '2021-08-19T16:00:00.000Z',
+      user: {
+        name: 'elastic',
+        risk: {
+          ...riskScore.user.risk,
+          category_1_count: 2,
+          category_1_score: 11,
+          related_entities: [{ entity_id: 'user:entity-1', relationship_type: 'resolved_to' }],
+          inputs: [
+            {
+              ...alertInputDataMock.input,
+              id: 'resolution-alert-id',
+            },
+          ],
+        },
+      },
+    };
+
+    mockUseResolutionGroup.mockReturnValue({
+      data: {
+        target: { entity: { id: 'user:elastic' } },
+        aliases: [],
+        group_size: 1,
+      },
+    });
+    mockUseRiskScore.mockImplementation((params?: { filterQuery?: string }) =>
+      params?.filterQuery?.includes('score_type: "resolution"')
+        ? {
+            loading: false,
+            error: false,
+            data: [resolutionRiskScore],
+          }
+        : {
+            loading: false,
+            error: false,
+            data: [riskScore],
+          }
+    );
+
+    mockUseRiskContributingAlerts.mockReturnValue({
+      loading: false,
+      error: false,
+      data: [alertInputDataMock],
+    });
+
+    const { getByTestId, getByText } = render(
+      <TestProviders>
+        <RiskInputsTab
+          entityType={EntityType.user}
+          entityName="elastic"
+          scopeId={'scopeId'}
+          entityId="user:elastic"
+        />
+      </TestProviders>
+    );
+
+    expect(getByTestId('risk-input-score-view-toggle')).toBeInTheDocument();
+
+    fireEvent.click(getByText('Resolution group risk score'));
+
+    expect(getByTestId('risk-input-related-entities-callout')).toBeInTheDocument();
+    expect(getByTestId('risk-input-related-entities-callout')).toHaveTextContent('user:entity-1');
   });
 });

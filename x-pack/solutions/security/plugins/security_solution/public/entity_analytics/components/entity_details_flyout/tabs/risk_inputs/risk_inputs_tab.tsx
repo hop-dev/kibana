@@ -7,7 +7,14 @@
 
 import { i18n } from '@kbn/i18n';
 import type { EuiBasicTableColumn } from '@elastic/eui';
-import { EuiButtonIcon, EuiCallOut, EuiInMemoryTable, EuiSpacer, EuiTitle } from '@elastic/eui';
+import {
+  EuiButtonGroup,
+  EuiButtonIcon,
+  EuiCallOut,
+  EuiInMemoryTable,
+  EuiSpacer,
+  EuiTitle,
+} from '@elastic/eui';
 import { useExpandableFlyoutApi } from '@kbn/expandable-flyout';
 import type { ReactNode } from 'react';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -35,11 +42,14 @@ import { AssetCriticalityBadge } from '../../../asset_criticality';
 import { RiskInputsUtilityBar } from '../../components/utility_bar';
 import { ActionColumn } from '../../components/action_column';
 import { AskAiAssistant } from './ask_ai_assistant';
+import { useResolutionGroup } from '../../../entity_resolution/hooks/use_resolution_group';
+import { getEntityId } from '../../../entity_resolution/helpers';
 
 export interface RiskInputsTabProps<T extends EntityType> {
   entityType: T;
   entityName: string;
   scopeId: string;
+  entityId?: string;
 }
 
 const FIRST_RECORD_PAGINATION = {
@@ -54,9 +64,11 @@ export const RiskInputsTab = <T extends EntityType>({
   entityType,
   entityName,
   scopeId,
+  entityId,
 }: RiskInputsTabProps<T>) => {
   const { setQuery, deleteQuery } = useGlobalTime();
   const [selectedItems, setSelectedItems] = useState<InputAlert[]>([]);
+  const [selectedView, setSelectedView] = useState<'entity' | 'resolution'>('entity');
   const { openPreviewPanel } = useExpandableFlyoutApi();
 
   const openAlertPreview = useCallback(
@@ -92,18 +104,55 @@ export const RiskInputsTab = <T extends EntityType>({
     skip: nameFilterQuery === undefined,
   });
 
+  const { data: resolutionGroup } = useResolutionGroup(entityId ?? '', {
+    enabled: Boolean(entityId),
+  });
+  const resolutionTargetEntityId = useMemo(
+    () => (resolutionGroup?.target ? getEntityId(resolutionGroup.target) : undefined),
+    [resolutionGroup?.target]
+  );
+  const resolutionFilterQuery = useMemo(
+    () =>
+      resolutionTargetEntityId
+        ? `entity.id: "${resolutionTargetEntityId}" AND score_type: "resolution"`
+        : undefined,
+    [resolutionTargetEntityId]
+  );
+  const {
+    data: resolutionRiskScoreData,
+    loading: loadingResolutionRiskScore,
+    inspect: inspectResolutionRiskScore,
+    refetch: refetchResolutionRiskScore,
+  } = useRiskScore<T>({
+    riskEntity: entityType,
+    filterQuery: resolutionFilterQuery,
+    onlyLatest: false,
+    pagination: FIRST_RECORD_PAGINATION,
+    skip: !resolutionTargetEntityId,
+  });
+
+  const entityRiskScore = riskScoreData && riskScoreData.length > 0 ? riskScoreData[0] : undefined;
+  const resolutionRiskScore =
+    resolutionRiskScoreData && resolutionRiskScoreData.length > 0
+      ? resolutionRiskScoreData[0]
+      : undefined;
+  const hasResolutionScore = Boolean(resolutionRiskScore);
+  const isResolutionView = selectedView === 'resolution' && hasResolutionScore;
+  const activeRiskScore = isResolutionView ? resolutionRiskScore : entityRiskScore;
+  const activeInspectRiskScore = isResolutionView ? inspectResolutionRiskScore : inspectRiskScore;
+  const activeRiskScoreLoading = isResolutionView ? loadingResolutionRiskScore : loadingRiskScore;
+  const activeRiskScoreRefetch = isResolutionView ? refetchResolutionRiskScore : refetch;
+
   useQueryInspector({
     deleteQuery,
-    inspect: inspectRiskScore,
-    loading: loadingRiskScore,
+    inspect: activeInspectRiskScore,
+    loading: activeRiskScoreLoading,
     queryId: RISK_INPUTS_TAB_QUERY_ID,
-    refetch,
+    refetch: activeRiskScoreRefetch,
     setQuery,
   });
 
-  const riskScore = riskScoreData && riskScoreData.length > 0 ? riskScoreData[0] : undefined;
-
-  const alerts = useRiskContributingAlerts<T>({ riskScore, entityType });
+  const alerts = useRiskContributingAlerts<T>({ riskScore: activeRiskScore, entityType });
 
   const euiTableSelectionProps = useMemo(
     () => ({
@@ -215,6 +264,56 @@ export const RiskInputsTab = <T extends EntityType>({
 
   const riskInputsAlertSection = (
     <>
+      {hasResolutionScore && (
+        <>
+          <EuiButtonGroup
+            legend={i18n.translate(
+              'xpack.securitySolution.flyout.entityDetails.riskInputs.scoreViewLegend',
+              { defaultMessage: 'Risk score view' }
+            )}
+            buttonSize="compressed"
+            options={[
+              {
+                id: 'entity',
+                label: i18n.translate(
+                  'xpack.securitySolution.flyout.entityDetails.riskInputs.entityScoreViewLabel',
+                  { defaultMessage: 'Entity risk score' }
+                ),
+              },
+              {
+                id: 'resolution',
+                label: i18n.translate(
+                  'xpack.securitySolution.flyout.entityDetails.riskInputs.resolutionScoreViewLabel',
+                  { defaultMessage: 'Resolution group risk score' }
+                ),
+              },
+            ]}
+            idSelected={selectedView}
+            onChange={(id) => setSelectedView(id as 'entity' | 'resolution')}
+            data-test-subj="risk-input-score-view-toggle"
+          />
+          <EuiSpacer size="s" />
+        </>
+      )}
+      {isResolutionView && (activeRiskScore?.[entityType].risk.related_entities?.length ?? 0) > 0 && (
+        <>
+          <EuiCallOut
+            size="s"
+            iconType="users"
+            title={i18n.translate(
+              'xpack.securitySolution.flyout.entityDetails.riskInputs.relatedEntitiesTitle',
+              { defaultMessage: 'Contributing entities' }
+            )}
+            data-test-subj="risk-input-related-entities-callout"
+          >
+            {activeRiskScore?.[entityType].risk.related_entities
+              ?.map((relatedEntity) => relatedEntity.entity_id)
+              .filter((relatedEntityId): relatedEntityId is string => Boolean(relatedEntityId))
+              .join(', ')}
+          </EuiCallOut>
+          <EuiSpacer size="s" />
+        </>
+      )}
       <EuiTitle size="xs" data-test-subj="risk-input-alert-title">
         <h3>
           <FormattedMessage
@@ -227,7 +326,7 @@ export const RiskInputsTab = <T extends EntityType>({
       <RiskInputsUtilityBar riskInputs={selectedItems} />
       <EuiInMemoryTable
         compressed
-        loading={loadingRiskScore || alerts.loading}
+        loading={activeRiskScoreLoading || alerts.loading}
         items={alerts.data || []}
         columns={inputColumns}
         sorting
@@ -241,15 +340,15 @@ export const RiskInputsTab = <T extends EntityType>({
         )}
       />
       <EuiSpacer size="s" />
-      <ExtraAlertsMessage<T> riskScore={riskScore} alerts={alerts} entityType={entityType} />
+      <ExtraAlertsMessage<T> riskScore={activeRiskScore} alerts={alerts} entityType={entityType} />
     </>
   );
 
   return (
     <>
       <ContextsSection<T>
-        loading={loadingRiskScore}
-        riskScore={riskScore}
+        loading={activeRiskScoreLoading}
+        riskScore={activeRiskScore}
         entityType={entityType}
       />
       <EuiSpacer size="m" />

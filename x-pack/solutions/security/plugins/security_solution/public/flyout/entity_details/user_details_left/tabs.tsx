@@ -49,6 +49,7 @@ export const useTabs = (
           entityName: name,
           entityType: EntityType.user,
           scopeId,
+          entityId: entityStoreEntityId,
         })
       );
     }

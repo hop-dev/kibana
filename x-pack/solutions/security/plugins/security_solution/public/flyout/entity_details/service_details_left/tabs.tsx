@@ -24,6 +24,7 @@ export const useTabs = (
         entityName: name,
         entityType: EntityType.service,
         scopeId,
+        entityId: entityStoreEntityId,
       }),
     ];
 

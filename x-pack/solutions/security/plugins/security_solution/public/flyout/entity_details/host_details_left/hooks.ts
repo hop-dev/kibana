@@ -60,7 +60,14 @@ export const useTabs = ({
   return useMemo(() => {
     const isRiskScoreTabAvailable = isRiskScoreExist && hostName;
     const riskScoreTab = isRiskScoreTabAvailable
-      ? [getRiskInputTab({ entityName: hostName ?? '', entityType: EntityType.host, scopeId })]
+      ? [
+          getRiskInputTab({
+            entityName: hostName ?? '',
+            entityType: EntityType.host,
+            scopeId,
+            entityId: entityStoreEntityId,
+          }),
+        ]
       : [];
 
     // Determine if the Insights tab should be included
