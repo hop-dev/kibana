@@ -44,7 +44,8 @@ export const getRiskScoreSummaryAttributes: (
   const layerIds = [`layer-id1-${uuidv4()}`, `layer-id2-${uuidv4()}`];
   const internalReferenceId = `internal-reference-id-${uuidv4()}`;
   const columnIds = [`column-id1-${uuidv4()}`, `column-id2-${uuidv4()}`, `column-id3-${uuidv4()}`];
-  const useEntityStoreSource = dataSource === 'entity_store' || (dataSource === 'auto' && !!entityId);
+  const useEntityStoreSource =
+    dataSource === 'entity_store' || (dataSource === 'auto' && !!entityId);
   const sourceField = useEntityStoreSource
     ? ENTITY_STORE_V2_RISK_SCORE_FIELD
     : EntityTypeToScoreField[riskEntity];
