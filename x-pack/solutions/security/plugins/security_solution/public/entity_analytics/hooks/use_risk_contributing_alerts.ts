@@ -80,7 +80,7 @@ export const useRiskContributingAlerts = <T extends EntityType>({
     return {
       _id: input.id,
       input,
-      alert: (source || {}) as AlertData,
+      alert: (source || {}) as unknown as AlertData,
       rawSource: source || {},
     };
   });

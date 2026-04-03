@@ -39,6 +39,7 @@ import { PreferenceFormattedDate } from '../../../../../common/components/format
 import { useRiskScore } from '../../../../api/hooks/use_risk_score';
 import { useGetWatchlists } from '../../../../api/hooks/use_get_watchlists';
 import type { EntityRiskScore, EntityType } from '../../../../../../common/search_strategy';
+import type { ESQuery } from '../../../../../../common/typed_json';
 import { buildEntityNameFilter } from '../../../../../../common/search_strategy';
 import { AssetCriticalityBadge } from '../../../asset_criticality';
 import { RiskInputsUtilityBar } from '../../components/utility_bar';
@@ -118,14 +119,14 @@ export const RiskInputsTab = <T extends EntityType>({
   const resolutionFilterQuery = useMemo(
     () =>
       resolutionTargetEntityId
-        ? {
+        ? ({
             bool: {
               filter: [
                 buildEntityNameFilter(entityType, [resolutionTargetEntityId]),
                 { term: { [`${entityType}.risk.score_type`]: 'resolution' } },
               ],
             },
-          }
+          } as ESQuery)
         : undefined,
     [entityType, resolutionTargetEntityId]
   );
