@@ -54,7 +54,7 @@ export const entityMaintainerRouteHelpersFactory = (
 ) => {
   const getMaintainers = async (expectStatusCode: number = 200, ids?: string[]) => {
     let req = supertest.get(
-      routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_GET, namespace)
+      routeWithNamespace(ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_GET, namespace)
     );
     if (ids && ids.length > 0) {
       req = req.query({ ids });
@@ -70,7 +70,9 @@ export const entityMaintainerRouteHelpersFactory = (
 
     initMaintainers: async (expectStatusCode: number = 200) => {
       const response = await withHeaders(
-        supertest.post(routeWithNamespace(ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_INIT, namespace))
+        supertest.post(
+          routeWithNamespace(ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_INIT, namespace)
+        )
       )
         .send()
         .expect((res) => {
@@ -84,7 +86,7 @@ export const entityMaintainerRouteHelpersFactory = (
     },
 
     runMaintainer: async (id: string, expectStatusCode: number = 200) => {
-      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_RUN.replace('{id}', id);
+      const route = ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_RUN.replace('{id}', id);
       const response = await withHeaders(supertest.post(routeWithNamespace(route, namespace)))
         .send()
         .expect(expectStatusCode);
@@ -92,7 +94,7 @@ export const entityMaintainerRouteHelpersFactory = (
     },
 
     startMaintainer: async (id: string, expectStatusCode: number = 200) => {
-      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_START.replace('{id}', id);
+      const route = ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_START.replace('{id}', id);
       const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
         .send()
         .expect(expectStatusCode);
@@ -100,7 +102,7 @@ export const entityMaintainerRouteHelpersFactory = (
     },
 
     stopMaintainer: async (id: string, expectStatusCode: number = 200) => {
-      const route = ENTITY_STORE_ROUTES.ENTITY_MAINTAINERS_STOP.replace('{id}', id);
+      const route = ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_STOP.replace('{id}', id);
       const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))
         .send()
         .expect(expectStatusCode);
@@ -177,6 +179,28 @@ export const waitForMaintainerRun = async ({
       );
 
       return maintainer !== undefined && maintainer.runs >= baselineRuns + requiredNewRuns;
+    }
+  );
+
+  // runSoon (called above via runMaintainer) can cause the task manager to
+  // schedule an immediate follow-up run once the current one finishes.  If
+  // the caller stops the maintainer while that follow-up is still saving its
+  // state, a version_conflict_engine_exception wedges the task permanently.
+  // Wait for the runs count to stabilise across two consecutive polls so the
+  // task is idle before we hand control back.
+  let lastSeenRuns = -1;
+  await retry.waitForWithTimeout(
+    `Entity maintainer "${maintainerId}" to settle after run`,
+    30_000,
+    async () => {
+      const response = await routes.getMaintainers(200, [maintainerId]);
+      const maintainer = response.body.maintainers.find(
+        (m: { id: string; runs: number }) => m.id === maintainerId
+      );
+      const runs = maintainer?.runs ?? 0;
+      if (runs === lastSeenRuns) return true;
+      lastSeenRuns = runs;
+      return false;
     }
   );
 };
