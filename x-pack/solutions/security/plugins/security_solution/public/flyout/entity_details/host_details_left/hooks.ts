@@ -58,7 +58,7 @@ export const useTabs = ({
   entityStoreEntityId,
 }: HostDetailsPanelProps): LeftPanelTabsType => {
   return useMemo(() => {
-    const isRiskScoreTabAvailable = isRiskScoreExist && hostName;
+    const isRiskScoreTabAvailable = (isRiskScoreExist || entityStoreEntityId) && hostName;
     const riskScoreTab = isRiskScoreTabAvailable
       ? [
           getRiskInputTab({

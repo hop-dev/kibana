@@ -129,9 +129,10 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
   const isPrivmonModifierEnabled = useIsExperimentalFeatureEnabled(
     'enableRiskScorePrivmonModifier'
   );
+  const isWatchlistEnabled = useIsExperimentalFeatureEnabled('entityAnalyticsWatchlistEnabled');
   const rows = useMemo(
-    () => getItems(entityData, isPrivmonModifierEnabled),
-    [entityData, isPrivmonModifierEnabled]
+    () => getItems(entityData, isPrivmonModifierEnabled, isWatchlistEnabled),
+    [entityData, isPrivmonModifierEnabled, isWatchlistEnabled]
   );
 
   const onToggle = useCallback(
@@ -221,8 +222,8 @@ const FlyoutRiskSummaryComponent = <T extends EntityType>({
       : undefined;
   const resolutionEntityData = getEntityData<T>(entityType, resolutionRiskData);
   const resolutionRows = useMemo(
-    () => getItems(resolutionEntityData, isPrivmonModifierEnabled),
-    [resolutionEntityData, isPrivmonModifierEnabled]
+    () => getItems(resolutionEntityData, isPrivmonModifierEnabled, isWatchlistEnabled),
+    [resolutionEntityData, isPrivmonModifierEnabled, isWatchlistEnabled]
   );
   const showResolutionRiskSummary = Boolean(resolutionEntityData?.risk);
   const resolutionLensAttributes = useMemo(() => {

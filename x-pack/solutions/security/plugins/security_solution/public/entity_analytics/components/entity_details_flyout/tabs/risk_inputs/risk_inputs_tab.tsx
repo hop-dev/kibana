@@ -18,7 +18,7 @@ import {
 } from '@elastic/eui';
 import { useExpandableFlyoutApi } from '@kbn/expandable-flyout';
 import type { ReactNode } from 'react';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FormattedMessage } from '@kbn/i18n-react';
 import { ALERT_RULE_NAME } from '@kbn/rule-data-utils';
 import { get } from 'lodash/fp';
@@ -91,9 +91,18 @@ export const RiskInputsTab = <T extends EntityType>({
     [openPreviewPanel, scopeId]
   );
 
-  const nameFilterQuery = useMemo(() => {
-    return buildEntityNameFilter(entityType, [entityName]);
-  }, [entityName, entityType]);
+  const entityFilterQuery = useMemo(
+    () =>
+      entityId
+        ? ({
+            bool: {
+              filter: [{ term: { [`${entityType}.risk.id_value`]: entityId } }],
+              must_not: [{ term: { [`${entityType}.risk.score_type`]: 'resolution' } }],
+            },
+          } as ESQuery)
+        : buildEntityNameFilter(entityType, [entityName]),
+    [entityId, entityName, entityType]
+  );
 
   const {
     data: riskScoreData,
@@ -103,10 +112,10 @@ export const RiskInputsTab = <T extends EntityType>({
     refetch,
   } = useRiskScore<T>({
     riskEntity: entityType,
-    filterQuery: nameFilterQuery,
+    filterQuery: entityFilterQuery,
     onlyLatest: false,
     pagination: FIRST_RECORD_PAGINATION,
-    skip: nameFilterQuery === undefined,
+    skip: entityFilterQuery === undefined,
   });
 
   const { data: resolutionGroup } = useResolutionGroup(entityId ?? '', {
@@ -122,7 +131,7 @@ export const RiskInputsTab = <T extends EntityType>({
         ? ({
             bool: {
               filter: [
-                buildEntityNameFilter(entityType, [resolutionTargetEntityId]),
+                { term: { [`${entityType}.risk.id_value`]: resolutionTargetEntityId } },
                 { term: { [`${entityType}.risk.score_type`]: 'resolution' } },
               ],
             },
@@ -149,6 +158,13 @@ export const RiskInputsTab = <T extends EntityType>({
       ? resolutionRiskScoreData[0]
       : undefined;
   const hasResolutionScore = Boolean(resolutionRiskScore);
+
+  useEffect(() => {
+    if (!loadingRiskScore && !entityRiskScore && hasResolutionScore) {
+      setSelectedView('resolution');
+    }
+  }, [loadingRiskScore, entityRiskScore, hasResolutionScore]);
+
   const isResolutionView = selectedView === 'resolution' && hasResolutionScore;
   const activeRiskScore = isResolutionView ? resolutionRiskScore : entityRiskScore;
   const activeInspectRiskScore = isResolutionView ? inspectResolutionRiskScore : inspectRiskScore;

@@ -43,7 +43,7 @@ export const useTabs = (
     const entraManagedUser = managedUser[ManagedUserDatasetKey.ENTRA];
     const oktaManagedUser = managedUser[ManagedUserDatasetKey.OKTA];
 
-    if (isRiskScoreExist) {
+    if (isRiskScoreExist || entityStoreEntityId) {
       tabs.push(
         getRiskInputTab({
           entityName: name,
