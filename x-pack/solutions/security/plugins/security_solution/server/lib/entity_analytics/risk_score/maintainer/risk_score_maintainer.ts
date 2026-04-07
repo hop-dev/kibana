@@ -436,7 +436,7 @@ const executeEntityTypeRun = async ({
   await runContext.esClient.indices.refresh({ index: riskScoreAlias });
 
   // Stage 3: reset stale positive scores not touched in this run.
-  if (runConfig.configuration.enableResetToZero) {
+  if (runConfig.configuration.enableResetToZero !== false) {
     const resetStage = runTelemetry.startResetStage();
     try {
       const resetResult = await resetToZero({
