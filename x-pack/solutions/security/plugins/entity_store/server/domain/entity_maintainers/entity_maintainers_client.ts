@@ -139,6 +139,26 @@ export class EntityMaintainersClient {
     }
   }
 
+  public async runSync(id: string, request: KibanaRequest): Promise<void> {
+    try {
+      if (!entityMaintainersRegistry.hasId(id)) {
+        this.logger.debug(`Maintainer not found, skipping sync run: ${id}`);
+        return;
+      }
+
+      const syncRunner = entityMaintainersRegistry.getSyncRunner(id);
+      if (!syncRunner) {
+        this.logger.debug(`No sync runner registered, skipping sync run: ${id}`);
+        return;
+      }
+
+      await syncRunner(request, this.namespace);
+    } catch (error) {
+      this.logger.error(`Failed to run entity maintainer task synchronously: ${id}`, { error });
+      throw error;
+    }
+  }
+
   public async removeAll(): Promise<void> {
     this.logger.debug('Removing all entity maintainer tasks');
     try {

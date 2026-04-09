@@ -5,10 +5,17 @@
  * 2.0.
  */
 
+import type { KibanaRequest } from '@kbn/core/server';
 import type { EntityMaintainerRegistryData, EntityMaintainerTaskEntry } from './types';
+
+export type EntityMaintainerSyncRunner = (
+  request: KibanaRequest,
+  namespace: string
+) => Promise<void>;
 
 export class EntityMaintainersRegistry {
   private readonly tasks = new Map<string, EntityMaintainerRegistryData>();
+  private readonly syncRunners = new Map<string, EntityMaintainerSyncRunner>();
 
   hasId(id: string): boolean {
     return this.tasks.has(id);
@@ -22,12 +29,19 @@ export class EntityMaintainersRegistry {
     return { id, ...config };
   }
 
-  register({ id, interval, description, minLicense }: EntityMaintainerTaskEntry): void {
-    this.tasks.set(id, {
-      interval,
-      description,
-      minLicense,
-    });
+  register({
+    id,
+    interval,
+    description,
+    minLicense,
+    syncRunner,
+  }: EntityMaintainerTaskEntry & { syncRunner: EntityMaintainerSyncRunner }): void {
+    this.tasks.set(id, { interval, description, minLicense });
+    this.syncRunners.set(id, syncRunner);
+  }
+
+  getSyncRunner(id: string): EntityMaintainerSyncRunner | undefined {
+    return this.syncRunners.get(id);
   }
 
   getAll(): EntityMaintainerTaskEntry[] {

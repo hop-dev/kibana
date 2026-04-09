@@ -94,11 +94,102 @@ export function registerEntityMaintainerTask({
     .getStartServices()
     .then(
       ([coreStart, plugins]: [CoreStart, EntityStoreStartPlugins, EntityStoreStartContract]) => {
+        const executeMaintainerRun = async ({
+          currentStatus,
+          request,
+          taskIdStr,
+          taskAbortController,
+          namespace,
+        }: {
+          currentStatus: Partial<EntityMaintainerStatus>;
+          request: KibanaRequest;
+          taskIdStr: string;
+          taskAbortController?: AbortController;
+          namespace?: string;
+        }): Promise<{ state: EntityMaintainerStatus } | null> => {
+          if (currentStatus.taskStatus === EntityMaintainerTaskStatus.STOPPED) {
+            logger.debug(`Entity maintainer task is stopped, skipping run`);
+            return null;
+          }
+
+          const license = await plugins.licensing.getLicense();
+          const checkResult = license.check('entityStore', effectiveMinLicense);
+          if (checkResult.state !== ENTITY_MAINTAINER_LICENSE_CHECK_VALID) {
+            logger.debug(`Entity maintainer "${id}" skipped: insufficient or inactive license`);
+            return null;
+          }
+
+          const currentStatusNamespace =
+            typeof currentStatus?.namespace === 'string' ? currentStatus.namespace : undefined;
+
+          const maintainerStatus: EntityMaintainerStatus = {
+            metadata: {
+              runs: currentStatus?.metadata?.runs || 0,
+              lastSuccessTimestamp: currentStatus?.metadata?.lastSuccessTimestamp || null,
+              lastErrorTimestamp: currentStatus?.metadata?.lastErrorTimestamp || null,
+              namespace:
+                namespace ?? currentStatusNamespace ?? currentStatus?.metadata?.namespace ?? '',
+            },
+            state: currentStatus?.metadata?.runs
+              ? currentStatus.state ?? initialState
+              : initialState,
+            taskStatus: currentStatus?.taskStatus ?? EntityMaintainerTaskStatus.STARTED,
+          };
+
+          const esClient = coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          const crudClient = new CRUDClient({
+            logger,
+            esClient,
+            namespace: maintainerStatus.metadata.namespace,
+          });
+          const taskLogger = logger.get(taskIdStr);
+          const abortController = taskAbortController ?? new AbortController();
+
+          return await wrapTaskRun({
+            spanName: 'entityStore.task.entity_maintainer.run',
+            namespace: maintainerStatus.metadata.namespace,
+            attributes: {
+              'entity_store.task.id': taskIdStr,
+              'entity_store.task.type': type,
+              'entity_store.entity_maintainer.id': id,
+            },
+            run: () =>
+              runEntityMaintainerTask({
+                currentStatus: maintainerStatus,
+                fakeRequest: request,
+                logger: taskLogger,
+                setup,
+                run,
+                abortController,
+                esClient,
+                crudClient,
+                id,
+                analytics,
+              }),
+          });
+        };
+
         entityMaintainersRegistry.register({
           id,
           interval,
           description,
           minLicense: effectiveMinLicense,
+          syncRunner: async (request, namespace) => {
+            const taskId = getTaskId(id, namespace);
+            const task = await plugins.taskManager.get(taskId);
+            const currentStatus = task.state as Partial<EntityMaintainerStatus>;
+
+            const result = await executeMaintainerRun({
+              currentStatus,
+              request,
+              taskIdStr: taskId,
+              namespace,
+            });
+
+            if (result) {
+              await plugins.taskManager.bulkUpdateState([taskId], () => result.state, { request });
+            }
+          },
         });
 
         taskManager.registerTaskDefinitions({
@@ -111,71 +202,17 @@ export function registerEntityMaintainerTask({
 
                 if (!fakeRequest) {
                   logger.error(`No fake request found, skipping run`);
-
-                  return {
-                    state: currentStatus,
-                  };
+                  return { state: currentStatus };
                 }
 
-                if (currentStatus.taskStatus === EntityMaintainerTaskStatus.STOPPED) {
-                  logger.debug(`Entity maintainer task is stopped, skipping run`);
-                  return {
-                    state: currentStatus,
-                  };
-                }
-
-                const license = await plugins.licensing.getLicense();
-                const checkResult = license.check('entityStore', effectiveMinLicense);
-                if (checkResult.state !== ENTITY_MAINTAINER_LICENSE_CHECK_VALID) {
-                  logger.debug(
-                    `Entity maintainer "${id}" skipped: insufficient or inactive license`
-                  );
-                  return {
-                    state: currentStatus,
-                  };
-                }
-
-                const maintainerStatus: EntityMaintainerStatus = {
-                  metadata: {
-                    runs: currentStatus?.metadata?.runs || 0,
-                    lastSuccessTimestamp: currentStatus?.metadata?.lastSuccessTimestamp || null,
-                    lastErrorTimestamp: currentStatus?.metadata?.lastErrorTimestamp || null,
-                    namespace: currentStatus?.namespace || currentStatus?.metadata?.namespace,
-                  },
-                  state: currentStatus?.metadata?.runs ? currentStatus.state : initialState,
-                  taskStatus: currentStatus?.taskStatus ?? EntityMaintainerTaskStatus.STARTED,
-                };
-
-                const esClient = coreStart.elasticsearch.client.asScoped(fakeRequest).asCurrentUser;
-                const crudClient = new CRUDClient({
-                  logger,
-                  esClient,
-                  namespace: maintainerStatus.metadata.namespace,
+                const result = await executeMaintainerRun({
+                  currentStatus,
+                  request: fakeRequest,
+                  taskIdStr: taskInstance.id,
+                  taskAbortController: abortController,
                 });
-                const taskLogger = logger.get(taskInstance.id);
 
-                return await wrapTaskRun({
-                  spanName: 'entityStore.task.entity_maintainer.run',
-                  namespace: currentStatus?.namespace || currentStatus?.metadata?.namespace || '',
-                  attributes: {
-                    'entity_store.task.id': taskInstance.id,
-                    'entity_store.task.type': type,
-                    'entity_store.entity_maintainer.id': id,
-                  },
-                  run: () =>
-                    runEntityMaintainerTask({
-                      currentStatus: maintainerStatus,
-                      fakeRequest,
-                      logger: taskLogger,
-                      setup,
-                      run,
-                      abortController,
-                      esClient,
-                      crudClient,
-                      id,
-                      analytics,
-                    }),
-                });
+                return result ?? { state: currentStatus };
               },
             }),
           },
@@ -191,7 +228,7 @@ export function registerEntityMaintainerTask({
   });
 }
 
-async function runEntityMaintainerTask({
+export async function runEntityMaintainerTask({
   currentStatus,
   fakeRequest,
   logger,

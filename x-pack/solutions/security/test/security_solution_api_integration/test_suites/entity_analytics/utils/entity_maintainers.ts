@@ -93,6 +93,17 @@ export const entityMaintainerRouteHelpersFactory = (
       return response;
     },
 
+    runMaintainerSync: async (id: string, expectStatusCode: number = 200) => {
+      const route = ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_RUN.replace('{id}', id);
+      const response = await withHeaders(
+        supertest.post(routeWithNamespace(route, namespace)).query({ sync: 'true' })
+      )
+        .timeout(10 * 60 * 1000)
+        .send()
+        .expect(expectStatusCode);
+      return response;
+    },
+
     startMaintainer: async (id: string, expectStatusCode: number = 200) => {
       const route = ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_START.replace('{id}', id);
       const response = await withHeaders(supertest.put(routeWithNamespace(route, namespace)))

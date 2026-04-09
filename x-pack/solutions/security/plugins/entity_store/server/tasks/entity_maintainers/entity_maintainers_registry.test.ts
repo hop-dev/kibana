@@ -9,9 +9,11 @@ import { EntityMaintainersRegistry } from './entity_maintainers_registry';
 
 describe('EntityMaintainersRegistry', () => {
   let registry: EntityMaintainersRegistry;
+  const syncRunner = jest.fn(async () => {});
 
   beforeEach(() => {
     registry = new EntityMaintainersRegistry();
+    syncRunner.mockClear();
   });
 
   describe('getAll', () => {
@@ -22,7 +24,7 @@ describe('EntityMaintainersRegistry', () => {
 
   describe('register', () => {
     it('should add an entry and getAll returns it', () => {
-      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic' });
+      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic', syncRunner });
       expect(registry.getAll()).toEqual([
         {
           id: 'maintainer-a',
@@ -34,8 +36,8 @@ describe('EntityMaintainersRegistry', () => {
     });
 
     it('should add multiple entries and getAll returns all in map order', () => {
-      registry.register({ id: 'maintainer-a', interval: '1m', minLicense: 'basic' });
-      registry.register({ id: 'maintainer-b', interval: '5m', minLicense: 'basic' });
+      registry.register({ id: 'maintainer-a', interval: '1m', minLicense: 'basic', syncRunner });
+      registry.register({ id: 'maintainer-b', interval: '5m', minLicense: 'basic', syncRunner });
       expect(registry.getAll()).toEqual([
         {
           id: 'maintainer-a',
@@ -53,8 +55,8 @@ describe('EntityMaintainersRegistry', () => {
     });
 
     it('should overwrite entry when register is called with same id', () => {
-      registry.register({ id: 'maintainer-a', interval: '1m', minLicense: 'basic' });
-      registry.register({ id: 'maintainer-a', interval: '10m', minLicense: 'gold' });
+      registry.register({ id: 'maintainer-a', interval: '1m', minLicense: 'basic', syncRunner });
+      registry.register({ id: 'maintainer-a', interval: '10m', minLicense: 'gold', syncRunner });
       expect(registry.getAll()).toEqual([
         {
           id: 'maintainer-a',
@@ -70,6 +72,7 @@ describe('EntityMaintainersRegistry', () => {
         interval: '5m',
         description: 'Maintains entity index',
         minLicense: 'platinum',
+        syncRunner,
       });
       expect(registry.get('maintainer-a')).toEqual({
         id: 'maintainer-a',
@@ -86,7 +89,7 @@ describe('EntityMaintainersRegistry', () => {
     });
 
     it('should return the entry when id was registered', () => {
-      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic' });
+      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic', syncRunner });
       expect(registry.get('maintainer-a')).toEqual({
         id: 'maintainer-a',
         interval: '5m',
@@ -102,12 +105,12 @@ describe('EntityMaintainersRegistry', () => {
     });
 
     it('should return true when id was registered', () => {
-      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic' });
+      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic', syncRunner });
       expect(registry.hasId('maintainer-a')).toBe(true);
     });
 
     it('should return false for different id', () => {
-      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic' });
+      registry.register({ id: 'maintainer-a', interval: '5m', minLicense: 'basic', syncRunner });
       expect(registry.hasId('maintainer-b')).toBe(false);
     });
   });
