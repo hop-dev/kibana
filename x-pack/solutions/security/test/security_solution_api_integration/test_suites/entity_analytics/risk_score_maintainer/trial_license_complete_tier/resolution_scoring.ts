@@ -14,7 +14,6 @@ import {
   normalizeScores,
   EntityStoreUtils,
   entityMaintainerRouteHelpersFactory,
-  waitForMaintainerRun,
   cleanUpRiskScoreMaintainer,
   watchlistRouteHelpersFactory,
   cleanUpWatchlists,
@@ -43,8 +42,7 @@ export default ({ getService }: FtrProviderContext): void => {
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
   const entityStoreIndex = '.entities.v2.latest.security_default';
 
-  // Failing: See https://github.com/elastic/kibana/issues/261113
-  describe.skip('@ess @serverless @serverlessQA Risk Score Maintainer Resolution Scoring', function () {
+  describe('@ess @serverless @serverlessQA Risk Score Maintainer Resolution Scoring', function () {
     this.tags(['esGate']);
 
     context('with test log data', () => {
@@ -145,7 +143,7 @@ export default ({ getService }: FtrProviderContext): void => {
         await waitForResolutionRelationship(aliasUser.expectedEuid, targetUser.expectedEuid);
 
         await maintainerRoutes.startMaintainer('risk-score');
-        await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
+        await maintainerRoutes.runMaintainerSync('risk-score');
 
         let allScores: ReturnType<typeof normalizeScores> = [];
         await retry.waitForWithTimeout(
@@ -287,7 +285,7 @@ export default ({ getService }: FtrProviderContext): void => {
         await waitForResolutionRelationship(alias2.expectedEuid, target.expectedEuid);
 
         await maintainerRoutes.startMaintainer('risk-score');
-        await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
+        await maintainerRoutes.runMaintainerSync('risk-score');
 
         let allScores: ReturnType<typeof normalizeScores> = [];
         await retry.waitForWithTimeout(
@@ -483,7 +481,7 @@ export default ({ getService }: FtrProviderContext): void => {
 
           // Resume the maintainer and trigger a fresh run
           await maintainerRoutes.startMaintainer('risk-score');
-          await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
+          await maintainerRoutes.runMaintainerSync('risk-score');
 
           // Wait for the resolution score to include both modifier types
           let allScores: ReturnType<typeof normalizeScores> = [];

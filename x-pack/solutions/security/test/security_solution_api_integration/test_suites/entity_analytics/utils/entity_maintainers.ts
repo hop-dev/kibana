@@ -134,6 +134,7 @@ export const waitForMaintainerRun = async ({
   minRuns = 1,
   maintainerId = 'risk-score',
   timeoutMs = 60_000,
+  triggerRun = true,
 }: {
   retry: RetryServiceLike;
   routes: Pick<
@@ -143,6 +144,7 @@ export const waitForMaintainerRun = async ({
   minRuns?: number;
   maintainerId?: string;
   timeoutMs?: number;
+  triggerRun?: boolean;
 }): Promise<void> => {
   // Capture current runs count so we wait for an actual NEW run,
   // not a stale count from a previous test.
@@ -158,7 +160,7 @@ export const waitForMaintainerRun = async ({
   }
 
   let requiredNewRuns = minRuns;
-  let manualRunTriggered = false;
+  let manualRunTriggered = !triggerRun;
   let alreadyRunningHandled = false;
 
   await retry.waitForWithTimeout(

@@ -41,8 +41,7 @@ export default ({ getService }: FtrProviderContext): void => {
   const entityStoreUtils = EntityStoreUtils(getService);
   const maintainerRoutes = entityMaintainerRouteHelpersFactory(supertest);
 
-  // FLAKY: https://github.com/elastic/kibana/issues/261469
-  describe.skip('@ess @serverless @serverlessQA Risk Score Maintainer Task Lifecycle', function () {
+  describe('@ess @serverless @serverlessQA Risk Score Maintainer Task Lifecycle', function () {
     this.tags(['esGate']);
 
     context('with auditbeat data', () => {
@@ -104,7 +103,10 @@ export default ({ getService }: FtrProviderContext): void => {
           riskScore: 40,
         });
 
-        await maintainerScenario.installAndRunMaintainer({ dataViewPattern: testLogsIndex });
+        await maintainerScenario.installAndRunMaintainer({
+          dataViewPattern: testLogsIndex,
+          runMode: 'async',
+        });
         await waitForRiskScoreForId({
           es,
           log,
@@ -141,7 +143,10 @@ export default ({ getService }: FtrProviderContext): void => {
           riskScore: 40,
         });
 
-        await maintainerScenario.installAndRunMaintainer({ dataViewPattern: testLogsIndex });
+        await maintainerScenario.installAndRunMaintainer({
+          dataViewPattern: testLogsIndex,
+          runMode: 'async',
+        });
         await waitForRiskScoreForId({
           es,
           log,
@@ -152,7 +157,6 @@ export default ({ getService }: FtrProviderContext): void => {
         const preManualScores = await readRiskScores(es);
         const preManualCount = preManualScores.length;
 
-        await maintainerRoutes.runMaintainer('risk-score');
         await waitForMaintainerRun({ retry, routes: maintainerRoutes, minRuns: 1 });
 
         await waitForRiskScoresToBePresent({ es, log, scoreCount: preManualCount + 1 });
