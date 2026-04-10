@@ -6,6 +6,7 @@
  */
 
 import type { CoreStart, Logger, AnalyticsServiceSetup } from '@kbn/core/server';
+import type { KibanaRequest } from '@kbn/core-http-server';
 import type {
   ConcreteTaskInstance,
   TaskManagerSetupContract,
@@ -28,7 +29,6 @@ import {
 } from './state';
 import { runLeadGenerationPipeline } from '../run_pipeline';
 import { fetchAllLeadEntities } from '../entity_conversion';
-import { getFakeRequestFromStoredApiKey } from '../auth/api_key';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +48,7 @@ interface StartParams {
   logger: Logger;
   namespace: string;
   taskManager: TaskManagerStartContract;
+  request: KibanaRequest;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +110,7 @@ const createLeadGenerationTaskRunnerFactory =
     config: ConfigType;
     kibanaVersion: string;
   }): TaskRunCreatorFunction =>
-  ({ taskInstance }) => {
+  ({ taskInstance, fakeRequest }) => {
     let cancelled = false;
     const isCancelled = () => cancelled;
 
@@ -120,6 +121,7 @@ const createLeadGenerationTaskRunnerFactory =
           isCancelled,
           logger: deps.logger,
           taskInstance,
+          fakeRequest,
           core,
           startPlugins,
           kibanaVersion: deps.kibanaVersion,
@@ -139,6 +141,7 @@ const runLeadGenerationTask = async ({
   isCancelled,
   logger,
   taskInstance,
+  fakeRequest,
   core,
   startPlugins,
   kibanaVersion,
@@ -146,6 +149,7 @@ const runLeadGenerationTask = async ({
   isCancelled: () => boolean;
   logger: Logger;
   taskInstance: ConcreteTaskInstance;
+  fakeRequest: KibanaRequest | undefined;
   core: CoreStart;
   startPlugins: StartPlugins;
   kibanaVersion: string;
@@ -179,12 +183,6 @@ const runLeadGenerationTask = async ({
       soClient,
     });
 
-    const fakeRequest = await getFakeRequestFromStoredApiKey({
-      encryptedSavedObjects: startPlugins.encryptedSavedObjects,
-      namespace: state.namespace,
-      logger,
-    });
-
     let chatModel;
     if (fakeRequest) {
       try {
@@ -203,6 +201,10 @@ const runLeadGenerationTask = async ({
           `[LeadGeneration] Could not resolve inference connector for scheduled task; falling back to rule-based synthesis: ${e.message}`
         );
       }
+    } else {
+      logger.warn(
+        '[LeadGeneration] No fakeRequest available in task context; falling back to rule-based synthesis'
+      );
     }
 
     await runLeadGenerationPipeline({
@@ -226,19 +228,27 @@ const runLeadGenerationTask = async ({
 // Start (schedule the task)
 // ---------------------------------------------------------------------------
 
-export const startLeadGenerationTask = async ({ logger, namespace, taskManager }: StartParams) => {
+export const startLeadGenerationTask = async ({
+  logger,
+  namespace,
+  taskManager,
+  request,
+}: StartParams) => {
   const taskId = getTaskId(namespace);
   try {
-    await taskManager.ensureScheduled({
-      id: taskId,
-      taskType: getTaskName(),
-      scope: SCOPE,
-      schedule: {
-        interval: INTERVAL,
+    await taskManager.ensureScheduled(
+      {
+        id: taskId,
+        taskType: getTaskName(),
+        scope: SCOPE,
+        schedule: {
+          interval: INTERVAL,
+        },
+        state: { ...defaultState, namespace },
+        params: { version: VERSION },
       },
-      state: { ...defaultState, namespace },
-      params: { version: VERSION },
-    });
+      { request }
+    );
 
     logger.info(`[LeadGeneration] Scheduled lead generation task with id ${taskId}`);
   } catch (e) {
@@ -251,7 +261,11 @@ export const startLeadGenerationTask = async ({ logger, namespace, taskManager }
 // Remove (unschedule the task)
 // ---------------------------------------------------------------------------
 
-export const removeLeadGenerationTask = async ({ taskManager, namespace, logger }: StartParams) => {
+export const removeLeadGenerationTask = async ({
+  taskManager,
+  namespace,
+  logger,
+}: Omit<StartParams, 'request'>) => {
   const taskId = getTaskId(namespace);
   try {
     await taskManager.removeIfExists(taskId);

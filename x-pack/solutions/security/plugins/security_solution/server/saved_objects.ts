@@ -33,10 +33,6 @@ import {
   PrivilegeMonitoringApiKeyEncryptionParams,
   PrivilegeMonitoringApiKeyType,
 } from './lib/entity_analytics/privilege_monitoring/auth/saved_object';
-import {
-  LeadGenApiKeyEncryptionParams,
-  LeadGenApiKeyType,
-} from './lib/entity_analytics/lead_generation/auth/saved_object';
 
 // Conditional Saved Object Types
 // Saved object types that will only be registered if the associated feature flag is enabled
@@ -59,7 +55,6 @@ const types = [
   privilegeMonitoringType,
   watchlistConfigType,
   PrivilegeMonitoringApiKeyType,
-  LeadGenApiKeyType,
   monitoringEntitySourceType,
   watchlistEntitySourceType,
   protectionUpdatesNoteType,
@@ -110,5 +105,4 @@ export const initEncryptedSavedObjects = ({
     return;
   }
   encryptedSavedObjects.registerType(PrivilegeMonitoringApiKeyEncryptionParams);
-  encryptedSavedObjects.registerType(LeadGenApiKeyEncryptionParams);
 };
