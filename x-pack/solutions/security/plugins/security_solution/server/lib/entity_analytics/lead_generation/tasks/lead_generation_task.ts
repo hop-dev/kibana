@@ -169,7 +169,12 @@ const runLeadGenerationTask = async ({
 
   try {
     logger.info('[LeadGeneration] Running scheduled lead generation task');
-    const esClient = core.elasticsearch.client.asInternalUser;
+    // Use the scoped client from fakeRequest when available so the task runs
+    // with the user's privileges. Entity Store indices (entities-latest-*) are
+    // not accessible to kibana_system, so asInternalUser is insufficient.
+    const esClient = fakeRequest
+      ? core.elasticsearch.client.asScoped(fakeRequest).asCurrentUser
+      : core.elasticsearch.client.asInternalUser;
     const soClient = buildScopedInternalSavedObjectsClientUnsafe({
       coreStart: core,
       namespace: state.namespace,
