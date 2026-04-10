@@ -65,7 +65,13 @@ export const generateLeadsRoute = (
 
           const [, startPlugins] = await getStartServices();
           const crudClient = startPlugins.entityStore.createCRUDClient(esClient, spaceId);
-          const chatModel = await resolveChatModel(startPlugins.inference, request, logger);
+          const { connectorId } = request.body;
+          const chatModel = await resolveChatModel(
+            startPlugins.inference,
+            request,
+            logger,
+            connectorId
+          );
 
           void (async () => {
             try {
@@ -107,13 +113,15 @@ export const generateLeadsRoute = (
 const resolveChatModel = async (
   inference: InferenceServerStart,
   request: KibanaRequest,
-  logger: Logger
+  logger: Logger,
+  connectorId?: string
 ): Promise<InferenceChatModel | undefined> => {
   try {
-    const defaultConnector = await inference.getDefaultConnector(request);
+    const resolvedConnectorId =
+      connectorId ?? (await inference.getDefaultConnector(request)).connectorId;
     return await inference.getChatModel({
       request,
-      connectorId: defaultConnector.connectorId,
+      connectorId: resolvedConnectorId,
       chatModelOptions: {
         temperature: 0, // structured JSON output — determinism preferred over creativity
         maxRetries: 0,
