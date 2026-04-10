@@ -28,6 +28,7 @@ import {
 } from './state';
 import { runLeadGenerationPipeline } from '../run_pipeline';
 import { fetchAllLeadEntities } from '../entity_conversion';
+import { getFakeRequestFromStoredApiKey } from '../auth/api_key';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,11 +179,32 @@ const runLeadGenerationTask = async ({
       soClient,
     });
 
-    // Scheduled task runs do not use AI synthesis. Task runners have no KibanaRequest,
-    // which is required by the inference service to scope the connector call. Wiring
-    // AI into scheduled runs requires stored API key infrastructure (see POST_MORTEM.md).
-    // Ad-hoc generation via POST /leads/generate uses AI synthesis.
-    logger.info('[LeadGeneration] Running scheduled pipeline with rule-based synthesis');
+    const fakeRequest = await getFakeRequestFromStoredApiKey({
+      encryptedSavedObjects: startPlugins.encryptedSavedObjects,
+      namespace: state.namespace,
+      logger,
+    });
+
+    let chatModel;
+    if (fakeRequest) {
+      try {
+        const defaultConnector = await startPlugins.inference.getDefaultConnector(fakeRequest);
+        chatModel = await startPlugins.inference.getChatModel({
+          request: fakeRequest,
+          connectorId: defaultConnector.connectorId,
+          chatModelOptions: {
+            temperature: 0.1,
+            maxRetries: 0,
+            telemetryMetadata: { pluginId: 'securitySolution' },
+          },
+        });
+      } catch (e) {
+        logger.warn(
+          `[LeadGeneration] Could not resolve inference connector for scheduled task; falling back to rule-based synthesis: ${e.message}`
+        );
+      }
+    }
+
     await runLeadGenerationPipeline({
       listEntities: () => fetchAllLeadEntities(crudClient, logger),
       esClient,
@@ -190,6 +212,7 @@ const runLeadGenerationTask = async ({
       spaceId: state.namespace,
       riskScoreDataClient,
       sourceType: 'scheduled',
+      chatModel,
     });
   } catch (e) {
     logger.error(`[LeadGeneration] Error running scheduled lead generation task: ${e.message}`);

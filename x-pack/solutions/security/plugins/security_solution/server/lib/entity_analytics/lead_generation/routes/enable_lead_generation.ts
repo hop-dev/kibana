@@ -17,6 +17,7 @@ import type { StartPlugins } from '../../../../plugin';
 import { startLeadGenerationTask } from '../tasks';
 import { createLeadIndexService } from '../indices/lead_index_service';
 import { withMinimumLicense } from '../../utils/with_minimum_license';
+import { generateAndStoreApiKey } from '../auth/api_key';
 
 export const enableLeadGenerationRoute = (
   router: EntityAnalyticsRoutesDeps['router'],
@@ -39,7 +40,7 @@ export const enableLeadGenerationRoute = (
         validate: {},
       },
 
-      withMinimumLicense(async (context, _request, response): Promise<IKibanaResponse> => {
+      withMinimumLicense(async (context, request, response): Promise<IKibanaResponse> => {
         const siemResponse = buildSiemResponse(response);
 
         try {
@@ -47,7 +48,7 @@ export const enableLeadGenerationRoute = (
           const spaceId = getSpaceId();
           const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
-          const [, startPlugins] = await getStartServices();
+          const [core, startPlugins] = await getStartServices();
           const taskManager = startPlugins.taskManager;
           if (!taskManager) {
             return siemResponse.error({
@@ -58,6 +59,15 @@ export const enableLeadGenerationRoute = (
 
           const indexService = createLeadIndexService({ esClient, logger, spaceId });
           await indexService.createIndices();
+
+          await generateAndStoreApiKey({
+            core,
+            security: startPlugins.security,
+            encryptedSavedObjects: startPlugins.encryptedSavedObjects,
+            request,
+            namespace: spaceId,
+            logger,
+          });
 
           await startLeadGenerationTask({ taskManager, logger, namespace: spaceId });
 
