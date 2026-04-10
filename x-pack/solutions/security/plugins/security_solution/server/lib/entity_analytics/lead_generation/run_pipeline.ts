@@ -18,6 +18,7 @@ import { createBehavioralAnalysisModule } from './observation_modules/behavioral
 import { createLeadDataClient } from './lead_data_client';
 import type { RiskScoreDataClient } from '../risk_score/risk_score_data_client';
 import type { LeadEntity } from './types';
+import { sortEntitiesByCriticality } from './entity_conversion';
 
 export interface RunPipelineParams {
   readonly listEntities: () => Promise<LeadEntity[]>;
@@ -52,7 +53,8 @@ export const runLeadGenerationPipeline = async ({
   const pipelineStart = Date.now();
 
   const fetchStart = Date.now();
-  const leadEntities = await listEntities();
+  const rawEntities = await listEntities();
+  const leadEntities = sortEntitiesByCriticality(rawEntities);
   logger.info(
     `[LeadGeneration][Telemetry] Entity fetch: ${Date.now() - fetchStart}ms (${
       leadEntities.length
