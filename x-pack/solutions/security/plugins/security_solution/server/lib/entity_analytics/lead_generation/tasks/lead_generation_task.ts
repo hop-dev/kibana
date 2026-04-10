@@ -235,23 +235,31 @@ export const startLeadGenerationTask = async ({
   request,
 }: StartParams) => {
   const taskId = getTaskId(namespace);
-  try {
-    await taskManager.ensureScheduled(
-      {
-        id: taskId,
-        taskType: getTaskName(),
-        scope: SCOPE,
-        schedule: {
-          interval: INTERVAL,
-        },
-        state: { ...defaultState, namespace },
-        params: { version: VERSION },
-      },
-      { request }
-    );
+  const taskDefinition = {
+    id: taskId,
+    taskType: getTaskName(),
+    scope: SCOPE,
+    schedule: { interval: INTERVAL },
+    state: { ...defaultState, namespace },
+    params: { version: VERSION },
+  };
 
+  try {
+    await taskManager.ensureScheduled(taskDefinition, { request });
     logger.info(`[LeadGeneration] Scheduled lead generation task with id ${taskId}`);
   } catch (e) {
+    // ensureScheduled drops the `request` option when falling back to bulkUpdateSchedules
+    // on a version conflict (Task Manager bug). Workaround: remove the stale task and
+    // re-schedule so the new API key is stored correctly.
+    if (e.message?.includes('Request is not defined')) {
+      logger.warn(
+        `[LeadGeneration][task ${taskId}] ensureScheduled failed due to stale API key scope — removing and re-scheduling`
+      );
+      await taskManager.removeIfExists(taskId);
+      await taskManager.schedule(taskDefinition, { request });
+      logger.info(`[LeadGeneration] Re-scheduled lead generation task with id ${taskId}`);
+      return;
+    }
     logger.warn(`[LeadGeneration][task ${taskId}]: error scheduling task, received ${e.message}`);
     throw e;
   }
