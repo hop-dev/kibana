@@ -28,29 +28,38 @@ export interface LlmSynthesisResult {
   readonly recommendations: string[];
 }
 
-const BATCH_SYNTHESIS_PROMPT = `You are a senior security analyst synthesizing threat hunting leads from automated observation data. Produce concise, actionable output that helps a SOC analyst quickly understand and act on each threat.
+const BATCH_SYNTHESIS_PROMPT = `You are a senior security analyst writing threat hunting leads for a SOC team. Each lead covers a single entity. Your job is to produce a narrative that gives an analyst immediate context and a clear reason to investigate — not a restatement of the raw alert data.
 
-You will receive data for {lead_count} entities. Respond ONLY with a valid JSON array (no markdown fences, no extra text) containing exactly {lead_count} objects in the same order as the input, each matching this schema:
+Rules:
+- Write as if briefing a colleague who knows nothing about this entity yet
+- If the data is thin (e.g. one alert), say what that alert type typically indicates and why it still warrants attention for this entity given their role or criticality
+- Reference the entity's asset criticality and privilege status where present — a single MFA failure from a privileged admin is very different from one on a standard user
+- Never pad with generic security advice; every sentence must be grounded in the specific data provided
+
+You will receive data for {lead_count} lead(s). Respond ONLY with a valid JSON array (no markdown fences, no extra text) containing exactly {lead_count} objects in the same order as the input, each matching this schema:
 {{
-  "title": "string - MAXIMUM 4 WORDS. A short threat label, not a sentence. Good: 'Anomalous behavior', 'Credential harvesting', 'Lateral movement detected'. Bad: 'Suspected Multi-Tactic Attack Targeting DevOps User'",
-  "description": "string - a narrative paragraph (plain text, NO markdown, NO bold/italic markers) connecting the evidence for this entity, referencing specific data points. Do NOT use asterisks or markdown formatting.",
-  "tags": ["string array - 3 to 6 tags. Use human-readable technique or rule names from the observation data only, NOT numeric IDs. Good: 'Container Escape Attempt', 'Lateral Movement'. Bad: 'T1075'."],
-  "recommendations": ["string array - 3 to 5 chat prompts an analyst can paste into an AI assistant. Each must be a direct question, e.g. 'Show me the critical alerts for user \\"jsmith\\" from the last 7 days grouped by rule name'. Do NOT write generic advice."]
+  "title": "string - 3 to 5 words. A specific threat label, not a restatement of the rule name. Vary titles across leads — avoid repeating the same phrase. Good: 'Credential access attempt', 'Suspicious admin activity', 'Authentication bypass signal'. Bad: 'Okta MFA Verification Failure' (that is the rule name, not a title).",
+  "description": "string - 2 to 4 sentences, plain text, no markdown. Explain: (1) what the evidence shows, (2) why this entity specifically warrants investigation (their role, criticality, or the pattern), (3) what an attacker might be doing. Be direct and specific — name rule names, scores, counts from the data. If data is limited, explain why this signal still matters.",
+  "tags": ["3 to 6 tags. Short, human-readable. Mix technique tags from rule names in the data with contextual tags like the entity's role or criticality tier. Never use MITRE IDs."],
+  "recommendations": ["3 to 5 specific chat prompts an analyst pastes directly into an AI assistant. Name the entity, timeframe, and data source in each prompt. Good: 'Show me all authentication events for {{entity}} in the last 48h including source IPs and geolocations', 'Has {{entity}} accessed any new systems or services in the last 7 days that they haven't used in the past 30?'. Bad: 'Review recent activity' (too vague)."]
 }}
 
-**Entities and observations:**
+**Leads:**
 {leads_payload}
 
 Respond with the JSON array only.`;
 
 const batchSynthesisPrompt = ChatPromptTemplate.fromTemplate(BATCH_SYNTHESIS_PROMPT);
 
+const formatEntityLine = (s: ScoredEntityInput): string => {
+  const entityDoc = JSON.stringify(s.entity.record);
+  return `  - ${s.entity.type} "${s.entity.name}" (priority: ${s.priority}/10)\n    Entity document: ${entityDoc}`;
+};
+
 const formatLeadsPayload = (groups: ScoredEntityInput[][]): string => {
   return groups
     .map((group, i) => {
-      const entityLines = group
-        .map((s) => `  - ${s.entity.type} "${s.entity.name}" (priority: ${s.priority}/10)`)
-        .join('\n');
+      const entityLines = group.map(formatEntityLine).join('\n');
 
       const obsLines = group
         .flatMap((s) => {
@@ -71,7 +80,11 @@ const formatLeadsPayload = (groups: ScoredEntityInput[][]): string => {
         })
         .join('\n');
 
-      return `### Lead ${i + 1}\n${entityLines}\n${obsLines}`;
+      const header =
+        group.length > 1
+          ? `### Lead ${i + 1} — Campaign (${group.length} entities)`
+          : `### Lead ${i + 1} — Single entity`;
+      return `${header}\n${entityLines}\n${obsLines}`;
     })
     .join('\n\n');
 };
