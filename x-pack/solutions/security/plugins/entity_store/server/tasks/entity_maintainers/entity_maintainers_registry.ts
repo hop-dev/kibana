@@ -5,17 +5,22 @@
  * 2.0.
  */
 
-import type { KibanaRequest } from '@kbn/core/server';
-import type { EntityMaintainerRegistryData, EntityMaintainerTaskEntry } from './types';
+import type {
+  EntityMaintainerRegistryData,
+  EntityMaintainerState,
+  EntityMaintainerTaskEntry,
+  EntityMaintainerTaskMethod,
+} from './types';
 
-export type EntityMaintainerSyncRunner = (
-  request: KibanaRequest,
-  namespace: string
-) => Promise<void>;
+export interface EntityMaintainerRunners {
+  run: EntityMaintainerTaskMethod;
+  setup?: EntityMaintainerTaskMethod;
+  initialState: EntityMaintainerState;
+}
 
 export class EntityMaintainersRegistry {
   private readonly tasks = new Map<string, EntityMaintainerRegistryData>();
-  private readonly syncRunners = new Map<string, EntityMaintainerSyncRunner>();
+  private readonly runners = new Map<string, EntityMaintainerRunners>();
 
   hasId(id: string): boolean {
     return this.tasks.has(id);
@@ -34,14 +39,16 @@ export class EntityMaintainersRegistry {
     interval,
     description,
     minLicense,
-    syncRunner,
-  }: EntityMaintainerTaskEntry & { syncRunner: EntityMaintainerSyncRunner }): void {
+    run,
+    setup,
+    initialState,
+  }: EntityMaintainerTaskEntry & EntityMaintainerRunners): void {
     this.tasks.set(id, { interval, description, minLicense });
-    this.syncRunners.set(id, syncRunner);
+    this.runners.set(id, { run, setup, initialState });
   }
 
-  getSyncRunner(id: string): EntityMaintainerSyncRunner | undefined {
-    return this.syncRunners.get(id);
+  getRunners(id: string): EntityMaintainerRunners | undefined {
+    return this.runners.get(id);
   }
 
   getAll(): EntityMaintainerTaskEntry[] {

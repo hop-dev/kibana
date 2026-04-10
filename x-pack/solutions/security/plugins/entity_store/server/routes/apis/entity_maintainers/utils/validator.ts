@@ -37,3 +37,9 @@ export const runMaintainerQuerySchema = z.object({
     .optional()
     .transform((value) => value === 'true'),
 });
+
+export const initMaintainersBodySchema = z
+  .object({
+    enabled: z.boolean().optional(),
+  })
+  .optional();

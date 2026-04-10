@@ -68,13 +68,19 @@ export const entityMaintainerRouteHelpersFactory = (
   return {
     getMaintainers,
 
-    initMaintainers: async (expectStatusCode: number = 200) => {
+    initMaintainers: async ({
+      expectStatusCode = 200,
+      enabled,
+    }: {
+      expectStatusCode?: number;
+      enabled?: boolean;
+    } = {}) => {
       const response = await withHeaders(
         supertest.post(
           routeWithNamespace(ENTITY_STORE_ROUTES.internal.ENTITY_MAINTAINERS_INIT, namespace)
         )
       )
-        .send()
+        .send(enabled === undefined ? {} : { enabled })
         .expect((res) => {
           if (res.status !== expectStatusCode) {
             throw new Error(

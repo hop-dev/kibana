@@ -8,7 +8,7 @@
 import { EntityMaintainersClient } from './entity_maintainers_client';
 import { loggerMock } from '@kbn/logging-mocks';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
-import type { KibanaRequest } from '@kbn/core/server';
+import type { CoreStart, KibanaRequest } from '@kbn/core/server';
 import { SavedObjectsErrorHelpers } from '@kbn/core/server';
 import { DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE } from '../../tasks/entity_maintainers';
 import { EntityMaintainerTaskStatus } from '../../tasks/entity_maintainers/types';
@@ -16,10 +16,12 @@ import type { EntityMaintainerTaskEntry } from '../../tasks/entity_maintainers/t
 
 jest.mock('../../tasks/entity_maintainers', () => ({
   getTaskId: jest.fn((id: string, namespace: string) => `${id}:${namespace}`),
+  getTaskType: jest.fn((id: string) => `entity_store:v2:entity_maintainer_task:${id}`),
   removeEntityMaintainer: jest.fn().mockResolvedValue(undefined),
   scheduleEntityMaintainerTask: jest.fn().mockResolvedValue(undefined),
   startEntityMaintainer: jest.fn().mockResolvedValue(undefined),
   stopEntityMaintainer: jest.fn().mockResolvedValue(undefined),
+  executeMaintainerRun: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock('../../tasks/entity_maintainers/entity_maintainers_registry', () => ({
@@ -27,6 +29,7 @@ jest.mock('../../tasks/entity_maintainers/entity_maintainers_registry', () => ({
     hasId: jest.fn(),
     get: jest.fn(),
     getAll: jest.fn().mockReturnValue([]),
+    getRunners: jest.fn(),
   },
 }));
 
@@ -42,12 +45,15 @@ jest.mock('@kbn/core/server', () => {
 
 const {
   getTaskId,
+  getTaskType,
   removeEntityMaintainer,
   scheduleEntityMaintainerTask,
   startEntityMaintainer,
   stopEntityMaintainer,
+  executeMaintainerRun,
 } = jest.requireMock('../../tasks/entity_maintainers') as {
   getTaskId: jest.MockedFunction<(id: string, namespace: string) => string>;
+  getTaskType: jest.MockedFunction<(id: string) => string>;
   removeEntityMaintainer: jest.MockedFunction<
     typeof import('../../tasks/entity_maintainers').removeEntityMaintainer
   >;
@@ -60,6 +66,9 @@ const {
   stopEntityMaintainer: jest.MockedFunction<
     typeof import('../../tasks/entity_maintainers').stopEntityMaintainer
   >;
+  executeMaintainerRun: jest.MockedFunction<
+    typeof import('../../tasks/entity_maintainers').executeMaintainerRun
+  >;
 };
 
 const { entityMaintainersRegistry } = jest.requireMock(
@@ -69,6 +78,9 @@ const { entityMaintainersRegistry } = jest.requireMock(
     hasId: jest.MockedFunction<(id: string) => boolean>;
     get: jest.MockedFunction<(id: string) => EntityMaintainerTaskEntry | undefined>;
     getAll: jest.MockedFunction<() => EntityMaintainerTaskEntry[]>;
+    getRunners: jest.MockedFunction<
+      typeof import('../../tasks/entity_maintainers/entity_maintainers_registry').entityMaintainersRegistry.getRunners
+    >;
   };
 };
 
@@ -90,11 +102,27 @@ function createClient(overrides?: {
     ...overrides?.taskManager,
   } as unknown as TaskManagerStartContract;
 
+  const coreStart = {
+    elasticsearch: {
+      client: {
+        asScoped: jest.fn().mockReturnValue({ asCurrentUser: {} }),
+      },
+    },
+  } as unknown as CoreStart;
+
+  const licensing = {
+    getLicense: jest
+      .fn()
+      .mockResolvedValue({ check: jest.fn().mockReturnValue({ state: 'valid' }) }),
+  };
+
   return new EntityMaintainersClient({
     logger: loggerMock.create(),
     taskManager,
     namespace: overrides?.namespace ?? 'default',
     analytics: mockAnalytics,
+    coreStart,
+    licensing: licensing as any,
   });
 }
 
@@ -175,6 +203,121 @@ describe('EntityMaintainersClient', () => {
       });
 
       await expect(client.runNow('maintainer-a')).rejects.toThrow('runSoon failed');
+    });
+  });
+
+  describe('runSync', () => {
+    const mockRun = jest.fn().mockResolvedValue({});
+    const mockRunners = { run: mockRun, initialState: {} };
+    const mockEntry: EntityMaintainerTaskEntry = {
+      id: 'maintainer-a',
+      interval: '5m',
+      minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+    };
+
+    beforeEach(() => {
+      (executeMaintainerRun as jest.Mock).mockResolvedValue(null);
+      mockRun.mockClear();
+    });
+
+    it('should return without running when id is not in registry', async () => {
+      entityMaintainersRegistry.hasId.mockReturnValue(false);
+      const client = createClient();
+      await client.runSync('unknown-id', createMockRequest());
+
+      expect(executeMaintainerRun).not.toHaveBeenCalled();
+    });
+
+    it('should return without running when runners are not registered', async () => {
+      entityMaintainersRegistry.hasId.mockReturnValue(true);
+      entityMaintainersRegistry.getRunners.mockReturnValue(undefined);
+      entityMaintainersRegistry.get.mockReturnValue(mockEntry);
+      const client = createClient();
+
+      await client.runSync('maintainer-a', createMockRequest());
+
+      expect(executeMaintainerRun).not.toHaveBeenCalled();
+    });
+
+    it('should call executeMaintainerRun with task state and registry runners', async () => {
+      const taskState = {
+        namespace: 'default',
+        taskStatus: EntityMaintainerTaskStatus.STARTED,
+        metadata: { runs: 1, lastSuccessTimestamp: null, lastErrorTimestamp: null },
+        state: {},
+      };
+      entityMaintainersRegistry.hasId.mockReturnValue(true);
+      entityMaintainersRegistry.getRunners.mockReturnValue(mockRunners);
+      entityMaintainersRegistry.get.mockReturnValue(mockEntry);
+      const taskManagerGet = jest.fn().mockResolvedValue({ state: taskState });
+      const client = createClient({ taskManager: { get: taskManagerGet } });
+      const request = createMockRequest();
+
+      await client.runSync('maintainer-a', request);
+
+      expect(taskManagerGet).toHaveBeenCalledWith('maintainer-a:default');
+      expect(executeMaintainerRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentStatus: taskState,
+          request,
+          taskIdStr: 'maintainer-a:default',
+          namespace: 'default',
+          id: 'maintainer-a',
+          run: mockRun,
+          initialState: {},
+          effectiveMinLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        })
+      );
+    });
+
+    it('should write state back via bulkUpdateState when result is returned', async () => {
+      const newState = {
+        namespace: 'default',
+        taskStatus: EntityMaintainerTaskStatus.STARTED,
+        metadata: { runs: 2, lastSuccessTimestamp: 'now', lastErrorTimestamp: null },
+        state: { count: 1 },
+      };
+      (executeMaintainerRun as jest.Mock).mockResolvedValue({ state: newState });
+      entityMaintainersRegistry.hasId.mockReturnValue(true);
+      entityMaintainersRegistry.getRunners.mockReturnValue(mockRunners);
+      entityMaintainersRegistry.get.mockReturnValue(mockEntry);
+      const bulkUpdateState = jest.fn().mockResolvedValue({});
+      const taskManagerGet = jest.fn().mockResolvedValue({ state: {} });
+      const client = createClient({ taskManager: { get: taskManagerGet, bulkUpdateState } as any });
+      const request = createMockRequest();
+
+      await client.runSync('maintainer-a', request);
+
+      expect(bulkUpdateState).toHaveBeenCalledWith(['maintainer-a:default'], expect.any(Function), {
+        request,
+      });
+    });
+
+    it('should not call bulkUpdateState when executeMaintainerRun returns null', async () => {
+      (executeMaintainerRun as jest.Mock).mockResolvedValue(null);
+      entityMaintainersRegistry.hasId.mockReturnValue(true);
+      entityMaintainersRegistry.getRunners.mockReturnValue(mockRunners);
+      entityMaintainersRegistry.get.mockReturnValue(mockEntry);
+      const bulkUpdateState = jest.fn().mockResolvedValue({});
+      const taskManagerGet = jest.fn().mockResolvedValue({ state: {} });
+      const client = createClient({ taskManager: { get: taskManagerGet, bulkUpdateState } as any });
+
+      await client.runSync('maintainer-a', createMockRequest());
+
+      expect(bulkUpdateState).not.toHaveBeenCalled();
+    });
+
+    it('should propagate error when executeMaintainerRun throws', async () => {
+      (executeMaintainerRun as jest.Mock).mockRejectedValue(new Error('run failed'));
+      entityMaintainersRegistry.hasId.mockReturnValue(true);
+      entityMaintainersRegistry.getRunners.mockReturnValue(mockRunners);
+      entityMaintainersRegistry.get.mockReturnValue(mockEntry);
+      const taskManagerGet = jest.fn().mockResolvedValue({ state: {} });
+      const client = createClient({ taskManager: { get: taskManagerGet } });
+
+      await expect(client.runSync('maintainer-a', createMockRequest())).rejects.toThrow(
+        'run failed'
+      );
     });
   });
 
@@ -266,6 +409,32 @@ describe('EntityMaintainersClient', () => {
       const request = createMockRequest();
 
       await expect(client.init(request)).rejects.toThrow('schedule failed');
+    });
+
+    it('should forward enabled option when scheduling maintainers', async () => {
+      entityMaintainersRegistry.getAll.mockReturnValue([
+        {
+          id: 'm1',
+          interval: '5m',
+          description: 'M1',
+          minLicense: DEFAULT_ENTITY_MAINTAINER_MIN_LICENSE,
+        },
+      ]);
+      const taskManager = {
+        get: jest.fn().mockRejectedValue(new Error('Not found')),
+      };
+      mockSavedObjectsErrorHelpers.isNotFoundError.mockReturnValue(true);
+      const client = createClient({ taskManager: taskManager as any });
+      const request = createMockRequest();
+
+      await client.init(request, { enabled: false });
+
+      expect(scheduleEntityMaintainerTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'm1',
+          enabled: false,
+        })
+      );
     });
   });
 

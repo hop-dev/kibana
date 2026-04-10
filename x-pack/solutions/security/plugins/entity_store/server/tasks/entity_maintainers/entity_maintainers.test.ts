@@ -127,7 +127,31 @@ describe('entity_maintainer task', () => {
             taskStatus: EntityMaintainerTaskStatus.STARTED,
           },
           params: {},
+          enabled: true,
         },
+        { request }
+      );
+    });
+
+    it('should schedule task as disabled when enabled option is false', async () => {
+      const { logger, request, taskManagerStart } = createMockDeps();
+
+      await scheduleEntityMaintainerTask({
+        logger,
+        taskManager: taskManagerStart as any,
+        id: 'maintainer-a',
+        interval: '1m',
+        namespace: 'default',
+        request,
+        enabled: false,
+      });
+
+      expect(mockEnsureScheduled).toHaveBeenCalledTimes(1);
+      expect(mockEnsureScheduled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'maintainer-a:default',
+          enabled: false,
+        }),
         { request }
       );
     });
@@ -164,6 +188,7 @@ describe('entity_maintainer task', () => {
             taskStatus: EntityMaintainerTaskStatus.STARTED,
           },
           params: {},
+          enabled: true,
         },
         { request }
       );
@@ -178,6 +203,7 @@ describe('entity_maintainer task', () => {
             taskStatus: EntityMaintainerTaskStatus.STARTED,
           },
           params: {},
+          enabled: true,
         },
         { request }
       );

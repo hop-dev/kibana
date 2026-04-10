@@ -6,18 +6,24 @@
  */
 
 import type { Logger } from '@kbn/logging';
-import { SavedObjectsErrorHelpers, type KibanaRequest } from '@kbn/core/server';
+import { SavedObjectsErrorHelpers, type CoreStart, type KibanaRequest } from '@kbn/core/server';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { LicenseType } from '@kbn/licensing-types';
+import type { LicensingPluginStart } from '@kbn/licensing-plugin/server';
 import {
+  executeMaintainerRun,
   getTaskId,
+  getTaskType,
   removeEntityMaintainer,
   scheduleEntityMaintainerTask,
   startEntityMaintainer,
   stopEntityMaintainer,
 } from '../../tasks/entity_maintainers';
 import { entityMaintainersRegistry } from '../../tasks/entity_maintainers/entity_maintainers_registry';
-import type { EntityMaintainerState } from '../../tasks/entity_maintainers/types';
+import type {
+  EntityMaintainerState,
+  EntityMaintainerStatus,
+} from '../../tasks/entity_maintainers/types';
 import { EntityMaintainerTaskStatus } from '../../tasks/entity_maintainers/types';
 import type { TelemetryReporter } from '../../telemetry/events';
 
@@ -43,6 +49,8 @@ interface EntityMaintainersClientDeps {
   taskManager: TaskManagerStartContract;
   namespace: string;
   analytics: TelemetryReporter;
+  coreStart: CoreStart;
+  licensing: LicensingPluginStart;
 }
 
 export class EntityMaintainersClient {
@@ -50,12 +58,16 @@ export class EntityMaintainersClient {
   private readonly taskManager: TaskManagerStartContract;
   private readonly namespace: string;
   private readonly analytics: TelemetryReporter;
+  private readonly coreStart: CoreStart;
+  private readonly licensing: LicensingPluginStart;
 
   constructor(deps: EntityMaintainersClientDeps) {
     this.logger = deps.logger;
     this.taskManager = deps.taskManager;
     this.namespace = deps.namespace;
     this.analytics = deps.analytics;
+    this.coreStart = deps.coreStart;
+    this.licensing = deps.licensing;
   }
 
   public async start(id: string, request: KibanaRequest): Promise<void> {
@@ -82,7 +94,7 @@ export class EntityMaintainersClient {
    * Schedules only maintainers that do not yet have a task document (taskSnapshot undefined).
    * Uses getMaintainers() to determine which registry entries already have tasks.
    */
-  public async init(request: KibanaRequest): Promise<void> {
+  public async init(request: KibanaRequest, options?: { enabled?: boolean }): Promise<void> {
     this.logger.debug('Initializing entity maintainer tasks');
     try {
       const maintainers = await this.getMaintainers();
@@ -96,6 +108,7 @@ export class EntityMaintainersClient {
             interval,
             namespace: this.namespace,
             request,
+            enabled: options?.enabled,
           });
         })
       );
@@ -146,13 +159,37 @@ export class EntityMaintainersClient {
         return;
       }
 
-      const syncRunner = entityMaintainersRegistry.getSyncRunner(id);
-      if (!syncRunner) {
-        this.logger.debug(`No sync runner registered, skipping sync run: ${id}`);
+      const runners = entityMaintainersRegistry.getRunners(id);
+      const entry = entityMaintainersRegistry.get(id);
+      if (!runners || !entry) {
+        this.logger.debug(`No runners registered, skipping sync run: ${id}`);
         return;
       }
 
-      await syncRunner(request, this.namespace);
+      const taskId = getTaskId(id, this.namespace);
+      const task = await this.taskManager.get(taskId);
+      const currentStatus = task.state as Partial<EntityMaintainerStatus>;
+
+      const result = await executeMaintainerRun({
+        currentStatus,
+        request,
+        taskIdStr: taskId,
+        namespace: this.namespace,
+        id,
+        run: runners.run,
+        setup: runners.setup,
+        initialState: runners.initialState,
+        effectiveMinLicense: entry.minLicense,
+        type: getTaskType(id),
+        coreStart: this.coreStart,
+        licensing: this.licensing,
+        analytics: this.analytics,
+        logger: this.logger,
+      });
+
+      if (result) {
+        await this.taskManager.bulkUpdateState([taskId], () => result.state, { request });
+      }
     } catch (error) {
       this.logger.error(`Failed to run entity maintainer task synchronously: ${id}`, { error });
       throw error;
