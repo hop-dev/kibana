@@ -178,6 +178,11 @@ const runLeadGenerationTask = async ({
       soClient,
     });
 
+    // Scheduled task runs do not use AI synthesis. Task runners have no KibanaRequest,
+    // which is required by the inference service to scope the connector call. Wiring
+    // AI into scheduled runs requires stored API key infrastructure (see POST_MORTEM.md).
+    // Ad-hoc generation via POST /leads/generate uses AI synthesis.
+    logger.info('[LeadGeneration] Running scheduled pipeline with rule-based synthesis');
     await runLeadGenerationPipeline({
       listEntities: () => fetchAllLeadEntities(crudClient, logger),
       esClient,
