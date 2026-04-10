@@ -193,7 +193,7 @@ const runLeadGenerationTask = async ({
           request: fakeRequest,
           connectorId: defaultConnector.connectorId,
           chatModelOptions: {
-            temperature: 0.1,
+            temperature: 0, // structured JSON output — determinism preferred over creativity
             maxRetries: 0,
             telemetryMetadata: { pluginId: 'securitySolution' },
           },
