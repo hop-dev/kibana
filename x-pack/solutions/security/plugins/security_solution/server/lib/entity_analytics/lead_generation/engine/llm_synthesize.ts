@@ -12,127 +12,120 @@ import { ChatPromptTemplate } from '@langchain/core/prompts';
 import type { LeadEntity, Observation } from '../types';
 import { entityToKey } from '../observation_modules/utils';
 
-interface ScoredEntityInput {
+/** Maximum observations included per entity in the LLM prompt to keep context bounded. */
+const MAX_OBSERVATIONS_PER_ENTITY = 5;
+
+export interface ScoredEntityInput {
   readonly entity: LeadEntity;
   readonly priority: number;
   readonly observations: Observation[];
 }
 
-interface LlmSynthesisResult {
+export interface LlmSynthesisResult {
   readonly title: string;
   readonly description: string;
   readonly tags: string[];
   readonly recommendations: string[];
 }
 
-const SYNTHESIS_PROMPT = `You are a senior security analyst synthesizing threat hunting leads from automated observation data. Produce concise, actionable output that helps a SOC analyst quickly understand and act on the threat.
+const BATCH_SYNTHESIS_PROMPT = `You are a senior security analyst synthesizing threat hunting leads from automated observation data. Produce concise, actionable output that helps a SOC analyst quickly understand and act on each threat.
 
-Respond ONLY with a valid JSON object (no markdown fences, no extra text) matching this schema:
+You will receive data for {lead_count} entities. Respond ONLY with a valid JSON array (no markdown fences, no extra text) containing exactly {lead_count} objects in the same order as the input, each matching this schema:
 {{
-  "title": "string - MAXIMUM 4 WORDS. A short threat label, not a sentence. Good: 'Anomalous behavior', 'Credential harvesting', 'Lateral movement detected', 'Privilege escalation'. Bad: 'Suspected Multi-Tactic Attack Targeting DevOps User with Container Escape'",
-  "description": "string - a narrative paragraph (plain text, NO markdown, NO bold/italic markers) connecting the evidence, referencing specific data points (scores, alert counts, escalation deltas), explaining why this matters and what the attacker may be doing. Do NOT use asterisks or markdown formatting.",
-  "tags": ["string array - 3 to 6 tags. Use human-readable technique or rule names, NOT numeric IDs. Only use rule names that appear explicitly in the observation data below; do not invent or guess rule names. Good: 'Container Escape Attempt', 'Remote Service Execution', 'Credential Access via Brute Force'. Bad: 'T1075', 'T1078'. Also include short contextual tags like 'Privilege Escalation', 'Lateral Movement'."],
-  "recommendations": ["string array - 3 to 5 chat messages an analyst can paste into an AI chat assistant to start investigating. Each must be a direct request or question the analyst would type. Examples: 'Show me the critical/high severity alerts for user \\"jsmith\\" from the last 7 days, grouped by detection rule name', 'Generate an ESQL query to show the risk score trend for user \\"jsmith\\" over the last 30 days', 'What processes or network connections has user \\"jsmith\\" initiated in the last 48 hours?'. Do NOT write generic advice like 'Isolate the account' or 'Review logs'. Write actual chat prompts."]
+  "title": "string - MAXIMUM 4 WORDS. A short threat label, not a sentence. Good: 'Anomalous behavior', 'Credential harvesting', 'Lateral movement detected'. Bad: 'Suspected Multi-Tactic Attack Targeting DevOps User'",
+  "description": "string - a narrative paragraph (plain text, NO markdown, NO bold/italic markers) connecting the evidence for this entity, referencing specific data points. Do NOT use asterisks or markdown formatting.",
+  "tags": ["string array - 3 to 6 tags. Use human-readable technique or rule names from the observation data only, NOT numeric IDs. Good: 'Container Escape Attempt', 'Lateral Movement'. Bad: 'T1075'."],
+  "recommendations": ["string array - 3 to 5 chat prompts an analyst can paste into an AI assistant. Each must be a direct question, e.g. 'Show me the critical alerts for user \\"jsmith\\" from the last 7 days grouped by rule name'. Do NOT write generic advice."]
 }}
 
-Analyze the following entity observations and produce a hunting lead.
+**Entities and observations:**
+{leads_payload}
 
-**Entities:**
-{entity_summary}
+Respond with the JSON array only.`;
 
-**Observations:**
-{observations_summary}
+const batchSynthesisPrompt = ChatPromptTemplate.fromTemplate(BATCH_SYNTHESIS_PROMPT);
 
-Respond with the JSON object only.`;
+const formatLeadsPayload = (groups: ScoredEntityInput[][]): string => {
+  return groups
+    .map((group, i) => {
+      const entityLines = group
+        .map((s) => `  - ${s.entity.type} "${s.entity.name}" (priority: ${s.priority}/10)`)
+        .join('\n');
 
-const synthesisPrompt = ChatPromptTemplate.fromTemplate(SYNTHESIS_PROMPT);
+      const obsLines = group
+        .flatMap((s) => {
+          const key = entityToKey(s.entity);
+          return s.observations
+            .filter((o) => o.entityId === key)
+            .slice(0, MAX_OBSERVATIONS_PER_ENTITY)
+            .map((obs) => {
+              const metaEntries = Object.entries(obs.metadata)
+                .filter(([, v]) => v !== undefined && v !== null && v !== '')
+                .slice(0, 5)
+                .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+                .join(', ');
+              return `  - [${obs.severity.toUpperCase()}] ${obs.description} (type=${
+                obs.type
+              }, score=${obs.score}/100${metaEntries ? `, ${metaEntries}` : ''})`;
+            });
+        })
+        .join('\n');
 
-const formatEntitySummary = (group: ScoredEntityInput[]): string => {
-  return group
-    .map(
-      (scored) =>
-        `- ${scored.entity.type} "${scored.entity.name}" (priority: ${scored.priority}/10, observations: ${scored.observations.length})`
-    )
-    .join('\n');
-};
-
-const formatObservationsSummary = (
-  group: ScoredEntityInput[],
-  observations: Observation[]
-): string => {
-  const sections: string[] = [];
-
-  for (const scored of group) {
-    const key = entityToKey(scored.entity);
-    const entityObs = observations.filter((o) => o.entityId === key);
-
-    if (entityObs.length > 0) {
-      sections.push(`### ${scored.entity.type} "${scored.entity.name}"`);
-
-      for (const obs of entityObs) {
-        const metaEntries = Object.entries(obs.metadata)
-          .filter(([, v]) => v !== undefined && v !== null && v !== '')
-          .slice(0, 8)
-          .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
-          .join(', ');
-
-        sections.push(
-          `- [${obs.severity.toUpperCase()}] ${obs.description} (type=${obs.type}, score=${
-            obs.score
-          }/100, confidence=${(obs.confidence * 100).toFixed(0)}%${
-            metaEntries ? `, ${metaEntries}` : ''
-          })`
-        );
-      }
-    }
-  }
-
-  return sections.join('\n');
+      return `### Lead ${i + 1}\n${entityLines}\n${obsLines}`;
+    })
+    .join('\n\n');
 };
 
 /**
- * Use an LLM to synthesize lead content from scored entities and their observations.
+ * Use an LLM to synthesize content for all leads in a single batch call.
+ * Returns results in the same order as the input groups.
  * Throws on failure so the caller can fall back to rule-based synthesis.
  */
-export const llmSynthesizeLeadContent = async (
+export const llmSynthesizeBatch = async (
   chatModel: InferenceChatModel,
-  group: ScoredEntityInput[],
-  observations: Observation[],
+  groups: ScoredEntityInput[][],
   logger: Logger
-): Promise<LlmSynthesisResult> => {
-  const entitySummary = formatEntitySummary(group);
-  const observationsSummary = formatObservationsSummary(group, observations);
+): Promise<LlmSynthesisResult[]> => {
+  if (groups.length === 0) return [];
 
-  const jsonParser = new JsonOutputParser<LlmSynthesisResult>();
-  const chain = synthesisPrompt.pipe(chatModel).pipe(jsonParser);
+  const leadsPayload = formatLeadsPayload(groups);
+  const jsonParser = new JsonOutputParser<LlmSynthesisResult[]>();
+  const chain = batchSynthesisPrompt.pipe(chatModel).pipe(jsonParser);
 
-  logger.debug('[LeadGenerationEngine] Invoking LLM for lead content synthesis');
+  logger.debug(`[LeadGenerationEngine] Invoking LLM for batch synthesis of ${groups.length} leads`);
 
-  const result = await chain.invoke({
-    entity_summary: entitySummary,
-    observations_summary: observationsSummary,
+  const results = await chain.invoke({
+    lead_count: String(groups.length),
+    leads_payload: leadsPayload,
   });
 
-  if (
-    typeof result.title !== 'string' ||
-    typeof result.description !== 'string' ||
-    !Array.isArray(result.tags) ||
-    !Array.isArray(result.recommendations)
-  ) {
-    throw new Error('LLM returned malformed JSON: missing required fields');
+  if (!Array.isArray(results) || results.length !== groups.length) {
+    throw new Error(
+      `LLM batch synthesis returned ${
+        Array.isArray(results) ? results.length : typeof results
+      } items, expected ${groups.length}`
+    );
   }
 
-  const truncatedTitle = truncateTitle(result.title, 5);
-
-  return {
-    title: truncatedTitle,
-    description: stripMarkdown(result.description),
-    tags: result.tags
-      .map(String)
-      .filter((t) => !/^T\d{4}(\.\d{3})?$/i.test(t.trim()))
-      .slice(0, 6),
-    recommendations: result.recommendations.map(String).slice(0, 5),
-  };
+  return results.map((result) => {
+    if (
+      typeof result.title !== 'string' ||
+      typeof result.description !== 'string' ||
+      !Array.isArray(result.tags) ||
+      !Array.isArray(result.recommendations)
+    ) {
+      throw new Error('LLM returned malformed JSON: missing required fields in batch item');
+    }
+    return {
+      title: truncateTitle(result.title, 5),
+      description: stripMarkdown(result.description),
+      tags: result.tags
+        .map(String)
+        .filter((t) => !/^T\d{4}(\.\d{3})?$/i.test(t.trim()))
+        .slice(0, 6),
+      recommendations: result.recommendations.map(String).slice(0, 5),
+    };
+  });
 };
 
 /** Keep only the first N words of a title so card headings stay short. */
