@@ -119,16 +119,39 @@ describe('createGenerateBriefTool', () => {
       expect(ml.jobServiceProvider).toHaveBeenCalledWith(mockRequest, context.savedObjectsClient);
     });
 
-    it('reads the job list with a fake request when ML rejects the real one', async () => {
-      const jobsSummary = jest
-        .fn()
-        .mockRejectedValueOnce(new Error('Insufficient privileges to access feature'))
-        .mockResolvedValueOnce([{ id: 'job-1' }]);
-      const ml = mlWith(jobsSummary);
-      const { jobService } = await run(ml);
+    describe('when ML rejects the agent request', () => {
+      const rejectedOnce = () =>
+        jest
+          .fn()
+          .mockRejectedValueOnce(new Error('Insufficient privileges to access feature'))
+          .mockResolvedValueOnce([{ id: 'job-1' }]);
 
-      await expect(jobService?.jobsSummary()).resolves.toEqual([{ id: 'job-1' }]);
-      expect(jest.mocked(ml.jobServiceProvider).mock.calls[1][0]).not.toBe(mockRequest);
+      it("reads the job list with a fake request in the request's space once the user's own ML privilege is confirmed", async () => {
+        const ml = mlWith(rejectedOnce());
+        const { context, jobService } = await run(ml);
+        mockCheckPrivileges.mockResolvedValueOnce({ hasAllRequested: true });
+
+        await expect(jobService?.jobsSummary()).resolves.toEqual([{ id: 'job-1' }]);
+        expect(mockSecurityStart.authz.actions.ui.get).toHaveBeenCalledWith('ml', 'canGetJobs');
+        const [[firstRequest, firstClient], [fakeRequest, fakeClient]] = jest.mocked(
+          ml.jobServiceProvider
+        ).mock.calls;
+        expect(firstRequest).toBe(mockRequest);
+        expect(fakeRequest).not.toBe(mockRequest);
+        expect(firstClient).toBe(context.savedObjectsClient);
+        expect(fakeClient).toBe(context.savedObjectsClient);
+      });
+
+      it("keeps ML's rejection, and never reads with the fake request, when the user lacks the ML privilege", async () => {
+        const ml = mlWith(rejectedOnce());
+        const { jobService } = await run(ml);
+        mockCheckPrivileges.mockResolvedValueOnce({ hasAllRequested: false });
+
+        await expect(jobService?.jobsSummary()).rejects.toThrow(
+          'Insufficient privileges to access feature'
+        );
+        expect(ml.jobServiceProvider).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

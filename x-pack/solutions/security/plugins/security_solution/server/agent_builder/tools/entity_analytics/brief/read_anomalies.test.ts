@@ -137,6 +137,18 @@ describe('readAnomalies', () => {
     );
   });
 
+  it("reads the records of the jobs the service returns for the request's space only, so another space's jobs never reach the query or the cited names", async () => {
+    const search = jest.fn().mockResolvedValue({ aggregations: {} });
+    const jobService = jobServiceOf([job('this_space_job', ['security'], 'This space job')]);
+
+    await read({ jobService, esClient: esClientOf(search) });
+
+    const [{ query, aggs }] = search.mock.calls[0];
+    expect(JSON.stringify(query)).toContain('{"terms":{"job_id":["this_space_job"]}}');
+    expect(JSON.stringify(query)).not.toContain('other_space_job');
+    expect(aggs.byCandidate.aggs.jobs.filter).toEqual({ terms: { job_id: ['this_space_job'] } });
+  });
+
   it.each([
     ['without the ML plugin', { jobService: undefined }],
     ['when no Security job is installed', { jobService: jobServiceOf([job('other', ['apm'])]) }],

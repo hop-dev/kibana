@@ -15,6 +15,7 @@ import type { BuiltinAttachmentBoundedTool } from '@kbn/agent-builder-server/att
 import { getToolResultId } from '@kbn/agent-builder-server/tools';
 import { isInferenceError } from '@kbn/inference-common';
 import type { MlPluginSetup } from '@kbn/ml-plugin/server';
+import type { SecurityPluginStart } from '@kbn/security-plugin/server';
 import type { ExperimentalFeatures } from '../../../../common';
 import type { EntityAnalyticsScope } from '../../../../common/entity_analytics/ai_brief/scope';
 import { WatchlistConfigClient } from '../../../lib/entity_analytics/watchlists/management/watchlist_config';
@@ -39,21 +40,37 @@ const ENTITY_READ_FAILED_MESSAGE = "Entity details couldn't be read, so no brief
 const MODEL_FAILED_MESSAGE = 'The AI model call failed, so no brief was generated.';
 const FAILED_MESSAGE = "The brief couldn't be generated. Try again.";
 
+/** The ML capability the job list needs, as the ML plugin checks it for `jobsSummary`. */
+const ML_CAN_GET_JOBS = 'canGetJobs';
+
 /**
  * The installed ML jobs of the request's space, through the ML plugin's job service, which keeps to the
- * space the saved objects client is scoped to. ML rejects an agent request that it can't check privileges
- * for, so the job list falls back to the request the Security ML jobs skill uses. Only the job list: the
- * anomaly records are read as the user.
+ * space the saved objects client is scoped to. ML can't check the privileges of an agent request, so when
+ * it rejects the request the job list is read with the request the Security ML jobs skill uses, but only
+ * once the requesting user's own `canGetJobs` privilege is confirmed here. A user without it keeps ML's
+ * rejection. Only the job list: the anomaly records are read as the user.
  */
-const getJobService = (
-  ml: MlPluginSetup,
-  request: KibanaRequest,
-  savedObjectsClient: SavedObjectsClientContract
-): BriefJobService => ({
+const getJobService = ({
+  ml,
+  security,
+  request,
+  savedObjectsClient,
+}: {
+  ml: MlPluginSetup;
+  security: SecurityPluginStart;
+  request: KibanaRequest;
+  savedObjectsClient: SavedObjectsClientContract;
+}): BriefJobService => ({
   jobsSummary: async () => {
     try {
       return await ml.jobServiceProvider(request, savedObjectsClient).jobsSummary();
-    } catch {
+    } catch (error) {
+      const { hasAllRequested } = await security.authz.checkPrivilegesDynamicallyWithRequest(
+        request
+      )({ kibana: [security.authz.actions.ui.get('ml', ML_CAN_GET_JOBS)] });
+      if (!hasAllRequested) {
+        throw error;
+      }
       return await ml
         .jobServiceProvider(Object.create(null) as KibanaRequest, savedObjectsClient)
         .jobsSummary();
@@ -125,7 +142,7 @@ export const createGenerateBriefTool = ({
           namespace: spaceId,
           logger,
         }),
-        jobService: ml && getJobService(ml, request, savedObjectsClient),
+        jobService: ml && getJobService({ ml, security, request, savedObjectsClient }),
         riskScoreDataClient: experimentalFeatures.riskScoreHistoryEnabled
           ? new RiskScoreDataClient({
               logger,
