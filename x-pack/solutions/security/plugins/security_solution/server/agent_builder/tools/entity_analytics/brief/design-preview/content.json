@@ -1,0 +1,194 @@
+{
+  "scenarios": {
+    "typical": {
+      "title": "A privileged user has just reached High risk",
+      "meta": "Last 7 days · Captured 20 Oct 2026, 10:53 UTC",
+      "notes": [],
+      "summary": "Five entities have alerts this period, including one privileged user newly rated high/critical and on the watchlist, and two hosts seen for the first time in the last few days.",
+      "periodLabel": "7 days",
+      "hasCounts": true,
+      "counts": [
+        { "tileId": "entitiesWithAlerts", "title": "Entities with alerts", "value": "5", "change": "+5", "changeClass": "up" },
+        { "tileId": "newlyHighCritical", "title": "Newly high/critical", "value": "1", "change": "No comparison", "changeClass": "flat" },
+        { "tileId": "watchlisted", "title": "Watchlisted", "value": "1", "change": "No change", "changeClass": "flat" },
+        { "tileId": "newEntity", "title": "New entity", "value": "2", "change": "+2", "changeClass": "up" }
+      ],
+      "recommendation": "Start by reviewing the alerts and new High risk score tied to a.rodriguez, given its privileged, high-impact, multi-flagged status.",
+      "hasPrioritiesSection": true,
+      "hasPriorities": true,
+      "noPrioritiesLine": "No entity in this view has enough evidence to prioritize.",
+      "priorities": [
+        {
+          "rank": 1,
+          "name": "a.rodriguez",
+          "meta": "user",
+          "risk": { "score": "76", "level": "High", "levelClass": "level-high", "isGroup": true },
+          "criticality": { "text": "High impact", "key": "high_impact" },
+          "watchlists": ["Privileged User"],
+          "moreWatchlists": 0,
+          "assessment": "Credential and remote access activity on a privileged identity newly at High risk is the shape of account misuse.",
+          "whyFirst": "Privilege and a fresh threshold crossing make it the clearest place to confirm first.",
+          "nextStep": "Review the alerts behind the new High risk score and confirm recent access activity.",
+          "riskHistory": {
+            "caption": "Risk score, last 7 days, resolution group",
+            "change": "34 Low → 76 High",
+            "chart": {
+              "width": 640,
+              "height": 96,
+              "left": 30,
+              "right": 570,
+              "ariaLabel": "Risk score rose from 34 on 15 Oct to 76 on 20 Oct",
+              "bands": [
+                { "label": "Critical 90", "y": 20, "labelX": 576, "labelY": 23 },
+                { "label": "High 70", "y": 32, "labelX": 576, "labelY": 35 },
+                { "label": "Moderate 40", "y": 50, "labelX": 576, "labelY": 53 }
+              ],
+              "area": "30,74 30,54 150,36 270,31 391,30 511,28 570,28 570,74",
+              "path": "30,54 150,36 270,31 391,30 511,28 570,28",
+              "dots": [
+                { "x": 30, "y": 54 },
+                { "x": 150, "y": 36 },
+                { "x": 270, "y": 31 },
+                { "x": 391, "y": 30 },
+                { "x": 511, "y": 28 },
+                { "x": 570, "y": 28 }
+              ],
+              "first": { "x": 30, "y": 47, "text": "34" },
+              "last": { "x": 563, "y": 22, "text": "76" },
+              "ticks": [
+                { "x": 35, "y": 90, "text": "16 Oct" },
+                { "x": 155, "y": 90, "text": "17 Oct" },
+                { "x": 275, "y": 90, "text": "18 Oct" },
+                { "x": 396, "y": 90, "text": "19 Oct" },
+                { "x": 516, "y": 90, "text": "20 Oct" }
+              ]
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "name": "docker-host-prod-01",
+          "meta": "host · first seen 2 days ago",
+          "risk": { "score": "66", "level": "Moderate", "levelClass": "level-moderate", "isGroup": false },
+          "criticality": { "text": "Extreme impact", "key": "extreme_impact" },
+          "watchlists": [],
+          "moreWatchlists": 0,
+          "assessment": "A host that appeared this week and is already alerting looks more like a provisioning problem.",
+          "whyFirst": "A new asset of this criticality is worth confirming on its own.",
+          "nextStep": "Check what triggered the alerts and verify the host's provisioning is expected."
+        },
+        {
+          "rank": 3,
+          "name": "jump-box-01",
+          "meta": "host · first seen 3 days ago",
+          "risk": { "score": "58", "level": "Moderate", "levelClass": "level-moderate", "isGroup": false },
+          "criticality": { "text": "High impact", "key": "high_impact" },
+          "watchlists": [],
+          "moreWatchlists": 0,
+          "assessment": "A new host with alerts of the same kind as the first priority is worth a second look.",
+          "whyFirst": "Its recent appearance and the overlap in alert type put it ahead of the other hosts.",
+          "nextStep": "Review the alerts and confirm the host's role and ownership."
+        }
+      ]
+    },
+    "dense": {
+      "title": "Several high-impact assets are alerting for the first time",
+      "meta": "Last 7 days · Selected: Entities with alerts · Criticality: Extreme impact, High impact · Captured 20 Oct 2026, 10:53 UTC",
+      "notes": [
+        "Based on the 3 highest-ranked of at least 40 flagged entities."
+      ],
+      "summary": "Alerts are concentrated on three high-impact assets. One is a privileged user whose risk crossed into High this week, and two are hosts that appeared in the last few days and are already alerting. The other flagged entities are quieter and can wait.",
+      "periodLabel": "7 days",
+      "hasCounts": true,
+      "counts": [
+        { "tileId": "entitiesWithAlerts", "title": "Entities with alerts", "value": "40", "change": "+12", "changeClass": "up" },
+        { "tileId": "entitiesWithAnomalies", "title": "Entities with anomalies", "value": "6", "change": "+1", "changeClass": "up" },
+        { "tileId": "riskMovers", "title": "Risk movers", "value": "4", "change": "−2", "changeClass": "down" },
+        { "tileId": "newlyHighCritical", "title": "Newly high/critical", "value": "3", "change": "+3", "changeClass": "up" },
+        { "tileId": "watchlisted", "title": "Watchlisted", "value": "8", "change": "No change", "changeClass": "flat" },
+        { "tileId": "newEntity", "title": "New entity", "value": "11", "change": "+11", "changeClass": "up" }
+      ],
+      "recommendation": "Confirm a.rodriguez first. The new High risk score is on a privileged, high-impact identity, and the two new hosts can be checked once that access is accounted for.",
+      "hasPrioritiesSection": true,
+      "hasPriorities": true,
+      "noPrioritiesLine": "No entity in this view has enough evidence to prioritize.",
+      "priorities": [
+        {
+          "rank": 1,
+          "name": "a.rodriguez@acme.example",
+          "meta": "user",
+          "risk": { "score": "92", "level": "Critical", "levelClass": "level-critical", "isGroup": true },
+          "criticality": { "text": "Extreme impact", "key": "extreme_impact" },
+          "watchlists": [
+            "Privileged User",
+            "Executive assistants and chiefs of staff",
+            "Production access"
+          ],
+          "moreWatchlists": 2,
+          "assessment": "Credential and remote access activity on a privileged identity newly at Critical risk is the shape of account misuse.",
+          "whyFirst": "Privilege, criticality, and a fresh threshold crossing make it the clearest place to confirm first.",
+          "nextStep": "Review the alerts behind the new Critical risk score and confirm recent access activity.",
+          "riskHistory": {
+            "caption": "Risk score, last 7 days, resolution group",
+            "change": "34 Low → 92 Critical",
+            "chart": {
+              "width": 640,
+              "height": 96,
+              "left": 30,
+              "right": 570,
+              "ariaLabel": "Risk score rose from 34 on 15 Oct to 92 on 20 Oct",
+              "bands": [
+                { "label": "Critical 90", "y": 20, "labelX": 576, "labelY": 23 },
+                { "label": "High 70", "y": 32, "labelX": 576, "labelY": 35 },
+                { "label": "Moderate 40", "y": 50, "labelX": 576, "labelY": 53 }
+              ],
+              "area": "30,74 150,36 270,31 391,30 511,28 570,18 570,74",
+              "path": "30,54 150,36 270,31 391,30 511,28 570,18",
+              "dots": [
+                { "x": 30, "y": 54 },
+                { "x": 150, "y": 36 },
+                { "x": 270, "y": 31 },
+                { "x": 391, "y": 30 },
+                { "x": 511, "y": 28 },
+                { "x": 570, "y": 18 }
+              ],
+              "first": { "x": 30, "y": 47, "text": "34" },
+              "last": { "x": 563, "y": 12, "text": "92" },
+              "ticks": [
+                { "x": 35, "y": 90, "text": "16 Oct" },
+                { "x": 155, "y": 90, "text": "17 Oct" },
+                { "x": 275, "y": 90, "text": "18 Oct" },
+                { "x": 396, "y": 90, "text": "19 Oct" },
+                { "x": 516, "y": 90, "text": "20 Oct" }
+              ]
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "name": "docker-host-prod-01.eu-west-1.internal",
+          "meta": "host · first seen 2 days ago",
+          "risk": { "score": "66", "level": "Moderate", "levelClass": "level-moderate", "isGroup": false },
+          "criticality": { "text": "Extreme impact", "key": "extreme_impact" },
+          "watchlists": ["Production infrastructure", "PCI segment"],
+          "moreWatchlists": 0,
+          "assessment": "A host that appeared this week and is already alerting looks more like a provisioning problem.",
+          "whyFirst": "A new asset of this criticality is worth confirming on its own.",
+          "nextStep": "Check what triggered the alerts and verify the host's provisioning is expected."
+        },
+        {
+          "rank": 3,
+          "name": "jump-box-01",
+          "meta": "host · first seen 3 days ago",
+          "risk": { "score": "58", "level": "Moderate", "levelClass": "level-moderate", "isGroup": false },
+          "criticality": { "text": "Medium impact", "key": "medium_impact" },
+          "watchlists": [],
+          "moreWatchlists": 0,
+          "assessment": "A new host with alerts of the same kind as the first priority is worth a second look.",
+          "whyFirst": "Its recent appearance and the overlap in alert type put it ahead of the other hosts.",
+          "nextStep": "Review the alerts and confirm the host's role and ownership."
+        }
+      ]
+    }
+  }
+}
