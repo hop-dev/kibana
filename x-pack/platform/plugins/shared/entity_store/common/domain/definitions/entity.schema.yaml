@@ -252,7 +252,8 @@ components:
               example: 83.2
         blast_radius:
           type: object
-          description: How much of the environment's crown jewels the entity can reach, from the blast radius daily job.
+          nullable: true
+          description: How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity.
           additionalProperties: false
           properties:
             score:

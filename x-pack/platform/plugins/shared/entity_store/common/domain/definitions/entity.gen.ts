@@ -363,7 +363,7 @@ export const EntityField = lazySchema(() =>
         .optional()
         .describe('Risk scoring information for the entity.'),
       /**
-       * How much of the environment's crown jewels the entity can reach, from the blast radius daily job.
+       * How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity.
        */
       blast_radius: z
         .object({
@@ -391,9 +391,10 @@ export const EntityField = lazySchema(() =>
             .describe('When the run that computed the score started.'),
         })
         .strict()
+        .nullable()
         .optional()
         .describe(
-          "How much of the environment's crown jewels the entity can reach, from the blast radius daily job."
+          "How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity."
         ),
     })
     .strict()
