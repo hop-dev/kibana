@@ -16,9 +16,11 @@ import {
 import { ENTITY_METADATA, getEntitiesAlias } from '../../../common/domain/entity_index';
 import { runWithSpan } from '../../telemetry/traces';
 import { searchRelationshipMetadata } from '../../infra/elasticsearch/relationships';
+import { openEdgesReader } from '../../infra/elasticsearch/edges';
 import { clearRelationshipIdsByEntitySource } from '../../infra/elasticsearch';
 import { resolveLatestEntitiesIndexName } from '../asset_manager/resolve_entity_store_indices';
 import { EntityStoreNotInstalledError } from '../errors';
+import type { RelationshipsReader, RelationshipsReaderOptions } from './types';
 
 // Poll cadence for the background update-by-query behind `clearRelationshipIds`,
 // matching the history-snapshot client's settings for the same helper.
@@ -218,6 +220,22 @@ export class RelationshipsClient {
     }
 
     return result;
+  }
+
+  /**
+   * Runs `run` with a reader over the space's relationships, holding one point in time until
+   * `run` settles, so every read sees the same relationships.
+   */
+  public async withReader<T>(
+    options: RelationshipsReaderOptions,
+    run: (reader: RelationshipsReader) => Promise<T>
+  ): Promise<T> {
+    const { reader, close } = await openEdgesReader(this.esClient, this.namespace, options);
+    try {
+      return await run(reader);
+    } finally {
+      await close();
+    }
   }
 
   /**

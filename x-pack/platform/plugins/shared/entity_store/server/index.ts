@@ -57,7 +57,12 @@ export type {
 } from './domain/crud';
 export { isEntityTypeCreatableFromSingleDocument } from '../common/domain/definitions/creatable_from_single_document';
 export type { EntityMetadataClient } from './domain/entity_metadata';
-export type { RelationshipsClient } from './domain/relationships';
+export type {
+  RelationshipsClient,
+  Relationship,
+  RelationshipsReader,
+  RelationshipsReaderOptions,
+} from './domain/relationships';
 export type { ResolutionClient } from './domain/resolution';
 export {
   NAMESPACE_PRIORITY,
