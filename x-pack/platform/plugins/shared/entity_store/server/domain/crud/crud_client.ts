@@ -8,6 +8,7 @@
 import type { Logger } from '@kbn/logging';
 import type {
   BulkOperationContainer,
+  BulkResponse,
   BulkUpdateAction,
   QueryDslFieldAndFormat,
   QueryDslQueryContainer,
@@ -22,6 +23,7 @@ import type { EntityType } from '../../../common';
 import { hashEuid, getEuidFromObject } from '../../../common/domain/euid';
 import { getBuiltInEntityDefinition } from '../../../common/domain/definitions/registry';
 import { resolveLatestEntitiesIndexName } from '../asset_manager/resolve_entity_store_indices';
+import { bulkUpdateEntityDocs } from '../../infra/elasticsearch/resolution';
 import {
   BadCRUDRequestError,
   EntityNotFoundError,
@@ -152,6 +154,23 @@ export interface CreateEntitiesFromSourceResult {
   /** Request-validation and non-conflict bulk failures. */
   failed: CreateEntityFromSourceOutcome[];
 }
+
+/** The items of a bulk response that failed. */
+const bulkErrorsOf = (resp: BulkResponse): BulkObjectResponse[] =>
+  resp.errors
+    ? resp.items
+        .map((item) => Object.entries(item)[0][1])
+        .filter((value) => value.error !== undefined || value.status >= 400)
+        .map(
+          (value) =>
+            ({
+              _id: value._id,
+              status: value.status,
+              type: value.error?.type,
+              reason: value.error?.reason,
+            } as BulkObjectResponse)
+        )
+    : [];
 
 // Maintainer-safe surface; createEntitiesFromSource remains available because it enforces
 // per-type policy and create-only writes.
@@ -481,20 +500,7 @@ export class CRUDClient {
       refresh,
     });
 
-    const errors: BulkObjectResponse[] = resp.errors
-      ? resp.items
-          .map((item) => Object.entries(item)[0][1])
-          .filter((value) => value.error !== undefined || value.status >= 400)
-          .map(
-            (value) =>
-              ({
-                _id: value._id,
-                status: value.status,
-                type: value.error?.type,
-                reason: value.error?.reason,
-              } as BulkObjectResponse)
-          )
-      : [];
+    const errors = bulkErrorsOf(resp);
 
     if (!resp.errors) {
       this.logger.debug(`Successfully bulk updated ${objects.length} entities`);
@@ -511,6 +517,21 @@ export class CRUDClient {
     }
 
     return errors;
+  }
+
+  /**
+   * Updates entities by EUID alone, without reading them first or waiting for a refresh: for
+   * writers of many entities that know only their ids. An entity that doesn't exist fails with 404.
+   */
+  public async bulkUpdateEntitiesById(
+    updates: ReadonlyArray<{ entityId: string; doc: Partial<Entity> }>
+  ): Promise<BulkObjectResponse[]> {
+    if (updates.length === 0) return [];
+    const resp = await bulkUpdateEntityDocs(this.esClient, {
+      index: await this.latestIndexName(),
+      updates: updates.map(({ entityId, doc }) => ({ docId: hashEuid(entityId), doc })),
+    });
+    return bulkErrorsOf(resp);
   }
 
   // createEntity generates EUID and creates the entity in the LATEST index
