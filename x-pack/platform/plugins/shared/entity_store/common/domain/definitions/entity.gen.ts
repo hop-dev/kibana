@@ -362,6 +362,39 @@ export const EntityField = lazySchema(() =>
         .strict()
         .optional()
         .describe('Risk scoring information for the entity.'),
+      /**
+       * How much of the environment's crown jewels the entity can reach, from the blast radius daily job.
+       */
+      blast_radius: z
+        .object({
+          /**
+           * The sum of the entity's contributions to each crown jewel it can reach.
+           */
+          score: z
+            .number()
+            .optional()
+            .describe("The sum of the entity's contributions to each crown jewel it can reach."),
+          /**
+           * The entity's percentile by score among the entities the run reached.
+           */
+          percentile: z
+            .number()
+            .min(0)
+            .max(100)
+            .optional()
+            .describe("The entity's percentile by score among the entities the run reached."),
+          /**
+           * When the run that computed the score started.
+           */
+          timestamp: isoDateTime()
+            .optional()
+            .describe('When the run that computed the score started.'),
+        })
+        .strict()
+        .optional()
+        .describe(
+          "How much of the environment's crown jewels the entity can reach, from the blast radius daily job."
+        ),
     })
     .strict()
 );

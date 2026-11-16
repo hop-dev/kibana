@@ -250,6 +250,27 @@ components:
               maximum: 100
               description: The normalized numeric value of the given entity's risk score. Useful for comparing with other entities.
               example: 83.2
+        blast_radius:
+          type: object
+          description: How much of the environment's crown jewels the entity can reach, from the blast radius daily job.
+          additionalProperties: false
+          properties:
+            score:
+              type: number
+              format: double
+              description: The sum of the entity's contributions to each crown jewel it can reach.
+              example: 3
+            percentile:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 100
+              description: The entity's percentile by score among the entities the run reached.
+              example: 97
+            timestamp:
+              type: string
+              format: date-time
+              description: When the run that computed the score started.
 
     Asset:
       type: object
