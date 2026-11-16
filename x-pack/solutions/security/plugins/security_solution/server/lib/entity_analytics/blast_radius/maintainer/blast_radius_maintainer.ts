@@ -7,6 +7,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { RegisterEntityMaintainerConfig, RelationshipsReader } from '@kbn/entity-store/server';
+import { formatBulkDropSummary } from '@kbn/entity-store/server';
 import { multiSeedWalk, type EdgeReader } from '@kbn/graph-algorithms';
 import type { ConfigType } from '../../../../config';
 import { listCrownJewels } from '../crown_jewels';
@@ -93,16 +94,17 @@ export const createBlastRadiusMaintainer =
       };
       if (result.outcome === 'cap') return await finish({ outcome: 'cap', ...totals });
 
-      const written = await writeBlastRadius({ crudClient, esClient, namespace, signal }, result, {
-        runId,
-        timestamp,
-      });
+      const written = await writeBlastRadius(
+        { crudClient, esClient, namespace, requestsInFlight, signal },
+        result,
+        { runId, timestamp }
+      );
       record?.endPhase('writeBack');
-      if (written.sampleErrors.length > 0) {
+      if (written.summaryErrors > 0) {
         logger.warn(
           `Blast radius summaries failed for ${
             written.summaryErrors
-          } entities, for example: ${JSON.stringify(written.sampleErrors)}`
+          } entities: ${formatBulkDropSummary([...written.summaryErrorsByType])}`
         );
       }
       return await finish(
@@ -111,6 +113,8 @@ export const createBlastRadiusMaintainer =
           ...totals,
           entitiesReached: result.nodesReached,
           entitiesWritten: written.entitiesWritten,
+          summariesChanged: written.summariesChanged,
+          summariesUnchanged: written.summariesUnchanged,
           summaryErrors: written.summaryErrors,
           entitiesCleared: written.entitiesCleared,
         },

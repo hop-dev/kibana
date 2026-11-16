@@ -6,19 +6,23 @@
  */
 
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type { BulkObjectResponse, EntityUpdateClient } from '@kbn/entity-store/server';
+import type { BulkDropTypeSummary, EntityUpdateClient } from '@kbn/entity-store/server';
 import { hashEuid } from '@kbn/entity-store/server';
 import type { MultiSeedWalkResult, NodeReach } from '@kbn/graph-algorithms';
 
 // The daily job's output, as the output contract has it: a summary on each entity reached
 // (entity.blast_radius) and one detail document per entity beside it, keyed by the same EUID,
-// with its hops, next entity and contribution for each crown jewel it reaches. A run keeps the
-// last good result: what an older run wrote for entities this run no longer reaches is removed.
-// Readers can see two runs mixed while the pages are written.
+// with its hops, next entity and contribution for each crown jewel it reaches. Details are written
+// first, then summaries, each through the bulk helper with at most requestsInFlight requests open
+// and 429s retried. A summary that hasn't changed since the last run is a no-op in Elasticsearch.
+// A run keeps the last good result: what an older run wrote for entities this run no longer
+// reaches is removed. Readers can see two runs mixed while the results are written.
 
 /** Each crown jewel an entity reaches adds this to its score. */
 const CONTRIBUTION = 1;
 const CLEAR_PAGE_SIZE = 1_000;
+/** About 1,000 detail documents per bulk request. */
+const FLUSH_BYTES = 512 * 1024;
 
 export const getBlastRadiusIndexName = (namespace: string): string =>
   `blast-radius.blast-radius-latest-${namespace}`;
@@ -36,15 +40,29 @@ export interface BlastRadiusDetail {
 }
 
 export interface WriteBlastRadiusResult {
-  /** Entities given a summary and a detail document. */
+  /** Entities given a detail document. */
   readonly entitiesWritten: number;
+  /** Summaries this run changed. */
+  readonly summariesChanged: number;
+  /** Summaries that already held this run's values, which Elasticsearch left as they were. */
+  readonly summariesUnchanged: number;
   /** Summaries that failed, such as an entity missing from the latest index. */
   readonly summaryErrors: number;
+  /** The summary failures grouped by error type, to log. */
+  readonly summaryErrorsByType: readonly BulkDropTypeSummary[];
   /** Entities an older run reached and this one didn't, whose results were removed. */
   readonly entitiesCleared: number;
-  /** The first few failures, to log. */
-  readonly sampleErrors: readonly BulkObjectResponse[];
 }
+
+interface WriteContext {
+  readonly crudClient: EntityUpdateClient;
+  readonly esClient: ElasticsearchClient;
+  readonly namespace: string;
+  readonly requestsInFlight: number;
+  readonly signal: AbortSignal;
+}
+
+type CompletedWalk = Extract<MultiSeedWalkResult, { outcome: 'completed' }>;
 
 const ensureIndex = async (
   esClient: ElasticsearchClient,
@@ -88,21 +106,65 @@ const percentilesByScore = (counts: readonly number[]): number[] => {
 
 const scoreOf = (node: NodeReach): number => node.seeds.length * CONTRIBUTION;
 
-export const writeBlastRadius = async (
-  {
-    crudClient,
-    esClient,
-    namespace,
-    signal,
-  }: {
-    crudClient: EntityUpdateClient;
-    esClient: ElasticsearchClient;
-    namespace: string;
-    signal: AbortSignal;
-  },
-  result: Extract<MultiSeedWalkResult, { outcome: 'completed' }>,
+/** Writes one detail document per entity reached, and fails the run if any is refused. */
+const writeDetails = async (
+  { esClient, requestsInFlight, signal }: WriteContext,
+  index: string,
+  result: CompletedWalk,
   { runId, timestamp }: { runId: string; timestamp: string }
+): Promise<number> => {
+  let firstFailure: string | undefined;
+  const helper = esClient.helpers.bulk<BlastRadiusDetail>(
+    {
+      datasource: (async function* () {
+        for (const page of result.nodes()) {
+          for (const node of page) {
+            yield {
+              '@timestamp': timestamp,
+              entity: { id: node.nodeId },
+              calculation_run_id: runId,
+              crown_jewels: node.seeds.map(({ seedId, hops, nextNodeId }) => ({
+                entity_id: seedId,
+                hops,
+                next_entity_id: nextNodeId,
+                contribution: CONTRIBUTION,
+              })),
+            };
+          }
+        }
+      })(),
+      concurrency: requestsInFlight,
+      flushBytes: FLUSH_BYTES,
+      refresh: false,
+      onDocument: (detail) => ({ index: { _index: index, _id: hashEuid(detail.entity.id) } }),
+      onDrop: ({ error }) => {
+        firstFailure ??= error?.reason ?? 'unknown error';
+      },
+    },
+    { signal }
+  );
+  const abort = () => helper.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    const { successful, failed } = await helper;
+    signal.throwIfAborted();
+    if (failed > 0) {
+      throw new Error(
+        `Writing blast radius details failed for ${failed} entities: ${firstFailure}`
+      );
+    }
+    return successful;
+  } finally {
+    signal.removeEventListener('abort', abort);
+  }
+};
+
+export const writeBlastRadius = async (
+  context: WriteContext,
+  result: CompletedWalk,
+  run: { runId: string; timestamp: string }
 ): Promise<WriteBlastRadiusResult> => {
+  const { crudClient, esClient, namespace, requestsInFlight, signal } = context;
   const index = getBlastRadiusIndexName(namespace);
   await ensureIndex(esClient, index, signal);
 
@@ -112,51 +174,37 @@ export const writeBlastRadius = async (
   for (const page of result.nodes()) for (const node of page) counts[scoreOf(node)]++;
   const percentiles = percentilesByScore(counts);
 
-  let entitiesWritten = 0;
-  let summaryErrors = 0;
-  const sampleErrors: BulkObjectResponse[] = [];
-  const keepErrors = (errors: readonly BulkObjectResponse[]) => {
-    summaryErrors += errors.length;
-    sampleErrors.push(...errors.slice(0, Math.max(0, 5 - sampleErrors.length)));
+  const entitiesWritten = await writeDetails(context, index, result, run);
+  const summaries = await crudClient.bulkUpdateEntitiesById(
+    (function* () {
+      for (const page of result.nodes()) {
+        for (const node of page) {
+          const score = scoreOf(node);
+          yield {
+            entityId: node.nodeId,
+            doc: { entity: { blast_radius: { score, percentile: percentiles[score] } } },
+          };
+        }
+      }
+    })(),
+    { requestsInFlight, signal }
+  );
+
+  const entitiesCleared = await clearOlderRuns({
+    crudClient,
+    esClient,
+    index,
+    runId: run.runId,
+    signal,
+  });
+  return {
+    entitiesWritten,
+    summariesChanged: summaries.updated,
+    summariesUnchanged: summaries.unchanged,
+    summaryErrors: summaries.failed,
+    summaryErrorsByType: summaries.dropsByType,
+    entitiesCleared,
   };
-
-  for (const page of result.nodes()) {
-    signal.throwIfAborted();
-    const details = page.flatMap((node) => [
-      { index: { _index: index, _id: hashEuid(node.nodeId) } },
-      {
-        '@timestamp': timestamp,
-        entity: { id: node.nodeId },
-        calculation_run_id: runId,
-        crown_jewels: node.seeds.map(({ seedId, hops, nextNodeId }) => ({
-          entity_id: seedId,
-          hops,
-          next_entity_id: nextNodeId,
-          contribution: CONTRIBUTION,
-        })),
-      } satisfies BlastRadiusDetail,
-    ]);
-    const summaries = page.map((node) => {
-      const score = scoreOf(node);
-      return {
-        entityId: node.nodeId,
-        doc: { entity: { blast_radius: { score, percentile: percentiles[score], timestamp } } },
-      };
-    });
-    const [detailResponse, errors] = await Promise.all([
-      esClient.bulk({ operations: details }, { signal }),
-      crudClient.bulkUpdateEntitiesById(summaries),
-    ]);
-    if (detailResponse.errors) {
-      const failed = detailResponse.items.find((item) => item.index?.error);
-      throw new Error(`Writing blast radius details failed: ${failed?.index?.error?.reason}`);
-    }
-    keepErrors(errors);
-    entitiesWritten += page.length;
-  }
-
-  const entitiesCleared = await clearOlderRuns({ crudClient, esClient, index, runId, signal });
-  return { entitiesWritten, summaryErrors, entitiesCleared, sampleErrors };
 };
 
 /** Clears the summary on, and deletes the details of, entities only an older run reached. */
@@ -189,7 +237,8 @@ const clearOlderRuns = async ({
     if (hits.hits.length === 0) return cleared;
     const entityIds = hits.hits.flatMap(({ _source }) => (_source ? [_source.entity.id] : []));
     await crudClient.bulkUpdateEntitiesById(
-      entityIds.map((entityId) => ({ entityId, doc: { entity: { blast_radius: null } } }))
+      entityIds.map((entityId) => ({ entityId, doc: { entity: { blast_radius: null } } })),
+      { requestsInFlight: 1, signal }
     );
     await esClient.bulk(
       {
