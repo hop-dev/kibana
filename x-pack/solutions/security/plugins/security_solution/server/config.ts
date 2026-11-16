@@ -195,6 +195,19 @@ export const configSchema = schema.object({
           Number.isInteger(value) ? undefined : 'Expected a whole number of pages',
       }),
     }),
+    /** The blast radius daily job. Each setting takes effect when Kibana restarts. */
+    blastRadius: schema.object({
+      /** Searches the relationships reader keeps in flight. Only hops of over 65,536 entities use more than one. */
+      requestsInFlight: schema.number({ defaultValue: 1, min: 1, max: 4 }),
+      /** A run that reads more relationships than this stops and writes nothing. */
+      maxRelationshipsRead: schema.number({
+        defaultValue: 100_000_000,
+        min: 1,
+        max: 2_000_000_000,
+      }),
+      /** Measurement only: writes a per-hop log and a run record under Kibana's data path. */
+      runRecord: schema.boolean({ defaultValue: false }),
+    }),
     assetCriticality: schema.object({
       csvUpload: schema.object({
         errorRetries: schema.number({ defaultValue: 1 }),
