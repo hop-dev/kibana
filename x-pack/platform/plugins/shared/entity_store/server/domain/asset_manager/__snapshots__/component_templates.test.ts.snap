@@ -114,9 +114,6 @@ Object {
         "entity.blast_radius.score": Object {
           "type": "float",
         },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
-        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -516,9 +513,6 @@ Object {
         },
         "entity.blast_radius.score": Object {
           "type": "float",
-        },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -966,9 +960,6 @@ Object {
         "entity.blast_radius.score": Object {
           "type": "float",
         },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
-        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -1404,9 +1395,6 @@ Object {
         },
         "entity.blast_radius.score": Object {
           "type": "float",
-        },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -1921,9 +1909,6 @@ Object {
         "entity.blast_radius.score": Object {
           "type": "float",
         },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
-        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -2260,9 +2245,6 @@ Object {
         },
         "entity.blast_radius.score": Object {
           "type": "float",
-        },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -2637,9 +2619,6 @@ Object {
         "entity.blast_radius.score": Object {
           "type": "float",
         },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
-        },
         "entity.confidence": Object {
           "type": "keyword",
         },
@@ -3005,9 +2984,6 @@ Object {
         },
         "entity.blast_radius.score": Object {
           "type": "float",
-        },
-        "entity.blast_radius.timestamp": Object {
-          "type": "date",
         },
         "entity.confidence": Object {
           "type": "keyword",

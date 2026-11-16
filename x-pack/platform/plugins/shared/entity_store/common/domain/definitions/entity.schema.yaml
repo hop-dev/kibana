@@ -268,10 +268,6 @@ components:
               maximum: 100
               description: The entity's percentile by score among the entities the run reached.
               example: 97
-            timestamp:
-              type: string
-              format: date-time
-              description: When the run that computed the score started.
 
     Asset:
       type: object

@@ -23,7 +23,8 @@ import type { EntityType } from '../../../common';
 import { hashEuid, getEuidFromObject } from '../../../common/domain/euid';
 import { getBuiltInEntityDefinition } from '../../../common/domain/definitions/registry';
 import { resolveLatestEntitiesIndexName } from '../asset_manager/resolve_entity_store_indices';
-import { bulkUpdateEntityDocs } from '../../infra/elasticsearch/resolution';
+import { updateEntityDocs } from '../../infra/elasticsearch/update_entity_docs';
+import type { UpdateEntityDocsResult } from '../../infra/elasticsearch/update_entity_docs';
 import {
   BadCRUDRequestError,
   EntityNotFoundError,
@@ -100,6 +101,11 @@ export type ListEntitiesBatchItemResult = SearchEntitiesV2BatchItemResult;
 export interface BulkObject {
   type: EntityType;
   doc: Entity;
+}
+
+export interface EntityUpdateById {
+  readonly entityId: string;
+  readonly doc: Partial<Entity>;
 }
 
 export interface BulkObjectResponse {
@@ -520,18 +526,22 @@ export class CRUDClient {
   }
 
   /**
-   * Updates entities by EUID alone, without reading them first or waiting for a refresh: for
-   * writers of many entities that know only their ids. An entity that doesn't exist fails with 404.
+   * Updates entities by EUID alone, as the updates come, without reading them first or waiting for
+   * a refresh: for writers of many entities that know only their ids. Keeps at most
+   * requestsInFlight bulk requests open. An entity that doesn't exist fails with 404.
    */
   public async bulkUpdateEntitiesById(
-    updates: ReadonlyArray<{ entityId: string; doc: Partial<Entity> }>
-  ): Promise<BulkObjectResponse[]> {
-    if (updates.length === 0) return [];
-    const resp = await bulkUpdateEntityDocs(this.esClient, {
+    updates: Iterable<EntityUpdateById> | AsyncIterable<EntityUpdateById>,
+    { requestsInFlight, signal }: { requestsInFlight: number; signal?: AbortSignal }
+  ): Promise<UpdateEntityDocsResult> {
+    return updateEntityDocs(this.esClient, {
       index: await this.latestIndexName(),
-      updates: updates.map(({ entityId, doc }) => ({ docId: hashEuid(entityId), doc })),
+      updates: (async function* () {
+        for await (const { entityId, doc } of updates) yield { docId: hashEuid(entityId), doc };
+      })(),
+      requestsInFlight,
+      signal,
     });
-    return bulkErrorsOf(resp);
   }
 
   // createEntity generates EUID and creates the entity in the LATEST index

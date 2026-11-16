@@ -383,12 +383,6 @@ export const EntityField = lazySchema(() =>
             .max(100)
             .optional()
             .describe("The entity's percentile by score among the entities the run reached."),
-          /**
-           * When the run that computed the score started.
-           */
-          timestamp: isoDateTime()
-            .optional()
-            .describe('When the run that computed the score started.'),
         })
         .strict()
         .nullable()
