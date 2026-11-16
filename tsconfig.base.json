@@ -1595,6 +1595,8 @@
       "@kbn/global-search-plugin/*": ["./x-pack/platform/plugins/shared/global_search/*"],
       "@kbn/global-search-providers-plugin": ["./x-pack/platform/plugins/private/global_search_providers"],
       "@kbn/global-search-providers-plugin/*": ["./x-pack/platform/plugins/private/global_search_providers/*"],
+      "@kbn/graph-algorithms": ["./x-pack/platform/packages/shared/kbn-graph-algorithms"],
+      "@kbn/graph-algorithms/*": ["./x-pack/platform/packages/shared/kbn-graph-algorithms/*"],
       "@kbn/graph-plugin": ["./x-pack/platform/plugins/private/graph"],
       "@kbn/graph-plugin/*": ["./x-pack/platform/plugins/private/graph/*"],
       "@kbn/grid-example-plugin": ["./examples/grid_example"],
