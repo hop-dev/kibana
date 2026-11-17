@@ -97,7 +97,8 @@ export const createBlastRadiusMaintainer =
       const written = await writeBlastRadius(
         { crudClient, esClient, namespace, requestsInFlight, signal },
         result,
-        { runId, timestamp }
+        { runId, timestamp },
+        record?.endWriteStep
       );
       record?.endPhase('writeBack');
       if (written.summaryErrors > 0) {

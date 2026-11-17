@@ -9,11 +9,12 @@ import { monitorEventLoopDelay, performance, type EventLoopUtilization } from 'p
 import v8 from 'v8';
 import { appendFileSync, getSafePath, writeFile } from '@kbn/fs';
 import type { SeedReach, WalkHop } from '@kbn/graph-algorithms';
+import type { WriteStep } from './write_blast_radius';
 
 // Measurement only, for performance tests, and off unless blastRadius.runRecord is set. Each hop
 // is appended as a JSON line to <data path>/blast_radius/<run id>.hops.log as it ends, so a run that dies
 // shows where it ended. At the end, <run id>.json holds the phase times with the CPU and event
-// loop utilisation of each, peak memory, event loop delay, and each crown jewel's relationships
+// loop utilisation of each, the same for each step of the write-back, peak memory, event loop delay, and each crown jewel's relationships
 // read, entities by hops and top choke points, for the correctness check outside Kibana.
 // Removing it means deleting this file, the config key and its calls in the maintainer.
 
@@ -32,6 +33,8 @@ export interface RunRecord {
   /** Ends the walk at its last hop: what follows it, until the walk returns, is compute. */
   readonly endWalk: () => void;
   readonly endPhase: (phase: RunPhase) => void;
+  /** Ends a step of the write-back (within writeBack, their total), begun where the last ended. */
+  readonly endWriteStep: (step: WriteStep) => void;
   /** Writes the record and returns its path. */
   readonly finish: (
     result: Record<string, unknown>,
@@ -80,22 +83,28 @@ export const startRunRecord = ({
   sampler.unref();
 
   const phases: Array<Record<string, unknown>> = [];
+  const writeSteps: Array<Record<string, unknown>> = [];
   let phaseStart = started;
+  let stepStart = started;
   let lastHop: Mark | undefined;
   let pages = 0;
 
-  const closePhase = (name: RunPhase, end: Mark) => {
-    const elu = performance.eventLoopUtilization(end.elu, phaseStart.elu);
-    phases.push({
+  const timesOf = (name: string, start: Mark, end: Mark) => {
+    const elu = performance.eventLoopUtilization(end.elu, start.elu);
+    return {
       name,
-      startedAt: new Date(phaseStart.at).toISOString(),
+      startedAt: new Date(start.at).toISOString(),
       endedAt: new Date(end.at).toISOString(),
-      seconds: seconds(end.at - phaseStart.at),
-      cpuUserSeconds: Math.round((end.cpu.user - phaseStart.cpu.user) / 1e3) / 1e3,
-      cpuSystemSeconds: Math.round((end.cpu.system - phaseStart.cpu.system) / 1e3) / 1e3,
+      seconds: seconds(end.at - start.at),
+      cpuUserSeconds: Math.round((end.cpu.user - start.cpu.user) / 1e3) / 1e3,
+      cpuSystemSeconds: Math.round((end.cpu.system - start.cpu.system) / 1e3) / 1e3,
       eventLoopUtilization: Math.round(elu.utilization * 1000) / 1000,
-    });
+    };
+  };
+  const closePhase = (name: RunPhase, end: Mark) => {
+    phases.push(timesOf(name, phaseStart, end));
     phaseStart = end;
+    stepStart = end;
   };
 
   return {
@@ -127,6 +136,12 @@ export const startRunRecord = ({
       sample();
       closePhase(phase, mark());
     },
+    endWriteStep: (step) => {
+      sample();
+      const end = mark();
+      writeSteps.push(timesOf(step, stepStart, end));
+      stepStart = end;
+    },
     finish: async (result, seeds) => {
       clearInterval(sampler);
       sample();
@@ -142,6 +157,7 @@ export const startRunRecord = ({
         nodeOptions: process.env.NODE_OPTIONS ?? '',
         ...result,
         phases,
+        writeSteps,
         memory: {
           startRssMB: megabytes(startRss),
           peakRssMB: megabytes(peakRss),

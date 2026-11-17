@@ -224,10 +224,14 @@ const writeDetails = async (
   }
 };
 
+/** The steps of a write, in order, for a caller that times them. writeDetails includes the setup. */
+export type WriteStep = 'writeDetails' | 'writeSummaries' | 'clearOlderRuns';
+
 export const writeBlastRadius = async (
   context: WriteContext,
   result: CompletedWalk,
-  run: { runId: string; timestamp: string }
+  run: { runId: string; timestamp: string },
+  onStepEnd?: (step: WriteStep) => void
 ): Promise<WriteBlastRadiusResult> => {
   const { crudClient, esClient, namespace, requestsInFlight, signal } = context;
   const index = getBlastRadiusIndexName(namespace);
@@ -241,6 +245,7 @@ export const writeBlastRadius = async (
 
   const chokePoints = chokePointsByEntity(result.seeds);
   const entitiesWritten = await writeDetails(context, index, result, chokePoints, run);
+  onStepEnd?.('writeDetails');
   const summaries = await crudClient.bulkUpdateEntitiesById(
     (function* () {
       for (const page of result.nodes()) {
@@ -261,6 +266,7 @@ export const writeBlastRadius = async (
     })(),
     { requestsInFlight, signal }
   );
+  onStepEnd?.('writeSummaries');
 
   const entitiesCleared = await clearOlderRuns({
     crudClient,
@@ -269,6 +275,7 @@ export const writeBlastRadius = async (
     runId: run.runId,
     signal,
   });
+  onStepEnd?.('clearOlderRuns');
   return {
     entitiesWritten,
     summariesChanged: summaries.updated,
