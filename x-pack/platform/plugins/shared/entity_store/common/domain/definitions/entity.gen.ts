@@ -383,6 +383,18 @@ export const EntityField = lazySchema(() =>
             .max(100)
             .optional()
             .describe("The entity's percentile by score among the entities the run reached."),
+          /**
+           * On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
+           */
+          cut_off: z
+            .number()
+            .int()
+            .min(0)
+            .nullable()
+            .optional()
+            .describe(
+              'On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.'
+            ),
         })
         .strict()
         .nullable()

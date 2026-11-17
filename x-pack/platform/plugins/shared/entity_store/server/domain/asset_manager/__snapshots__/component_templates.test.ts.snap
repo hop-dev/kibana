@@ -108,6 +108,9 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
         "entity.blast_radius.percentile": Object {
           "type": "float",
         },
@@ -507,6 +510,9 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
         },
         "entity.blast_radius.percentile": Object {
           "type": "float",
@@ -954,6 +960,9 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
         "entity.blast_radius.percentile": Object {
           "type": "float",
         },
@@ -1389,6 +1398,9 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
         },
         "entity.blast_radius.percentile": Object {
           "type": "float",
@@ -1903,6 +1915,9 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
         "entity.blast_radius.percentile": Object {
           "type": "float",
         },
@@ -2239,6 +2254,9 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
         },
         "entity.blast_radius.percentile": Object {
           "type": "float",
@@ -2613,6 +2631,9 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
         "entity.blast_radius.percentile": Object {
           "type": "float",
         },
@@ -2978,6 +2999,9 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
         },
         "entity.blast_radius.percentile": Object {
           "type": "float",

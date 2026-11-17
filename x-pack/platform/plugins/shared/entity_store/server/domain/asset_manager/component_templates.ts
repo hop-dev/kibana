@@ -27,6 +27,7 @@ const BASE_ENTITY_INDEX_MAPPING = {
   'entity.risk.calculated_score_norm': { type: 'float' },
   'entity.blast_radius.score': { type: 'float' },
   'entity.blast_radius.percentile': { type: 'float' },
+  'entity.blast_radius.cut_off': { type: 'long' },
 } as const satisfies MappingProperties;
 
 export const getComponentTemplateName = (type: EntityType, namespace: string) =>
