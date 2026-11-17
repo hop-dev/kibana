@@ -362,6 +362,46 @@ export const EntityField = lazySchema(() =>
         .strict()
         .optional()
         .describe('Risk scoring information for the entity.'),
+      /**
+       * How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity.
+       */
+      blast_radius: z
+        .object({
+          /**
+           * The sum of the entity's contributions to each crown jewel it can reach.
+           */
+          score: z
+            .number()
+            .optional()
+            .describe("The sum of the entity's contributions to each crown jewel it can reach."),
+          /**
+           * The entity's percentile by score among the entities the run reached.
+           */
+          percentile: z
+            .number()
+            .min(0)
+            .max(100)
+            .optional()
+            .describe("The entity's percentile by score among the entities the run reached."),
+          /**
+           * On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
+           */
+          cut_off: z
+            .number()
+            .int()
+            .min(0)
+            .nullable()
+            .optional()
+            .describe(
+              'On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.'
+            ),
+        })
+        .strict()
+        .nullable()
+        .optional()
+        .describe(
+          "How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity."
+        ),
     })
     .strict()
 );

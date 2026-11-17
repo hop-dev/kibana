@@ -1340,6 +1340,7 @@ packages:
   - 'x-pack/platform/packages/shared/kbn-event-stacktrace'
   - 'x-pack/platform/packages/shared/kbn-failure-store-modal'
   - 'x-pack/platform/packages/shared/kbn-fs'
+  - 'x-pack/platform/packages/shared/kbn-graph-algorithms'
   - 'x-pack/platform/packages/shared/kbn-grok-heuristics'
   - 'x-pack/platform/packages/shared/kbn-inbox-common'
   - 'x-pack/platform/packages/shared/kbn-inference-cli'

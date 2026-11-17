@@ -2381,6 +2381,9 @@ importers:
       '@kbn/global-search-providers-plugin':
         specifier: workspace:*
         version: link:x-pack/platform/plugins/private/global_search_providers
+      '@kbn/graph-algorithms':
+        specifier: workspace:*
+        version: link:x-pack/platform/packages/shared/kbn-graph-algorithms
       '@kbn/graph-plugin':
         specifier: workspace:*
         version: link:x-pack/platform/plugins/private/graph
@@ -9206,6 +9209,8 @@ importers:
   x-pack/platform/packages/shared/kbn-failure-store-modal: {}
 
   x-pack/platform/packages/shared/kbn-fs: {}
+
+  x-pack/platform/packages/shared/kbn-graph-algorithms: {}
 
   x-pack/platform/packages/shared/kbn-grok-heuristics: {}
 

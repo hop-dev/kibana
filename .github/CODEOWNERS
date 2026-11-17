@@ -1135,6 +1135,7 @@ x-pack/platform/packages/shared/kbn-evals-suite-streams @elastic/streams-ui
 x-pack/platform/packages/shared/kbn-event-stacktrace @elastic/obs-signals-traces-team @elastic/obs-signals-logs-team
 x-pack/platform/packages/shared/kbn-failure-store-modal @elastic/kibana-management
 x-pack/platform/packages/shared/kbn-fs @elastic/kibana-security
+x-pack/platform/packages/shared/kbn-graph-algorithms @elastic/security-entity-analytics
 x-pack/platform/packages/shared/kbn-grok-heuristics @elastic/streams-ui
 x-pack/platform/packages/shared/kbn-inbox-common @elastic/security-generative-ai
 x-pack/platform/packages/shared/kbn-inference-cli @elastic/search-ml-ux @elastic/search-inference-team
