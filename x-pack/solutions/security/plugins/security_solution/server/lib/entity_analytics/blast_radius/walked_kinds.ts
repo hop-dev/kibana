@@ -15,6 +15,8 @@ export const WALKED_KINDS = [
   'nested_in',
   'local_admin',
   'credentials_left',
+  // A machine holding its person's sign-in session: control the machine, reuse the session.
+  'session_left',
   'stores_credentials',
   'can_replicate',
   'sso_to_role',
