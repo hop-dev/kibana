@@ -111,7 +111,8 @@ describe('chokePoints', () => {
       }
     }
     expect(checks).toBeGreaterThan(50_000);
-  });
+    // Tens of thousands of walks against the definition take about 5 seconds.
+  }, 20_000);
 
   it('keeps the top links and nodes a stable sort of them all would', async () => {
     const byCutOff = <T extends { cutOff: number }>(a: T, b: T) => b.cutOff - a.cutOff;

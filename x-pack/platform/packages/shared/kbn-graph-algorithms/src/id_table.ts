@@ -26,12 +26,19 @@ const HASH_START = 0x811c9dc5;
 const HASH_PRIME = 0x01000193;
 
 /** A multiply-add hash of the first n bytes, as a slot in a table of tableSize slots. */
-const slotOf = (b: Uint8Array, n: number, tableSize: number): number => {
+const hashOf = (b: Uint8Array, n: number): number => {
   let h = HASH_START;
   // Math.imul keeps h a 32-bit integer, so the sum below stays exact.
   for (let i = 0; i < n; i++) h = Math.imul(h, HASH_PRIME) + b[i];
-  return ((h % tableSize) + tableSize) % tableSize;
+  return h;
 };
+
+/**
+ * A hash's slot. Stored in an Int32Array, a hash wraps to 32 bits, which leaves its slot the same:
+ * table sizes are powers of two.
+ */
+const slotOf = (hash: number, tableSize: number): number =>
+  ((hash % tableSize) + tableSize) % tableSize;
 
 export const packedIdTable = (): IdTable => {
   let bytes = new Uint8Array(2 ** 24);
@@ -39,7 +46,9 @@ export const packedIdTable = (): IdTable => {
   // offsets[v] is where id v starts, offsets[v + 1] where it ends.
   let offsets = new Int32Array(2 ** 20);
   let count = 0;
-  // Slots hold id + 1, or 0 when empty. Kept under half full.
+  // Each id's hash, so growing the slots doesn't hash every id again.
+  let hashes = new Int32Array(2 ** 16);
+  // Slots hold id + 1, or 0 when empty. Kept under half full, and a power of two long.
   let slots = new Int32Array(2 ** 21);
   let scratch = new Uint8Array(1024);
 
@@ -53,8 +62,8 @@ export const packedIdTable = (): IdTable => {
     if (scratch.length < id.length * 3) scratch = new Uint8Array(id.length * 3);
     return encoder.encodeInto(id, scratch).written;
   };
-  const find = (n: number): number => {
-    let s = slotOf(scratch, n, slots.length);
+  const find = (n: number, hash: number): number => {
+    let s = slotOf(hash, slots.length);
     while (slots[s] !== 0) {
       if (sameAs(slots[s] - 1, scratch, n)) return s;
       s = (s + 1) % slots.length;
@@ -64,9 +73,7 @@ export const packedIdTable = (): IdTable => {
   const rehash = (): void => {
     slots = new Int32Array(slots.length * 2);
     for (let v = 0; v < count; v++) {
-      const start = offsets[v];
-      const n = offsets[v + 1] - start;
-      let s = slotOf(bytes.subarray(start, start + n), n, slots.length);
+      let s = slotOf(hashes[v], slots.length);
       while (slots[s] !== 0) s = (s + 1) % slots.length;
       slots[s] = v + 1;
     }
@@ -75,7 +82,8 @@ export const packedIdTable = (): IdTable => {
   return {
     intern: (id) => {
       const n = encode(id);
-      const s = find(n);
+      const hash = hashOf(scratch, n);
+      const s = find(n, hash);
       if (slots[s] !== 0) return slots[s] - 1;
       if (used + n > bytes.length) {
         const grown = new Uint8Array(Math.max(bytes.length * 2, used + n));
@@ -87,21 +95,28 @@ export const packedIdTable = (): IdTable => {
         grown.set(offsets);
         offsets = grown;
       }
+      if (count === hashes.length) {
+        const grown = new Int32Array(hashes.length * 2);
+        grown.set(hashes);
+        hashes = grown;
+      }
       bytes.set(scratch.subarray(0, n), used);
       offsets[count] = used;
       used += n;
       offsets[count + 1] = used;
+      hashes[count] = hash;
       const v = count++;
       slots[s] = v + 1;
       if (count * 2 > slots.length) rehash();
       return v;
     },
     get: (id) => {
-      const s = find(encode(id));
+      const n = encode(id);
+      const s = find(n, hashOf(scratch, n));
       return slots[s] === 0 ? undefined : slots[s] - 1;
     },
     nameOf: (v) => decoder.decode(bytes.subarray(offsets[v], offsets[v + 1])),
     size: () => count,
-    bufferBytes: () => bytes.byteLength + offsets.byteLength + slots.byteLength,
+    bufferBytes: () => bytes.byteLength + offsets.byteLength + hashes.byteLength + slots.byteLength,
   };
 };
