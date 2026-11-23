@@ -59,7 +59,7 @@ const isNotFound = (error: unknown): boolean =>
 export const openEdgesReader = async (
   esClient: ElasticsearchClient,
   namespace: string,
-  { kinds, requestsInFlight, signal }: RelationshipsReaderOptions
+  { kinds, requestsInFlight, signal, onSearch }: RelationshipsReaderOptions
 ): Promise<{ reader: RelationshipsReader; close: () => Promise<void> }> => {
   const index = getEdgesIndexName(namespace);
   let pitId: string;
@@ -71,6 +71,7 @@ export const openEdgesReader = async (
   }
 
   const readPage = async (state: PageState): Promise<PageResult> => {
+    const sentAt = performance.now();
     const response = await esClient.search<unknown>(
       {
         size: PAGE_SIZE,
@@ -90,6 +91,11 @@ export const openEdgesReader = async (
     );
     pitId = response.pit_id ?? pitId;
     const { hits } = response.hits;
+    onSearch?.({
+      tookMs: response.took,
+      roundTripMs: performance.now() - sentAt,
+      relationships: hits.length,
+    });
     const relationships = hits.map(({ fields }) => {
       const { src, kind, dst } = (fields ?? {}) as EdgeFields;
       return { entityId: src?.[0] ?? '', kind: kind?.[0] ?? '', targetEntityId: dst?.[0] ?? '' };

@@ -15,6 +15,7 @@ export type {
   MultiSeedWalkOptions,
   MultiSeedWalkResult,
   NodeReach,
+  SeedCompute,
   SeedReach,
   WalkHop,
 } from './src/types';

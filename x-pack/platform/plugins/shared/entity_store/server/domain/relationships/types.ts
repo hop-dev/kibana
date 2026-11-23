@@ -25,4 +25,15 @@ export interface RelationshipsReaderOptions {
   /** Search requests the reader keeps in flight at once. */
   readonly requestsInFlight: number;
   readonly signal: AbortSignal;
+  /** Called after each search, for callers that measure the reader. */
+  readonly onSearch?: (search: RelationshipsSearch) => void;
+}
+
+/** One search the reader made. */
+export interface RelationshipsSearch {
+  /** Elasticsearch's own time for the search. */
+  readonly tookMs: number;
+  /** The request's round trip in Kibana, the response parsed: took plus network and parsing. */
+  readonly roundTripMs: number;
+  readonly relationships: number;
 }

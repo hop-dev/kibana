@@ -9,7 +9,13 @@ import { chokeBuffers, chokePoints } from './choke_points';
 import { dominatorBuffers, dominatorTree } from './dominators';
 import { graphBuilder, type Graph } from './graph';
 import { nodeReachTable } from './node_reach';
-import type { EdgeReader, MultiSeedWalkOptions, MultiSeedWalkResult, SeedReach } from './types';
+import type {
+  EdgeReader,
+  MultiSeedWalkOptions,
+  MultiSeedWalkResult,
+  SeedCompute,
+  SeedReach,
+} from './types';
 import { reverseWalk, walkBuffers } from './walk';
 
 // One walk back from every seed at once. Hop by hop, it reads the edges into the frontier, so it
@@ -46,6 +52,7 @@ export const multiSeedWalk = async (
     signal,
     isCounted,
     onHop,
+    onSeedComputed,
     topChokePoints = DEFAULT_TOP_CHOKE_POINTS,
     nodesPageSize = DEFAULT_NODES_PAGE_SIZE,
   }: MultiSeedWalkOptions
@@ -91,26 +98,36 @@ export const multiSeedWalk = async (
 
   // Each seed's reach and choke points, counting the nodes it reaches.
   const seedReaches: SeedReach[] = [];
+  const seconds = (from: number) => (performance.now() - from) / 1000;
+  const times: Array<Omit<SeedCompute, 'nodeReachSeconds'>> = [];
   for (const [s, seedId] of seeds.entries()) {
+    let at = performance.now();
     const reached = reverseWalk(graph, roots[s], walk);
     const reachedByHops = new Array<number>(reached.maxHops).fill(0);
     for (let i = 1; i < walk.size; i++) reachedByHops[walk.hops[walk.order[i]] - 1]++;
     reach.count(walk);
+    const reachSeconds = seconds(at);
+    at = performance.now();
     dominatorTree(graph, roots[s], dominators);
+    const dominatorsSeconds = seconds(at);
+    at = performance.now();
     seedReaches.push({
       seedId,
       edgesRead: reached.edgesRead,
       reachedByHops,
       chokePoints: chokePoints(graph, dominators, counted, choke, topChokePoints),
     });
+    times.push({ seedId, reachSeconds, dominatorsSeconds, chokePointsSeconds: seconds(at) });
     await yieldToEventLoop(signal);
   }
 
   // Each node's hops and next node to every seed it reaches.
   reach.allocate();
   for (let s = 0; s < seeds.length; s++) {
+    const at = performance.now();
     reverseWalk(graph, roots[s], walk);
     reach.fill(s, walk);
+    onSeedComputed?.({ ...times[s], nodeReachSeconds: seconds(at) });
     await yieldToEventLoop(signal);
   }
 

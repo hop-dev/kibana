@@ -62,6 +62,7 @@ export type {
   Relationship,
   RelationshipsReader,
   RelationshipsReaderOptions,
+  RelationshipsSearch,
 } from './domain/relationships';
 export type { ResolutionClient } from './domain/resolution';
 export {

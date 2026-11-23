@@ -78,6 +78,17 @@ export type MultiSeedWalkResult =
     };
 
 /** One round of reads, reported as it ends. */
+/** How long one seed's share of the compute took, in seconds. */
+export interface SeedCompute {
+  readonly seedId: string;
+  /** Walking back from the seed over the built graph and counting what it reaches. */
+  readonly reachSeconds: number;
+  readonly dominatorsSeconds: number;
+  readonly chokePointsSeconds: number;
+  /** Walking back again to record each node's hops and next node to the seed. */
+  readonly nodeReachSeconds: number;
+}
+
 export interface WalkHop {
   /** 1 for the edges into the seeds, 2 for the edges into what those reached, and so on. */
   readonly hop: number;
@@ -95,6 +106,8 @@ export interface MultiSeedWalkOptions {
   readonly isCounted?: (nodeId: string) => boolean;
   /** Called after each hop's reads. */
   readonly onHop?: (hop: WalkHop) => void;
+  /** Called with each seed's compute times, once every seed's are known. For measurement. */
+  readonly onSeedComputed?: (compute: SeedCompute) => void;
   /** Choke links and nodes kept per seed. 10 when omitted. */
   readonly topChokePoints?: number;
   /** Nodes in each page nodes() hands out. 1,000 when omitted. */

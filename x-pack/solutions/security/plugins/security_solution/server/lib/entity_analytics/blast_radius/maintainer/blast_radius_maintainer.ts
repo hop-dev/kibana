@@ -22,7 +22,7 @@ type MaintainerState = Awaited<ReturnType<MaintainerRun>>;
 const toEdgeReader = (relationships: RelationshipsReader, record?: RunRecord): EdgeReader => ({
   async *edgesInto(nodeIds) {
     for await (const page of relationships.relationshipsInto(nodeIds)) {
-      record?.page();
+      record?.page(page);
       yield page.map(({ entityId, kind, targetEntityId }) => ({
         fromId: entityId,
         kind,
@@ -72,11 +72,12 @@ export const createBlastRadiusMaintainer =
       if (crownJewelIds.length === 0) return await finish({ outcome: 'no_crown_jewels' });
 
       const result = await relationshipsClient.withReader(
-        { kinds: WALKED_KINDS, requestsInFlight, signal },
+        { kinds: WALKED_KINDS, requestsInFlight, signal, onSearch: record?.search },
         (relationships) =>
           multiSeedWalk(toEdgeReader(relationships, record), crownJewelIds, {
             maxEdgesRead: maxRelationshipsRead,
             signal,
+            onSeedComputed: record?.seedComputed,
             onHop: (hop) => {
               logger.debug(
                 `Hop ${hop.hop}: ${hop.frontierSize} entities, ${hop.edgesRead} relationships read`

@@ -6,4 +6,9 @@
  */
 
 export { RelationshipsClient } from './relationships_client';
-export type { Relationship, RelationshipsReader, RelationshipsReaderOptions } from './types';
+export type {
+  Relationship,
+  RelationshipsReader,
+  RelationshipsReaderOptions,
+  RelationshipsSearch,
+} from './types';
