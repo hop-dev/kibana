@@ -7,6 +7,7 @@
 
 import { chokeBuffers, chokePoints, cuts } from './choke_points';
 import { dominatorBuffers, dominatorTree } from './dominators';
+import { eventLoopBudget } from './event_loop_budget';
 import { graphBuilder, type Graph } from './graph';
 
 // Lengauer-Tarjan and the links derived from it, against the definition on random small graphs:
@@ -52,6 +53,8 @@ const random = (seed: number) => {
   };
 };
 
+const budget = eventLoopBudget(new AbortController().signal);
+
 const KINDS = ['member_of', 'local_admin', 'credentials_left', 'can_assume'];
 
 /** A random graph with cycles, self-loops and parallel links of different kinds. */
@@ -73,7 +76,7 @@ const randomGraph = (seed: number): { graph: Graph; counted: Uint8Array } => {
 };
 
 describe('chokePoints', () => {
-  it('cuts off from every node and link what taking it away and walking again does', () => {
+  it('cuts off from every node and link what taking it away and walking again does', async () => {
     let checks = 0;
     for (let seed = 1; seed <= 300; seed++) {
       const { graph, counted: some } = randomGraph(seed);
@@ -82,8 +85,8 @@ describe('chokePoints', () => {
       const c = chokeBuffers(graph);
       for (const counted of [some, everyone]) {
         for (const root of [0, 1, graph.nodeCount - 1]) {
-          dominatorTree(graph, root, d);
-          const base = cuts(graph, d, counted, c);
+          await dominatorTree(graph, root, d, budget);
+          const base = await cuts(graph, d, counted, c, budget);
           expect(base).toBe(countedReaching(graph, root, counted));
 
           for (let x = 0; x < graph.nodeCount; x++) {
@@ -110,7 +113,34 @@ describe('chokePoints', () => {
     expect(checks).toBeGreaterThan(50_000);
   });
 
-  it('reports a node only where it cuts off more than any one of its links', () => {
+  it('keeps the top links and nodes a stable sort of them all would', async () => {
+    const byCutOff = <T extends { cutOff: number }>(a: T, b: T) => b.cutOff - a.cutOff;
+    for (let seed = 1; seed <= 300; seed++) {
+      const { graph, counted } = randomGraph(seed);
+      const d = dominatorBuffers(graph);
+      const c = chokeBuffers(graph);
+      await dominatorTree(graph, 0, d, budget);
+      const { links, nodes, dominatingLinks } = await chokePoints(graph, d, counted, c, budget, 3);
+
+      const allLinks = [];
+      const allNodes = [];
+      for (let i = 1; i < d.size; i++) {
+        const fromId = graph.nameOf(d.vertex[i]);
+        if (c.linkCut[i] > 0) allLinks.push({ fromId, cutOff: c.linkCut[i] });
+        const cutOff = c.sub[i] - counted[d.vertex[i]];
+        if (cutOff > 0 && c.linkCut[i] === 0 && cutOff > c.maxChildLink[i]) {
+          allNodes.push({ nodeId: fromId, cutOff });
+        }
+      }
+      expect(dominatingLinks).toBe(allLinks.length);
+      expect(links.map(({ fromId, cutOff }) => ({ fromId, cutOff }))).toEqual(
+        allLinks.sort(byCutOff).slice(0, 3)
+      );
+      expect(nodes).toEqual(allNodes.sort(byCutOff).slice(0, 3));
+    }
+  });
+
+  it('reports a node only where it cuts off more than any one of its links', async () => {
     // a and b reach hub by their own links, and hub's one link to the seed cuts both off: a link
     // is the smaller fix, so hub isn't reported. x and y reach gate, whose two parallel links to
     // the seed can't be cut one at a time, so only removing gate cuts both off.
@@ -131,8 +161,8 @@ describe('chokePoints', () => {
     const counted = new Uint8Array(graph.nodeCount);
     for (const id of ['a', 'b', 'x', 'y']) counted[graph.idOf(id) ?? -1] = 1;
     const d = dominatorBuffers(graph);
-    dominatorTree(graph, graph.idOf('jewel') ?? -1, d);
-    const result = chokePoints(graph, d, counted, chokeBuffers(graph, d));
+    await dominatorTree(graph, graph.idOf('jewel') ?? -1, d, budget);
+    const result = await chokePoints(graph, d, counted, chokeBuffers(graph, d), budget);
 
     expect(result.countedReaching).toBe(4);
     expect(result.dominatingLinks).toBe(5);

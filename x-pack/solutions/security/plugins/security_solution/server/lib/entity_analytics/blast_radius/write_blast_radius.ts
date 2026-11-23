@@ -8,7 +8,8 @@
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { BulkDropTypeSummary, EntityUpdateClient } from '@kbn/entity-store/server';
 import { hashEuid } from '@kbn/entity-store/server';
-import type { MultiSeedWalkResult, NodeReach } from '@kbn/graph-algorithms';
+import { eventLoopBudget } from '@kbn/graph-algorithms';
+import type { EventLoopBudget, MultiSeedWalkResult, NodeReach } from '@kbn/graph-algorithms';
 
 // The daily job's output, as the output contract has it: a summary on each entity reached
 // (entity.blast_radius) and one detail document per entity beside it, keyed by the same EUID,
@@ -122,17 +123,32 @@ const ensureIndex = async (
   await esClient.indices.create({ index, mappings: DETAIL_MAPPINGS }, { signal, ignore: [400] });
 };
 
-/** The percentile of each score, by the share of entities scoring the same or lower. */
-const percentilesByScore = (counts: readonly number[]): number[] => {
-  const total = counts.reduce((sum, count) => sum + count, 0);
+const scoreOf = (node: NodeReach): number => node.seeds.length * CONTRIBUTION;
+
+/**
+ * Each score's percentile, by the share of entities scoring the same or lower. Scores are whole
+ * numbers up to the number of crown jewels, so it counts entities per score, then keeps a running
+ * total: one pass over the entities, letting the event loop run as it goes.
+ */
+export const percentilesByScore = async (
+  result: CompletedWalk,
+  budget: EventLoopBudget
+): Promise<number[]> => {
+  const counts = new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
+  let total = 0;
+  for (const page of result.nodes()) {
+    for (const node of page) {
+      if (budget.spent()) await budget.yield();
+      counts[scoreOf(node)]++;
+      total++;
+    }
+  }
   let atOrBelow = 0;
   return counts.map((count) => {
     atOrBelow += count;
     return total === 0 ? 0 : Math.round((1000 * atOrBelow) / total) / 10;
   });
 };
-
-const scoreOf = (node: NodeReach): number => node.seeds.length * CONTRIBUTION;
 
 /** The walk's choke nodes and links, by entity and then by crown jewel. */
 const chokePointsByEntity = (
@@ -237,11 +253,7 @@ export const writeBlastRadius = async (
   const index = getBlastRadiusIndexName(namespace);
   await ensureIndex(esClient, index, signal);
 
-  // Scores are whole numbers up to the number of crown jewels, so a count per score gives each
-  // score's percentile.
-  const counts = new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
-  for (const page of result.nodes()) for (const node of page) counts[scoreOf(node)]++;
-  const percentiles = percentilesByScore(counts);
+  const percentiles = await percentilesByScore(result, eventLoopBudget(signal));
 
   const chokePoints = chokePointsByEntity(result.seeds);
   const entitiesWritten = await writeDetails(context, index, result, chokePoints, run);

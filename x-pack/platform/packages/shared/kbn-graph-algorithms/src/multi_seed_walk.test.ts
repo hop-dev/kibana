@@ -7,6 +7,7 @@
 
 import { chokeBuffers, chokePoints } from './choke_points';
 import { dominatorBuffers, dominatorTree } from './dominators';
+import { eventLoopBudget } from './event_loop_budget';
 import { graphBuilder } from './graph';
 import { multiSeedWalk } from './multi_seed_walk';
 import type { Edge, EdgeReader, NodeReach } from './types';
@@ -44,6 +45,7 @@ const memoryReader = (edges: readonly Edge[]) => {
 };
 
 const signal = new AbortController().signal;
+const budget = eventLoopBudget(signal);
 
 const wholeGraph = () => {
   const builder = graphBuilder();
@@ -70,15 +72,15 @@ describe('multiSeedWalk', () => {
 
     for (const seed of result.seeds) {
       const root = graph.idOf(seed.seedId) ?? -1;
-      const reached = reverseWalk(graph, root, walk);
+      const reached = await reverseWalk(graph, root, walk, budget);
       const byHops = new Array<number>(reached.maxHops).fill(0);
       for (let i = 1; i < walk.size; i++) byHops[walk.hops[walk.order[i]] - 1]++;
-      dominatorTree(graph, root, dominators);
+      await dominatorTree(graph, root, dominators, budget);
 
       expect(seed.edgesRead).toBe(reached.edgesRead);
       expect(seed.reachedByHops).toEqual(byHops);
       expect(seed.chokePoints).toEqual(
-        chokePoints(graph, dominators, everyone, chokeBuffers(graph, dominators))
+        await chokePoints(graph, dominators, everyone, chokeBuffers(graph, dominators), budget)
       );
     }
     expect(result.seeds.map(({ seedId }) => seedId)).toEqual(SEEDS);
@@ -89,10 +91,11 @@ describe('multiSeedWalk', () => {
     const result = await multiSeedWalk(reader, [...SEEDS, 's1'], { maxEdgesRead: 1_000, signal });
     const everyAsked = asked.flat();
     const graph = wholeGraph();
-    const union = reverseWalk(
+    const union = await reverseWalk(
       graph,
       SEEDS.map((seedId) => graph.idOf(seedId) ?? -1),
-      walkBuffers(graph)
+      walkBuffers(graph),
+      budget
     );
 
     expect(new Set(everyAsked).size).toBe(everyAsked.length);
@@ -114,7 +117,7 @@ describe('multiSeedWalk', () => {
     expect(reachOf.has('z1')).toBe(false);
     expect(reachOf.get('s2')?.seeds).toEqual([{ seedId: 's1', hops: 1, nextNodeId: 's1' }]);
     for (const seedId of SEEDS) {
-      reverseWalk(graph, graph.idOf(seedId) ?? -1, walk);
+      await reverseWalk(graph, graph.idOf(seedId) ?? -1, walk, budget);
       for (let v = 0; v < graph.nodeCount; v++) {
         const hops = walk.hops[v];
         const pair = reachOf.get(graph.nameOf(v))?.seeds.find((s) => s.seedId === seedId);

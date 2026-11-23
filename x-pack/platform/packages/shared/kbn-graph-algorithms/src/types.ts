@@ -78,7 +78,10 @@ export type MultiSeedWalkResult =
     };
 
 /** One round of reads, reported as it ends. */
-/** How long one seed's share of the compute took, in seconds. */
+/**
+ * How long one seed's share of the compute took, in seconds. Wall time, so it includes the time
+ * the compute lets the event loop run other work.
+ */
 export interface SeedCompute {
   readonly seedId: string;
   /** Walking back from the seed over the built graph and counting what it reaches. */

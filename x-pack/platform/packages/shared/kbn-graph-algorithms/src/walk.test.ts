@@ -5,8 +5,11 @@
  * 2.0.
  */
 
+import { eventLoopBudget } from './event_loop_budget';
 import { graphBuilder, type Graph } from './graph';
 import { reverseWalk, walkBuffers } from './walk';
+
+const budget = eventLoopBudget(new AbortController().signal);
 
 const graphOf = (edges: ReadonlyArray<readonly [string, string, string]>): Graph => {
   const builder = graphBuilder();
@@ -33,13 +36,13 @@ const EDGES = [
 ] as const;
 
 describe('reverseWalk', () => {
-  it('gives hops and next node for everyone who can reach the seed', () => {
+  it('gives hops and next node for everyone who can reach the seed', async () => {
     const graph = graphOf(EDGES);
     const buffers = walkBuffers(graph);
     const id = (name: string) => graph.idOf(name) ?? -1;
     const route = (name: string) => [buffers.hops[id(name)], graph.nameOf(buffers.next[id(name)])];
 
-    expect(reverseWalk(graph, id('pii'), buffers)).toEqual({
+    expect(await reverseWalk(graph, id('pii'), buffers, budget)).toEqual({
       reached: 4,
       edgesRead: 4,
       maxHops: 3,
@@ -51,13 +54,13 @@ describe('reverseWalk', () => {
     expect(buffers.hops[id('dave')]).toBe(-1);
   });
 
-  it('reuses its buffers: a walk forgets the one before it', () => {
+  it('reuses its buffers: a walk forgets the one before it', async () => {
     const graph = graphOf(EDGES);
     const buffers = walkBuffers(graph);
     const id = (name: string) => graph.idOf(name) ?? -1;
-    reverseWalk(graph, id('pii'), buffers);
+    await reverseWalk(graph, id('pii'), buffers, budget);
 
-    expect(reverseWalk(graph, id('domain-admins'), buffers)).toEqual({
+    expect(await reverseWalk(graph, id('domain-admins'), buffers, budget)).toEqual({
       reached: 3,
       edgesRead: 3,
       maxHops: 3,
@@ -65,14 +68,14 @@ describe('reverseWalk', () => {
     expect(buffers.hops[id('alice')]).toBe(-1);
     expect(buffers.next[id('alice')]).toBe(-1);
     expect(buffers.hops[id('dave')]).toBe(3);
-    expect(reverseWalk(graph, id('lonely-seed'), buffers)).toEqual({
+    expect(await reverseWalk(graph, id('lonely-seed'), buffers, budget)).toEqual({
       reached: 0,
       edgesRead: 0,
       maxHops: 0,
     });
   });
 
-  it('reaches from several seeds what the single walks reach together, reading each edge once', () => {
+  it('reaches from several seeds what the single walks reach together, reading each edge once', async () => {
     const graph = graphOf([
       ['a', 'member_of', 'g1'],
       ['b', 'member_of', 'g2'],
@@ -82,10 +85,11 @@ describe('reverseWalk', () => {
       ['g1', 'nested_in', 'g2'],
     ]);
     const buffers = walkBuffers(graph);
-    const both = reverseWalk(
+    const both = await reverseWalk(
       graph,
       ['g1', 'g2'].map((name) => graph.idOf(name) ?? -1),
-      buffers
+      buffers,
+      budget
     );
     const reached = Array.from(buffers.order.subarray(0, buffers.size), (v) => graph.nameOf(v));
 

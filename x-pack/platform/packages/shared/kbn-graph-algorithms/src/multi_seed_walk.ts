@@ -7,6 +7,7 @@
 
 import { chokeBuffers, chokePoints } from './choke_points';
 import { dominatorBuffers, dominatorTree } from './dominators';
+import { eventLoopBudget } from './event_loop_budget';
 import { graphBuilder, type Graph } from './graph';
 import { nodeReachTable } from './node_reach';
 import type {
@@ -25,12 +26,6 @@ import { reverseWalk, walkBuffers } from './walk';
 
 const DEFAULT_TOP_CHOKE_POINTS = 10;
 const DEFAULT_NODES_PAGE_SIZE = 1_000;
-
-/** Lets the event loop run, then stops if the walk was aborted. */
-const yieldToEventLoop = async (signal: AbortSignal): Promise<void> => {
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  signal.throwIfAborted();
-};
 
 const countedMask = (graph: Graph, isCounted?: (nodeId: string) => boolean): Uint8Array => {
   const counted = new Uint8Array(graph.nodeCount);
@@ -87,7 +82,8 @@ export const multiSeedWalk = async (
   }
 
   const graph = builder.build();
-  await yieldToEventLoop(signal);
+  const budget = eventLoopBudget(signal);
+  await budget.yield();
   const counted = countedMask(graph, isCounted);
   const walk = walkBuffers(graph);
   const dominators = dominatorBuffers(graph);
@@ -102,33 +98,33 @@ export const multiSeedWalk = async (
   const times: Array<Omit<SeedCompute, 'nodeReachSeconds'>> = [];
   for (const [s, seedId] of seeds.entries()) {
     let at = performance.now();
-    const reached = reverseWalk(graph, roots[s], walk);
+    const reached = await reverseWalk(graph, roots[s], walk, budget);
     const reachedByHops = new Array<number>(reached.maxHops).fill(0);
     for (let i = 1; i < walk.size; i++) reachedByHops[walk.hops[walk.order[i]] - 1]++;
     reach.count(walk);
     const reachSeconds = seconds(at);
     at = performance.now();
-    dominatorTree(graph, roots[s], dominators);
+    await dominatorTree(graph, roots[s], dominators, budget);
     const dominatorsSeconds = seconds(at);
     at = performance.now();
     seedReaches.push({
       seedId,
       edgesRead: reached.edgesRead,
       reachedByHops,
-      chokePoints: chokePoints(graph, dominators, counted, choke, topChokePoints),
+      chokePoints: await chokePoints(graph, dominators, counted, choke, budget, topChokePoints),
     });
     times.push({ seedId, reachSeconds, dominatorsSeconds, chokePointsSeconds: seconds(at) });
-    await yieldToEventLoop(signal);
+    await budget.yield();
   }
 
   // Each node's hops and next node to every seed it reaches.
   reach.allocate();
   for (let s = 0; s < seeds.length; s++) {
     const at = performance.now();
-    reverseWalk(graph, roots[s], walk);
+    await reverseWalk(graph, roots[s], walk, budget);
     reach.fill(s, walk);
     onSeedComputed?.({ ...times[s], nodeReachSeconds: seconds(at) });
-    await yieldToEventLoop(signal);
+    await budget.yield();
   }
 
   return {

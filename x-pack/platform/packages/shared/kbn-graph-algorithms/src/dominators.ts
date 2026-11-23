@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { EventLoopBudget } from './event_loop_budget';
 import type { Graph } from './graph';
 
 // Dominators for one seed, by Lengauer-Tarjan (the simple version, with path compression).
@@ -61,7 +62,12 @@ export const dominatorBuffers = (graph: Graph): DominatorBuffers => {
  * it covers. The tree stays in the buffers until the next run: buffers.vertex[i] is a node and
  * buffers.idom[i] the depth-first number of its immediate dominator.
  */
-export const dominatorTree = (graph: Graph, seed: number, b: DominatorBuffers): number => {
+export const dominatorTree = async (
+  graph: Graph,
+  seed: number,
+  b: DominatorBuffers,
+  budget: EventLoopBudget
+): Promise<number> => {
   const { inOffsets, inSources, outOffsets, outTargets } = graph;
   const { num, vertex, idom, parent, semi, ancestor, label, bucketHead, bucketNext } = b;
 
@@ -76,6 +82,7 @@ export const dominatorTree = (graph: Graph, seed: number, b: DominatorBuffers): 
   b.stackEdge[0] = inOffsets[seed];
   let top = 1;
   while (top > 0) {
+    if (budget.spent()) await budget.yield();
     const v = b.stackNode[top - 1];
     const e = b.stackEdge[top - 1];
     if (e === inOffsets[v + 1]) {
@@ -124,6 +131,7 @@ export const dominatorTree = (graph: Graph, seed: number, b: DominatorBuffers): 
   // 2. Semidominators from the last-numbered node back, and immediate dominators where they're
   // already certain. A node's predecessors here are the nodes its own edges point to.
   for (let w = size - 1; w > 0; w--) {
+    if (budget.spent()) await budget.yield();
     const x = vertex[w];
     for (let e = outOffsets[x]; e < outOffsets[x + 1]; e++) {
       const p = num[outTargets[e]];

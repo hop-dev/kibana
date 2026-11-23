@@ -6,6 +6,7 @@
  */
 
 import type { DominatorBuffers } from './dominators';
+import type { EventLoopBudget } from './event_loop_budget';
 import type { Graph } from './graph';
 import type { ChokeLink, ChokeNode, ChokePoints } from './types';
 
@@ -71,12 +72,13 @@ export const chokeBuffers = (graph: Graph, share?: DominatorBuffers): ChokeBuffe
  * Fills sub and linkCut for the dominator tree in d, by depth-first number. Returns how many
  * counted nodes can reach the seed. counted is 1 for each node that counts.
  */
-export const cuts = (
+export const cuts = async (
   graph: Graph,
   d: DominatorBuffers,
   counted: Uint8Array,
-  c: ChokeBuffers
-): number => {
+  c: ChokeBuffers,
+  budget: EventLoopBudget
+): Promise<number> => {
   const { outOffsets, outTargets } = graph;
   const { num, vertex, idom, size } = d;
   const { sub, linkCut, childOffsets, children, pre, post, stack, stackAt } = c;
@@ -98,6 +100,7 @@ export const cuts = (
   stackAt[0] = childOffsets[0];
   pre[0] = clock++;
   while (top >= 0) {
+    if (budget.spent()) await budget.yield();
     const v = stack[top];
     const k = stackAt[top];
     if (k === childOffsets[v + 1]) {
@@ -117,6 +120,7 @@ export const cuts = (
   // Dominating links: into node i from its immediate dominator.
   linkCut[0] = 0;
   for (let i = 1; i < size; i++) {
+    if (budget.spent()) await budget.yield();
     const b = vertex[i];
     const a = idom[i];
     let linksToA = 0;
@@ -132,46 +136,77 @@ export const cuts = (
   return sub[0] - counted[vertex[0]];
 };
 
-const byCutOff = <T extends { cutOff: number }>(a: T, b: T) => b.cutOff - a.cutOff;
+/**
+ * The top entries by cut off as they're offered, keeping the first offered of equal ones, as a
+ * stable sort of them all would. Only the top are kept, so there's nothing large to sort.
+ */
+const topByCutOff = (top: number) => {
+  const indices: number[] = [];
+  const cutOffs: number[] = [];
+  return {
+    offer: (index: number, cutOff: number): void => {
+      const full = indices.length === top;
+      if (top === 0 || (full && cutOff <= cutOffs[top - 1])) return;
+      let at = full ? top - 1 : indices.length;
+      for (; at > 0 && cutOffs[at - 1] < cutOff; at--) {
+        indices[at] = indices[at - 1];
+        cutOffs[at] = cutOffs[at - 1];
+      }
+      indices[at] = index;
+      cutOffs[at] = cutOff;
+    },
+    indices: (): readonly number[] => indices,
+  };
+};
 
 /** The choke points for the dominator tree in d: the top links and nodes by counted nodes cut off. */
-export const chokePoints = (
+export const chokePoints = async (
   graph: Graph,
   d: DominatorBuffers,
   counted: Uint8Array,
   c: ChokeBuffers,
+  budget: EventLoopBudget,
   top = 10
-): ChokePoints => {
-  const countedReaching = cuts(graph, d, counted, c);
+): Promise<ChokePoints> => {
+  const countedReaching = await cuts(graph, d, counted, c, budget);
   const { vertex, idom, size } = d;
   const { sub, linkCut, maxChildLink } = c;
 
-  const links: ChokeLink[] = [];
+  const topLinks = topByCutOff(top);
+  let dominatingLinks = 0;
   maxChildLink.fill(0, 0, size);
   for (let i = 1; i < size; i++) {
+    if (budget.spent()) await budget.yield();
     if (linkCut[i] === 0) continue;
+    dominatingLinks++;
+    topLinks.offer(i, linkCut[i]);
+    if (linkCut[i] > maxChildLink[idom[i]]) maxChildLink[idom[i]] = linkCut[i];
+  }
+
+  const topNodes = topByCutOff(top);
+  for (let i = 1; i < size; i++) {
+    if (budget.spent()) await budget.yield();
+    const cutOff = sub[i] - counted[vertex[i]];
+    if (cutOff > 0 && linkCut[i] === 0 && cutOff > maxChildLink[i]) topNodes.offer(i, cutOff);
+  }
+
+  const linkInto = (i: number): ChokeLink => {
     const b = vertex[i];
     const a = vertex[idom[i]];
     let kind = '';
     for (let e = graph.outOffsets[b]; e < graph.outOffsets[b + 1]; e++) {
       if (graph.outTargets[e] === a) kind = graph.kinds[graph.outKinds[e]];
     }
-    links.push({ fromId: graph.nameOf(b), kind, toId: graph.nameOf(a), cutOff: linkCut[i] });
-    if (linkCut[i] > maxChildLink[idom[i]]) maxChildLink[idom[i]] = linkCut[i];
-  }
-
-  const nodes: ChokeNode[] = [];
-  for (let i = 1; i < size; i++) {
-    const cutOff = sub[i] - counted[vertex[i]];
-    if (cutOff > 0 && linkCut[i] === 0 && cutOff > maxChildLink[i]) {
-      nodes.push({ nodeId: graph.nameOf(vertex[i]), cutOff });
-    }
-  }
-
+    return { fromId: graph.nameOf(b), kind, toId: graph.nameOf(a), cutOff: linkCut[i] };
+  };
   return {
     countedReaching,
-    dominatingLinks: links.length,
-    links: links.sort(byCutOff).slice(0, top),
-    nodes: nodes.sort(byCutOff).slice(0, top),
+    dominatingLinks,
+    links: topLinks.indices().map(linkInto),
+    nodes: topNodes
+      .indices()
+      .map(
+        (i): ChokeNode => ({ nodeId: graph.nameOf(vertex[i]), cutOff: sub[i] - counted[vertex[i]] })
+      ),
   };
 };

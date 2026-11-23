@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+export { eventLoopBudget } from './src/event_loop_budget';
+export type { EventLoopBudget } from './src/event_loop_budget';
 export { multiSeedWalk } from './src/multi_seed_walk';
 export type {
   ChokeLink,

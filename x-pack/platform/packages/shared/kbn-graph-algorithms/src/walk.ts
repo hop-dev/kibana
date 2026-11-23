@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { EventLoopBudget } from './event_loop_budget';
 import type { Graph } from './graph';
 
 // The reverse walk from one seed: breadth first over the edges into each node, so every node that
@@ -42,11 +43,12 @@ export const walkBuffers = (graph: Graph): WalkBuffers => ({
  * Walks back from a seed, or from several at once (everything that reaches any of them, with hops
  * to the nearest). Its answers stay in the buffers until the next walk.
  */
-export const reverseWalk = (
+export const reverseWalk = async (
   graph: Graph,
   seeds: number | readonly number[],
-  buffers: WalkBuffers
-): WalkResult => {
+  buffers: WalkBuffers,
+  budget: EventLoopBudget
+): Promise<WalkResult> => {
   const roots = typeof seeds === 'number' ? [seeds] : seeds;
   const { inOffsets, inSources } = graph;
   const { hops, next, order } = buffers;
@@ -66,6 +68,7 @@ export const reverseWalk = (
   const rootCount = size;
   let edgesRead = 0;
   for (let head = 0; head < size; head++) {
+    if (budget.spent()) await budget.yield();
     const v = order[head];
     const start = inOffsets[v];
     const end = inOffsets[v + 1];
