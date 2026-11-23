@@ -10,6 +10,7 @@ import {
   performance,
   PerformanceObserver,
   type EventLoopUtilization,
+  type IntervalHistogram,
 } from 'perf_hooks';
 import v8 from 'v8';
 import { appendFileSync, getSafePath, writeFile } from '@kbn/fs';
@@ -102,6 +103,16 @@ export const startRunRecord = ({
   const startRss = process.memoryUsage().rss;
   const delay = monitorEventLoopDelay({ resolution: 20 });
   delay.enable();
+  // The longest delay in each phase and write step, to place a block in the run.
+  const phaseDelay = monitorEventLoopDelay({ resolution: 20 });
+  phaseDelay.enable();
+  const stepDelay = monitorEventLoopDelay({ resolution: 20 });
+  stepDelay.enable();
+  const longestDelayMs = (histogram: IntervalHistogram): number => {
+    const ms = milliseconds(histogram.max / 1e6);
+    histogram.reset();
+    return ms;
+  };
   let peakRss = startRss;
   let peakHeap = process.memoryUsage().heapUsed;
   let peakArrayBuffers = process.memoryUsage().arrayBuffers;
@@ -159,7 +170,9 @@ export const startRunRecord = ({
       peakRssMB: megabytes(usage.peakRss),
       peakHeapMB: megabytes(usage.peakHeap),
       peakArrayBuffersMB: megabytes(usage.peakArrayBuffers),
+      eventLoopDelayMaxMs: longestDelayMs(phaseDelay),
     });
+    stepDelay.reset();
     usage = emptyUsage();
     sample();
     phaseStart = end;
@@ -216,13 +229,18 @@ export const startRunRecord = ({
     endWriteStep: (step) => {
       sample();
       const end = mark();
-      writeSteps.push(timesOf(step, stepStart, end));
+      writeSteps.push({
+        ...timesOf(step, stepStart, end),
+        eventLoopDelayMaxMs: longestDelayMs(stepDelay),
+      });
       stepStart = end;
     },
     finish: async (result, seeds) => {
       clearInterval(sampler);
       sample();
       delay.disable();
+      phaseDelay.disable();
+      stepDelay.disable();
       gc.disconnect();
       const computeSecondsOf = (c: SeedCompute) =>
         c.reachSeconds + c.dominatorsSeconds + c.chokePointsSeconds + c.nodeReachSeconds;
