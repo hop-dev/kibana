@@ -266,7 +266,7 @@ components:
               format: double
               minimum: 0
               maximum: 100
-              description: The entity's percentile by score among the entities the run reached.
+              description: The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.
               example: 97
             cut_off:
               type: integer
@@ -274,6 +274,14 @@ components:
               nullable: true
               description: On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
               example: 1200
+            cut_off_share:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 1
+              nullable: true
+              description: On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity.
+              example: 0.125
 
     Asset:
       type: object

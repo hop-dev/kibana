@@ -375,14 +375,16 @@ export const EntityField = lazySchema(() =>
             .optional()
             .describe("The sum of the entity's contributions to each crown jewel it can reach."),
           /**
-           * The entity's percentile by score among the entities the run reached.
+           * The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.
            */
           percentile: z
             .number()
             .min(0)
             .max(100)
             .optional()
-            .describe("The entity's percentile by score among the entities the run reached."),
+            .describe(
+              'The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.'
+            ),
           /**
            * On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
            */
@@ -394,6 +396,18 @@ export const EntityField = lazySchema(() =>
             .optional()
             .describe(
               'On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.'
+            ),
+          /**
+           * On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity.
+           */
+          cut_off_share: z
+            .number()
+            .min(0)
+            .max(1)
+            .nullable()
+            .optional()
+            .describe(
+              "On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity."
             ),
         })
         .strict()

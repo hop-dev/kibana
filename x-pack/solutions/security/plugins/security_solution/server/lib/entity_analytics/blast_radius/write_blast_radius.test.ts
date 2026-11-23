@@ -6,16 +6,18 @@
  */
 
 import { eventLoopBudget, type NodeReach } from '@kbn/graph-algorithms';
-import { percentilesByScore } from './write_blast_radius';
+import { percentilesByType } from './write_blast_radius';
 
-type Walk = Parameters<typeof percentilesByScore>[0];
+type Walk = Parameters<typeof percentilesByType>[0];
 
 const CROWN_JEWELS = 50;
+/** An EUID of each entity type: user, host and service carry their type, generic ones don't. */
+const ID_PREFIXES = { user: 'user:', host: 'host:', service: 'service:', generic: 'group:' };
 
 /** A completed walk whose entities reach as many crown jewels as each score says, in pages. */
-const walkOf = (scores: readonly number[]): Walk => {
-  const nodes: NodeReach[] = scores.map((score, i) => ({
-    nodeId: `entity-${i}`,
+const walkOf = (entities: ReadonlyArray<{ nodeId: string; score: number }>): Walk => {
+  const nodes: NodeReach[] = entities.map(({ nodeId, score }) => ({
+    nodeId,
     seeds: Array.from({ length: score }, (_, s) => ({
       seedId: `jewel-${s}`,
       hops: 1,
@@ -39,24 +41,30 @@ const walkOf = (scores: readonly number[]): Walk => {
   };
 };
 
-describe('percentilesByScore', () => {
-  it('gives each entity the share of entities scoring the same or lower, as before', async () => {
-    // Mostly low scores, as in a real run, with a few entities reaching many crown jewels.
+describe('percentilesByType', () => {
+  it('gives each entity the share of entities of its type scoring strictly lower', async () => {
+    // Mostly score 1, as in a real run, with a few entities reaching many crown jewels.
     let state = 42;
     const next = () => (state = (state * 16_807) % 2_147_483_647) / 2_147_483_647;
-    const scores = Array.from({ length: 25_000 }, () =>
-      next() < 0.9 ? 1 + Math.floor(next() * 3) : 1 + Math.floor(next() * CROWN_JEWELS)
-    );
+    const types = Object.keys(ID_PREFIXES) as Array<keyof typeof ID_PREFIXES>;
+    const entities = Array.from({ length: 5_000 }, (_, i) => {
+      const type = types[Math.floor(next() * types.length)];
+      const score = next() < 0.95 ? 1 : 1 + Math.floor(next() * CROWN_JEWELS);
+      return { type, nodeId: `${ID_PREFIXES[type]}entity-${i}`, score };
+    });
+    const walk = walkOf(entities);
 
-    const percentiles = await percentilesByScore(
-      walkOf(scores),
+    const percentileOf = await percentilesByType(
+      walk,
       eventLoopBudget(new AbortController().signal, 0)
     );
 
-    const sorted = [...scores].sort((a, b) => a - b);
-    const atOrBelow = (score: number) => sorted.filter((s) => s <= score).length;
-    for (const score of new Set(scores)) {
-      expect(percentiles[score]).toBe(Math.round((1000 * atOrBelow(score)) / scores.length) / 10);
+    const nodes = [...walk.nodes()].flat();
+    for (const [i, { type, score }] of entities.entries()) {
+      const peers = entities.filter((other) => other.type === type);
+      const below = peers.filter((other) => other.score < score).length;
+      expect(percentileOf(nodes[i])).toBe(Math.round((1000 * below) / peers.length) / 10);
     }
+    expect(percentileOf(nodes[entities.findIndex(({ score }) => score === 1)])).toBe(0);
   });
 });

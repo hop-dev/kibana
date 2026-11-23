@@ -28,6 +28,7 @@ const BASE_ENTITY_INDEX_MAPPING = {
   'entity.blast_radius.score': { type: 'float' },
   'entity.blast_radius.percentile': { type: 'float' },
   'entity.blast_radius.cut_off': { type: 'long' },
+  'entity.blast_radius.cut_off_share': { type: 'float' },
 } as const satisfies MappingProperties;
 
 export const getComponentTemplateName = (type: EntityType, namespace: string) =>

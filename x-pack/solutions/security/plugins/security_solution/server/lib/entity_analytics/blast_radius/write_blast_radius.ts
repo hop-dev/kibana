@@ -14,11 +14,12 @@ import type { EventLoopBudget, MultiSeedWalkResult, NodeReach } from '@kbn/graph
 // The daily job's output, as the output contract has it: a summary on each entity reached
 // (entity.blast_radius) and one detail document per entity beside it, keyed by the same EUID,
 // with its hops, next entity and contribution for each crown jewel it reaches. Choke points are
-// marked on both: the summary's cut_off is the most a choke point cuts off from any one crown
-// jewel, and its detail entry for that crown jewel has its cut_off as a choke node and the choke
-// links from it, each as the walk kept them (its top choke points per crown jewel). Details are written
-// first, then summaries, each through the bulk helper with at most requestsInFlight requests open
-// and 429s retried. A summary that hasn't changed since the last run is a no-op in Elasticsearch.
+// marked on both. On the summary, cut_off is the most a choke point cuts off from any one crown
+// jewel, and cut_off_share the largest share of one crown jewel's reach it cuts off. Its detail
+// entry for that crown jewel has its cut_off as a choke node and the choke links from it, each as
+// the walk kept them (its top choke points per crown jewel). Details are written first, then
+// summaries, each through the bulk helper with at most requestsInFlight requests open and 429s
+// retried. A summary that hasn't changed since the last run is a no-op in Elasticsearch.
 // A run keeps the last good result: what an older run wrote for entities this run no longer
 // reaches is removed. Readers can see two runs mixed while the results are written.
 
@@ -58,6 +59,8 @@ export interface BlastRadiusDetail {
 interface ChokePointsFor {
   cutOff?: number;
   readonly links: ChokeLinkDetail[];
+  /** The crown jewel's reach, in the entities choke points count. */
+  readonly countedReaching: number;
 }
 
 export interface WriteBlastRadiusResult {
@@ -125,29 +128,48 @@ const ensureIndex = async (
 
 const scoreOf = (node: NodeReach): number => node.seeds.length * CONTRIBUTION;
 
+/** User, host and service EUIDs start with their type. Generic ones are the raw id. */
+const PREFIXED_TYPES = ['user', 'host', 'service'] as const;
+type EntityType = (typeof PREFIXED_TYPES)[number] | 'generic';
+
+const entityTypeOf = (entityId: string): EntityType =>
+  PREFIXED_TYPES.find((type) => entityId.startsWith(`${type}:`)) ?? 'generic';
+
 /**
- * Each score's percentile, by the share of entities scoring the same or lower. Scores are whole
- * numbers up to the number of crown jewels, so it counts entities per score, then keeps a running
- * total: one pass over the entities, letting the event loop run as it goes.
+ * Each entity's percentile: the share of reached entities of its type that score strictly lower,
+ * so a large tie sits low and only entities above it rise. Scores are whole numbers up to the
+ * number of crown jewels, so it counts entities per type and score, then keeps a running total:
+ * one pass over the entities, letting the event loop run as it goes.
  */
-export const percentilesByScore = async (
+export const percentilesByType = async (
   result: CompletedWalk,
   budget: EventLoopBudget
-): Promise<number[]> => {
-  const counts = new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
-  let total = 0;
+): Promise<(node: NodeReach) => number> => {
+  const counts = new Map<EntityType, number[]>();
   for (const page of result.nodes()) {
     for (const node of page) {
       if (budget.spent()) await budget.yield();
-      counts[scoreOf(node)]++;
-      total++;
+      const type = entityTypeOf(node.nodeId);
+      const byScore =
+        counts.get(type) ?? new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
+      counts.set(type, byScore);
+      byScore[scoreOf(node)]++;
     }
   }
-  let atOrBelow = 0;
-  return counts.map((count) => {
-    atOrBelow += count;
-    return total === 0 ? 0 : Math.round((1000 * atOrBelow) / total) / 10;
-  });
+  const byType = new Map<EntityType, number[]>();
+  for (const [type, byScore] of counts) {
+    const total = byScore.reduce((sum, count) => sum + count, 0);
+    let below = 0;
+    byType.set(
+      type,
+      byScore.map((count) => {
+        const percentile = Math.round((1000 * below) / total) / 10;
+        below += count;
+        return percentile;
+      })
+    );
+  }
+  return (node) => byType.get(entityTypeOf(node.nodeId))?.[scoreOf(node)] ?? 0;
 };
 
 /** The walk's choke nodes and links, by entity and then by crown jewel. */
@@ -155,30 +177,39 @@ const chokePointsByEntity = (
   seeds: CompletedWalk['seeds']
 ): Map<string, Map<string, ChokePointsFor>> => {
   const byEntity = new Map<string, Map<string, ChokePointsFor>>();
-  const entryOf = (entityId: string, seedId: string): ChokePointsFor => {
-    const bySeed = byEntity.get(entityId) ?? new Map<string, ChokePointsFor>();
-    byEntity.set(entityId, bySeed);
-    const entry = bySeed.get(seedId) ?? { links: [] };
-    bySeed.set(seedId, entry);
-    return entry;
-  };
   for (const { seedId, chokePoints } of seeds) {
-    for (const { nodeId, cutOff } of chokePoints.nodes) entryOf(nodeId, seedId).cutOff = cutOff;
+    const { countedReaching } = chokePoints;
+    const entryOf = (entityId: string): ChokePointsFor => {
+      const bySeed = byEntity.get(entityId) ?? new Map<string, ChokePointsFor>();
+      byEntity.set(entityId, bySeed);
+      const entry = bySeed.get(seedId) ?? { links: [], countedReaching };
+      bySeed.set(seedId, entry);
+      return entry;
+    };
+    for (const { nodeId, cutOff } of chokePoints.nodes) entryOf(nodeId).cutOff = cutOff;
     for (const { fromId, kind, toId, cutOff } of chokePoints.links) {
-      entryOf(fromId, seedId).links.push({ kind, to_entity_id: toId, cut_off: cutOff });
+      entryOf(fromId).links.push({ kind, to_entity_id: toId, cut_off: cutOff });
     }
   }
   return byEntity;
 };
 
-/** The most an entity cuts off from any one crown jewel, or null when it isn't a choke point. */
-const cutOffOf = (bySeed: Map<string, ChokePointsFor> | undefined): number | null => {
-  if (!bySeed) return null;
+/**
+ * The most an entity cuts off from any one crown jewel, and the largest share of one crown jewel's
+ * reach it cuts off, to 3 decimal places. Both null when it isn't a choke point.
+ */
+const cutOffsOf = (
+  bySeed: Map<string, ChokePointsFor> | undefined
+): { cut_off: number | null; cut_off_share: number | null } => {
+  if (!bySeed) return { cut_off: null, cut_off_share: null };
   let most = 0;
-  for (const { cutOff = 0, links } of bySeed.values()) {
-    most = Math.max(most, cutOff, ...links.map((link) => link.cut_off));
+  let largestShare = 0;
+  for (const { cutOff = 0, links, countedReaching } of bySeed.values()) {
+    const cut = Math.max(cutOff, ...links.map((link) => link.cut_off));
+    most = Math.max(most, cut);
+    largestShare = Math.max(largestShare, cut / countedReaching);
   }
-  return most;
+  return { cut_off: most, cut_off_share: Math.round(largestShare * 1000) / 1000 };
 };
 
 /** Writes one detail document per entity reached, and fails the run if any is refused. */
@@ -253,7 +284,7 @@ export const writeBlastRadius = async (
   const index = getBlastRadiusIndexName(namespace);
   await ensureIndex(esClient, index, signal);
 
-  const percentiles = await percentilesByScore(result, eventLoopBudget(signal));
+  const percentileOf = await percentilesByType(result, eventLoopBudget(signal));
 
   const chokePoints = chokePointsByEntity(result.seeds);
   const entitiesWritten = await writeDetails(context, index, result, chokePoints, run);
@@ -263,14 +294,12 @@ export const writeBlastRadius = async (
       for (const page of result.nodes()) {
         for (const node of page) {
           const score = scoreOf(node);
-          // Null rather than absent, so a partial update clears an earlier run's cut_off.
-          const cutOff = cutOffOf(chokePoints.get(node.nodeId));
+          // Null rather than absent, so a partial update clears an earlier run's cut-offs.
+          const cutOffs = cutOffsOf(chokePoints.get(node.nodeId));
           yield {
             entityId: node.nodeId,
             doc: {
-              entity: {
-                blast_radius: { score, percentile: percentiles[score], cut_off: cutOff },
-              },
+              entity: { blast_radius: { score, percentile: percentileOf(node), ...cutOffs } },
             },
           };
         }
