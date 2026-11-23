@@ -142,6 +142,8 @@ export const startRunRecord = ({
   let phaseStart = started;
   let stepStart = started;
   let lastHop: Mark | undefined;
+  // The walk ends at its last hop, but closes after compute, so its delay is kept hop by hop.
+  let walkDelayMaxMs = 0;
   let pages = 0;
   let searches = { requests: 0, tookMs: 0, roundTripMs: 0 };
   const relationshipsByKind: Record<string, number> = {};
@@ -159,7 +161,7 @@ export const startRunRecord = ({
       eventLoopUtilization: Math.round(elu.utilization * 1000) / 1000,
     };
   };
-  const closePhase = (name: RunPhase, end: Mark) => {
+  const closePhase = (name: RunPhase, end: Mark, eventLoopDelayMaxMs: number) => {
     phases.push({
       ...timesOf(name, phaseStart, end),
       gc: {
@@ -170,7 +172,7 @@ export const startRunRecord = ({
       peakRssMB: megabytes(usage.peakRss),
       peakHeapMB: megabytes(usage.peakHeap),
       peakArrayBuffersMB: megabytes(usage.peakArrayBuffers),
-      eventLoopDelayMaxMs: longestDelayMs(phaseDelay),
+      eventLoopDelayMaxMs,
     });
     stepDelay.reset();
     usage = emptyUsage();
@@ -184,6 +186,8 @@ export const startRunRecord = ({
       sample();
       const hopStart = lastHop ?? phaseStart;
       lastHop = mark();
+      const hopDelayMaxMs = longestDelayMs(phaseDelay);
+      walkDelayMaxMs = Math.max(walkDelayMaxMs, hopDelayMaxMs);
       const { rss, heapUsed, arrayBuffers } = process.memoryUsage();
       appendFileSync(
         hopsName,
@@ -201,6 +205,7 @@ export const startRunRecord = ({
           rssMB: megabytes(rss),
           heapMB: megabytes(heapUsed),
           arrayBuffersMB: megabytes(arrayBuffers),
+          eventLoopDelayMaxMs: hopDelayMaxMs,
         })}\n`,
         { volume: VOLUME }
       );
@@ -221,10 +226,10 @@ export const startRunRecord = ({
     seedComputed: (compute) => {
       seedComputes.push(compute);
     },
-    endWalk: () => closePhase('walk', lastHop ?? mark()),
+    endWalk: () => closePhase('walk', lastHop ?? mark(), walkDelayMaxMs),
     endPhase: (phase) => {
       sample();
-      closePhase(phase, mark());
+      closePhase(phase, mark(), longestDelayMs(phaseDelay));
     },
     endWriteStep: (step) => {
       sample();
