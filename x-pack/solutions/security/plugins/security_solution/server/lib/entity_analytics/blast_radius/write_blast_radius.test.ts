@@ -38,6 +38,8 @@ const walkOf = (entities: ReadonlyArray<{ nodeId: string; score: number }>): Wal
     *nodes() {
       for (let at = 0; at < nodes.length; at += 1_000) yield nodes.slice(at, at + 1_000);
     },
+    nodeSeedCounts: () =>
+      nodes.map(({ nodeId, seeds }) => ({ nodeId, seedsReached: seeds.length })),
   };
 };
 
@@ -59,12 +61,11 @@ describe('percentilesByType', () => {
       eventLoopBudget(new AbortController().signal, 0)
     );
 
-    const nodes = [...walk.nodes()].flat();
-    for (const [i, { type, score }] of entities.entries()) {
+    for (const { type, nodeId, score } of entities) {
       const peers = entities.filter((other) => other.type === type);
       const below = peers.filter((other) => other.score < score).length;
-      expect(percentileOf(nodes[i])).toBe(Math.round((1000 * below) / peers.length) / 10);
+      expect(percentileOf(nodeId, score)).toBe(Math.round((1000 * below) / peers.length) / 10);
     }
-    expect(percentileOf(nodes[entities.findIndex(({ score }) => score === 1)])).toBe(0);
+    expect(percentileOf('host:anything', 1)).toBe(0);
   });
 });

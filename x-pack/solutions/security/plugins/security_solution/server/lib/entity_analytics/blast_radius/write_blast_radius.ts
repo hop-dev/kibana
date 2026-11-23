@@ -136,25 +136,23 @@ const entityTypeOf = (entityId: string): EntityType =>
   PREFIXED_TYPES.find((type) => entityId.startsWith(`${type}:`)) ?? 'generic';
 
 /**
- * Each entity's percentile: the share of reached entities of its type that score strictly lower,
- * so a large tie sits low and only entities above it rise. Scores are whole numbers up to the
- * number of crown jewels, so it counts entities per type and score, then keeps a running total:
- * one pass over the entities, letting the event loop run as it goes.
+ * Each entity's percentile, by its id and score: the share of reached entities of its type that
+ * score strictly lower, so a large tie sits low and only entities above it rise. Scores are whole
+ * numbers up to the number of crown jewels, so it counts entities per type and score, then keeps a
+ * running total: one pass over the entities, letting the event loop run as it goes.
  */
 export const percentilesByType = async (
   result: CompletedWalk,
   budget: EventLoopBudget
-): Promise<(node: NodeReach) => number> => {
+): Promise<(entityId: string, score: number) => number> => {
   const counts = new Map<EntityType, number[]>();
-  for (const page of result.nodes()) {
-    for (const node of page) {
-      if (budget.spent()) await budget.yield();
-      const type = entityTypeOf(node.nodeId);
-      const byScore =
-        counts.get(type) ?? new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
-      counts.set(type, byScore);
-      byScore[scoreOf(node)]++;
-    }
+  for (const { nodeId, seedsReached } of result.nodeSeedCounts()) {
+    if (budget.spent()) await budget.yield();
+    const type = entityTypeOf(nodeId);
+    const byScore =
+      counts.get(type) ?? new Array<number>(result.seeds.length * CONTRIBUTION + 1).fill(0);
+    counts.set(type, byScore);
+    byScore[seedsReached * CONTRIBUTION]++;
   }
   const byType = new Map<EntityType, number[]>();
   for (const [type, byScore] of counts) {
@@ -169,7 +167,7 @@ export const percentilesByType = async (
       })
     );
   }
-  return (node) => byType.get(entityTypeOf(node.nodeId))?.[scoreOf(node)] ?? 0;
+  return (entityId, score) => byType.get(entityTypeOf(entityId))?.[score] ?? 0;
 };
 
 /** The walk's choke nodes and links, by entity and then by crown jewel. */
@@ -299,7 +297,9 @@ export const writeBlastRadius = async (
           yield {
             entityId: node.nodeId,
             doc: {
-              entity: { blast_radius: { score, percentile: percentileOf(node), ...cutOffs } },
+              entity: {
+                blast_radius: { score, percentile: percentileOf(node.nodeId, score), ...cutOffs },
+              },
             },
           };
         }

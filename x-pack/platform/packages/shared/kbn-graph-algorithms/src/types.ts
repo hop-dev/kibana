@@ -64,6 +64,12 @@ export interface NodeReach {
   }>;
 }
 
+/** A node that reaches at least one seed, and how many it reaches. */
+export interface NodeSeedCount {
+  readonly nodeId: string;
+  readonly seedsReached: number;
+}
+
 export type MultiSeedWalkResult =
   | { readonly outcome: 'cap'; readonly edgesRead: number; readonly hops: number }
   | {
@@ -75,6 +81,8 @@ export type MultiSeedWalkResult =
       readonly seeds: readonly SeedReach[];
       /** Every node that reaches a seed, a page at a time. */
       readonly nodes: () => Iterable<readonly NodeReach[]>;
+      /** Every node that reaches a seed, with only how many it reaches: cheaper than nodes(). */
+      readonly nodeSeedCounts: () => Iterable<NodeSeedCount>;
     };
 
 /** One round of reads, reported as it ends. */

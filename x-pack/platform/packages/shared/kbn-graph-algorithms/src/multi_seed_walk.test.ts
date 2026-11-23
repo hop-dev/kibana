@@ -114,6 +114,9 @@ describe('multiSeedWalk', () => {
     const reachOf = new Map(nodes.map((node) => [node.nodeId, node]));
 
     expect(nodes).toHaveLength(result.nodesReached);
+    expect([...result.nodeSeedCounts()]).toEqual(
+      nodes.map(({ nodeId, seeds }) => ({ nodeId, seedsReached: seeds.length }))
+    );
     expect(reachOf.has('z1')).toBe(false);
     expect(reachOf.get('s2')?.seeds).toEqual([{ seedId: 's1', hops: 1, nextNodeId: 's1' }]);
     for (const seedId of SEEDS) {

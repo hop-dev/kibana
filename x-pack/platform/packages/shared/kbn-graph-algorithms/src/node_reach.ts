@@ -6,7 +6,7 @@
  */
 
 import type { Graph } from './graph';
-import type { NodeReach } from './types';
+import type { NodeReach, NodeSeedCount } from './types';
 import type { WalkBuffers } from './walk';
 
 // Every node's hops and next node to each seed it reaches, in typed arrays. Filled in two passes
@@ -25,6 +25,8 @@ export interface NodeReachTable {
   readonly nodesReached: () => number;
   /** Every node that reaches a seed, pageSize at a time. */
   readonly pages: (seedIds: readonly string[], pageSize: number) => Iterable<NodeReach[]>;
+  /** Every node that reaches a seed, with how many it reaches, without building each pair. */
+  readonly seedCounts: () => Iterable<NodeSeedCount>;
 }
 
 const MAX_HOPS = 255;
@@ -88,6 +90,12 @@ export const nodeReachTable = (graph: Graph): NodeReachTable => {
         }
       }
       if (page.length > 0) yield page;
+    },
+    *seedCounts() {
+      for (let v = 0; v < n; v++) {
+        const seedsReached = offsets[v + 1] - offsets[v];
+        if (seedsReached > 0) yield { nodeId: graph.nameOf(v), seedsReached };
+      }
     },
   };
 };

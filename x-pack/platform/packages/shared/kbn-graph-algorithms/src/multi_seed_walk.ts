@@ -134,5 +134,6 @@ export const multiSeedWalk = async (
     nodesReached: reach.nodesReached(),
     seeds: seedReaches,
     nodes: () => reach.pages(seeds, nodesPageSize),
+    nodeSeedCounts: () => reach.seedCounts(),
   };
 };
