@@ -201,7 +201,7 @@ export const configSchema = schema.object({
        * Requests to Elasticsearch the daily job keeps open at once: searches while it reads relationships
        * (only hops of over 65,536 entities use more than one), then bulk requests while it writes results.
        */
-      requestsInFlight: schema.number({ defaultValue: 1, min: 1, max: 4 }),
+      requestsInFlight: schema.number({ defaultValue: 4, min: 1, max: 4 }),
       /** A run that reads more relationships than this stops and writes nothing. */
       maxRelationshipsRead: schema.number({
         defaultValue: 100_000_000,
