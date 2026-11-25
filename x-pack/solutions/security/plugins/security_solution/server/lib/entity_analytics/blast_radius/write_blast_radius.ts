@@ -26,8 +26,6 @@ import type { EventLoopBudget, MultiSeedWalkResult, NodeReach } from '@kbn/graph
 /** Each crown jewel an entity reaches adds this to its score. */
 const CONTRIBUTION = 1;
 const CLEAR_PAGE_SIZE = 1_000;
-/** About 1,000 detail documents per bulk request. */
-const FLUSH_BYTES = 512 * 1024;
 
 export const getBlastRadiusIndexName = (namespace: string): string =>
   `blast-radius.blast-radius-latest-${namespace}`;
@@ -244,7 +242,6 @@ const writeDetails = async (
         }
       })(),
       concurrency: requestsInFlight,
-      flushBytes: FLUSH_BYTES,
       refresh: false,
       onDocument: (detail) => ({ index: { _index: index, _id: hashEuid(detail.entity.id) } }),
       onDrop: ({ error }) => {
