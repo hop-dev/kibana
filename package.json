@@ -818,6 +818,7 @@
     "@kbn/global-search-bar-plugin": "workspace:*",
     "@kbn/global-search-plugin": "workspace:*",
     "@kbn/global-search-providers-plugin": "workspace:*",
+    "@kbn/graph-algorithms": "workspace:*",
     "@kbn/graph-plugin": "workspace:*",
     "@kbn/grid-example-plugin": "workspace:*",
     "@kbn/grid-layout": "workspace:*",

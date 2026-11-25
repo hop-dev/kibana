@@ -1,0 +1,8 @@
+{
+  "type": "shared-server",
+  "id": "@kbn/graph-algorithms",
+  "owner": ["@elastic/security-entity-analytics"],
+  "description": "Graph algorithms over directed edges with string ids: the multi-seed walk, dominators and choke points. Unrelated to the Graph app (@kbn/graph-plugin).",
+  "group": "platform",
+  "visibility": "shared"
+}

@@ -108,6 +108,18 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
+        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -502,6 +514,18 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
+        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -811,7 +835,7 @@ Object {
   "template": Object {
     "mappings": Object {
       "_meta": Object {
-        "mappingsVersion": 1,
+        "mappingsVersion": 2,
       },
       "date_detection": false,
       "dynamic_templates": Array [
@@ -941,6 +965,18 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -1372,6 +1408,18 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
+        },
         "entity.id": Object {
           "type": "keyword",
         },
@@ -1768,7 +1816,7 @@ Object {
   "template": Object {
     "mappings": Object {
       "_meta": Object {
-        "mappingsVersion": 1,
+        "mappingsVersion": 2,
       },
       "date_detection": false,
       "dynamic_templates": Array [
@@ -1878,6 +1926,18 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -2209,6 +2269,18 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
         },
         "entity.id": Object {
           "type": "keyword",
@@ -2577,6 +2649,18 @@ Object {
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
         },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
+        },
         "entity.confidence": Object {
           "type": "keyword",
         },
@@ -2936,6 +3020,18 @@ Object {
         },
         "entity.behaviors.rule_names": Object {
           "type": "keyword",
+        },
+        "entity.blast_radius.cut_off": Object {
+          "type": "long",
+        },
+        "entity.blast_radius.cut_off_share": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.percentile": Object {
+          "type": "float",
+        },
+        "entity.blast_radius.score": Object {
+          "type": "float",
         },
         "entity.confidence": Object {
           "type": "keyword",

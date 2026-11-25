@@ -362,6 +362,60 @@ export const EntityField = lazySchema(() =>
         .strict()
         .optional()
         .describe('Risk scoring information for the entity.'),
+      /**
+       * How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity.
+       */
+      blast_radius: z
+        .object({
+          /**
+           * The sum of the entity's contributions to each crown jewel it can reach.
+           */
+          score: z
+            .number()
+            .optional()
+            .describe("The sum of the entity's contributions to each crown jewel it can reach."),
+          /**
+           * The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.
+           */
+          percentile: z
+            .number()
+            .min(0)
+            .max(100)
+            .optional()
+            .describe(
+              'The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.'
+            ),
+          /**
+           * On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
+           */
+          cut_off: z
+            .number()
+            .int()
+            .min(0)
+            .nullable()
+            .optional()
+            .describe(
+              'On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.'
+            ),
+          /**
+           * On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity.
+           */
+          cut_off_share: z
+            .number()
+            .min(0)
+            .max(1)
+            .nullable()
+            .optional()
+            .describe(
+              "On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity."
+            ),
+        })
+        .strict()
+        .nullable()
+        .optional()
+        .describe(
+          "How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity."
+        ),
     })
     .strict()
 );

@@ -336,6 +336,12 @@ export const allowedExperimentalValues = Object.freeze({
   entityAnalyticsAnomalyDetails: true,
 
   /**
+   * Runs the blast radius daily job as an entity maintainer: a proof of concept for the graph
+   * performance tests, reading the edges index the identity access graph generator writes.
+   */
+  entityAnalyticsBlastRadius: false,
+
+  /**
    * Enables the Detection Rule Changes History API endpoint
    * (`GET /api/detection_engine/rules/_history`).
    *

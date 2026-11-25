@@ -103,7 +103,7 @@ describe('HistorySnapshotClient', () => {
     mockInternalEsClient = {} as jest.Mocked<ElasticsearchClient>;
     mockGlobalStateClient = createMockGlobalStateClient();
     mockTaskManager = createMockTaskManager();
-    mockResolveLatestEntitiesIndexName.mockResolvedValue('.entities.v2.latest.default-00001');
+    mockResolveLatestEntitiesIndexName.mockResolvedValue('.entities.v2.latest.default-00002');
     client = createClient();
   });
 
@@ -193,7 +193,7 @@ describe('HistorySnapshotClient', () => {
       expect(mockReindex).toHaveBeenCalledWith(
         mockEsClient,
         expect.objectContaining({
-          source: { index: '.entities.v2.latest.default-00001' },
+          source: { index: '.entities.v2.latest.default-00002' },
           dest: { index: expect.stringMatching(/\.entities\.v2\.history\.default\./) },
           waitForTask: {
             logger: expect.anything(),
@@ -206,7 +206,7 @@ describe('HistorySnapshotClient', () => {
       expect(mockUpdateByQueryWithScript).toHaveBeenCalledWith(
         mockEsClient,
         expect.objectContaining({
-          index: '.entities.v2.latest.default-00001',
+          index: '.entities.v2.latest.default-00002',
           query: { match_all: {} },
           script: HISTORY_SNAPSHOT_RESET_SCRIPT,
           params: expect.objectContaining({ timestampNow: expect.any(String) }),

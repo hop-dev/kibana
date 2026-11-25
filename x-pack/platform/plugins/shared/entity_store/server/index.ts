@@ -57,7 +57,13 @@ export type {
 } from './domain/crud';
 export { isEntityTypeCreatableFromSingleDocument } from '../common/domain/definitions/creatable_from_single_document';
 export type { EntityMetadataClient } from './domain/entity_metadata';
-export type { RelationshipsClient } from './domain/relationships';
+export type {
+  RelationshipsClient,
+  Relationship,
+  RelationshipsReader,
+  RelationshipsReaderOptions,
+  RelationshipsSearch,
+} from './domain/relationships';
 export type { ResolutionClient } from './domain/resolution';
 export {
   NAMESPACE_PRIORITY,
@@ -74,6 +80,7 @@ export {
 } from './domain/asset_manager/resolve_entity_store_indices';
 export { ENGINE_METADATA_TYPE_FIELD } from './domain/logs_extraction/query_builder_commons';
 export { getFieldValue } from '../common/domain/euid/commons';
+export { hashEuid } from '../common/domain/euid/hash_euid';
 export { EngineDescriptorTypeName } from './domain/saved_objects/engine_descriptor/types';
 export { EntityStoreGlobalStateTypeName } from './domain/saved_objects/global_state/types';
 export { EntityStorePreferencesTypeName } from './domain/saved_objects/preferences/types';

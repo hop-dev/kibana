@@ -327,5 +327,7 @@
     "@kbn/custom-content-common",
     "@kbn/custom-content-renderer",
     "@kbn/securitysolution-timeline-search-strategy",
+    "@kbn/graph-algorithms",
+    "@kbn/fs",
   ]
 }

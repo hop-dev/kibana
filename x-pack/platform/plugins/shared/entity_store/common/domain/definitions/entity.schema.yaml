@@ -250,6 +250,38 @@ components:
               maximum: 100
               description: The normalized numeric value of the given entity's risk score. Useful for comparing with other entities.
               example: 83.2
+        blast_radius:
+          type: object
+          nullable: true
+          description: How much of the environment's crown jewels the entity can reach, from the blast radius daily job. Null once a run no longer reaches the entity.
+          additionalProperties: false
+          properties:
+            score:
+              type: number
+              format: double
+              description: The sum of the entity's contributions to each crown jewel it can reach.
+              example: 3
+            percentile:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 100
+              description: The share of the entities the run reached, of the same entity type, that score strictly lower, as a percentage.
+              example: 97
+            cut_off:
+              type: integer
+              minimum: 0
+              nullable: true
+              description: On a choke point only, the most entities it cuts off from any one crown jewel, as a choke node or by a choke link from it. Null on every other entity.
+              example: 1200
+            cut_off_share:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 1
+              nullable: true
+              description: On a choke point only, the largest share of one crown jewel's reach it cuts off, to 3 decimal places. Comparable across environments of different sizes. Null on every other entity.
+              example: 0.125
 
     Asset:
       type: object

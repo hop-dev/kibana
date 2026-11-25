@@ -44,6 +44,11 @@ export const createMockConfig = (): ConfigType => {
         esqlProfiling: true,
         esqlProfilingInterval: 20,
       },
+      blastRadius: {
+        requestsInFlight: 1,
+        maxRelationshipsRead: 100_000_000,
+        runRecord: false,
+      },
       assetCriticality: {
         csvUpload: {
           errorRetries: 3,

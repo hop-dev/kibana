@@ -150,6 +150,7 @@ import { registerPrivilegeMonitoringTask } from './lib/entity_analytics/privileg
 import { registerLeadGenerationTask } from './lib/entity_analytics/lead_generation/tasks';
 import { ProductFeaturesService } from './lib/product_features_service/product_features_service';
 import { registerRiskScoreMaintainer } from './lib/entity_analytics/risk_score/maintainer/register_risk_score_maintainer';
+import { registerBlastRadiusMaintainer } from './lib/entity_analytics/blast_radius/maintainer/register_blast_radius_maintainer';
 import { accessesFrequentlyMaintainer } from './lib/entity_analytics/maintainers/accesses';
 import { communicatesWithMaintainer } from './lib/entity_analytics/maintainers/communicates_with';
 import { administersMaintainer } from './lib/entity_analytics/maintainers/administers';
@@ -414,6 +415,13 @@ export class Plugin implements ISecuritySolutionPlugin {
       experimentalFeatures,
       telemetry: core.analytics,
     });
+    if (experimentalFeatures.entityAnalyticsBlastRadius) {
+      registerBlastRadiusMaintainer({
+        entityStore: plugins.entityStore,
+        config: config.entityAnalytics.blastRadius,
+        logger: this.logger,
+      });
+    }
     if (experimentalFeatures.entityAnalyticsWatchlistEnabled) {
       registerWatchlistMaintainer({
         entityStore: plugins.entityStore,

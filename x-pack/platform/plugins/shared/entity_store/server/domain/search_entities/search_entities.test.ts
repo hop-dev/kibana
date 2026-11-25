@@ -57,7 +57,7 @@ describe('searchEntitiesV2', () => {
 
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({
-        index: ['.entities.v2.latest.default-00001'],
+        index: ['.entities.v2.latest.default-00002'],
         query: {
           bool: {
             must: [
@@ -119,11 +119,11 @@ describe('searchEntitiesV2Batch', () => {
     // header + body per query, alternating
     expect(searches).toHaveLength(4);
     expect(searches[0]).toEqual({
-      index: ['.entities.v2.latest.default-00001'],
+      index: ['.entities.v2.latest.default-00002'],
       ignore_unavailable: true,
     });
     expect(searches[2]).toEqual({
-      index: ['.entities.v2.latest.default-00001'],
+      index: ['.entities.v2.latest.default-00002'],
       ignore_unavailable: true,
     });
 
